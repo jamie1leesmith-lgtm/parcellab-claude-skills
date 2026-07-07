@@ -1,0 +1,14 @@
+{
+  "name": "parcellab-skills",
+  "owner": {
+    "name": "Jamie Lee-Smith",
+    "email": "jamie.lee-smith@parcellab.com"
+  },
+  "plugins": [
+    {
+      "name": "parcellab-brand-layout",
+      "source": "./plugins/parcellab-brand-layout",
+      "description": "Create branded transactional email layouts in your ParcelLab account from any brand website URL. Desktop app: browses with Claude-in-Chrome, previews live in the app, pushes via the ParcelLab MCP connector."
+    }
+  ]
+}

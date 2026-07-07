@@ -1,0 +1,387 @@
+---
+name: parcellab-brand-layout-desktop
+description: Create a branded transactional email layout in the user's ParcelLab account from a brand website URL — DESKTOP APP version. Browses with the Claude-in-Chrome extension, previews live in the Claude app preview panel, and pushes via the ParcelLab MCP connector. Trigger on phrases like "create a ParcelLab layout for [brand]", "add a layout for [brand] to ParcelLab", "build a [brand] email layout", "push a [brand] layout to parcellab", or any request to generate a journey layout in ParcelLab from a brand website while running in the Claude desktop app. Requires the Claude-in-Chrome extension and the ParcelLab MCP connector.
+---
+
+# ParcelLab — Create Branded Journey Layout (Desktop App)
+
+Given a brand website URL, scrape the live site with the **Claude-in-Chrome** browser extension, extract brand styles and logo, generate a branded email layout HTML, preview it **live in the Claude app preview panel**, and push it to the **user's ParcelLab account** via the **ParcelLab MCP connector**.
+
+> **Why this variant exists:** the original `parcellab-brand-layout` skill is hard-wired to the Playwright MCP and the ParcelLab CLI, which are available in the Claude Code CLI but not in the desktop app. This version uses the desktop app's browser tools (Claude-in-Chrome), the live preview panel, and the ParcelLab MCP connector — no CLI installation required.
+
+> **MCP tool naming:** ParcelLab MCP tools appear with a per-connector prefix (e.g. `mcp__<connector-id>__journey_write_layout`). This skill refers to them by their **suffix** — match whatever prefix is present in your tool list.
+
+---
+
+## Step 1 — Check prerequisites are connected
+
+Verify both tool families are available before doing anything else:
+
+1. **Claude-in-Chrome**: `mcp__Claude_in_Chrome__navigate` must be in the tool list. If not, stop and tell the user:
+   > "The Claude-in-Chrome extension isn't connected. Open the Claude-in-Chrome browser extension, make sure a Chrome window is connected, and try again."
+2. **ParcelLab MCP**: a tool ending in `__journey_write_layout` must be available (it may be deferred — search the tool list / ToolSearch for `journey_write_layout`). If not, stop and tell the user:
+   > "The ParcelLab MCP connector isn't enabled. Enable it in Settings → Connectors, then try again."
+
+Optionally call `mcp__Claude_in_Chrome__tabs_context_mcp` with `{createIfEmpty:true}` to get a tab id up front. Most tools below auto-create a tab when called standalone, but keep the `tabId` handy for follow-up JS calls on the same page.
+
+---
+
+## Step 1b — Determine the target ParcelLab account
+
+The layout must be created in **the user's own account** — never assume a hardcoded ID.
+
+1. If the user named an account ID in their request, use it.
+2. Otherwise call the ParcelLab MCP tool ending in `__account_get_my_user` and read the `accounts` array:
+   - **One account** → use it, and state which account you'll push to.
+   - **Multiple accounts** → ask the user which one to use (show the IDs; you can enrich with names via the tool ending `__account_get_account`).
+3. Confirm the account ID with the user **before** the push in Step 9. Refer to it as `{ACCOUNT_ID}` throughout.
+
+---
+
+## Step 2 — Navigate to the brand homepage
+
+```
+mcp__Claude_in_Chrome__navigate → { url: <the URL the user provided> }
+```
+
+Called standalone, `navigate` will create/attach a tab for you and return the tab list — **note the `tabId`** and reuse it for every `javascript_tool` call below so you stay on the same page. Wait for the page to fully load. Note the final redirected URL (some brands redirect to a locale, e.g. `zara.com → zara.com/uk/`).
+
+---
+
+## Step 3 — Extract brand styles
+
+Run the extraction via `mcp__Claude_in_Chrome__javascript_tool` with `{ action: "javascript_exec", tabId: <tabId>, text: <snippet> }`.
+
+> **IMPORTANT — REPL semantics:** `javascript_tool` returns the value of the *last expression* (like a console REPL); it does **not** honour a top-level `return`. Wrap the extraction in an **IIFE** so the last expression is the object you want, i.e. `(() => { ... return {...}; })()`. All snippets below are already wrapped this way.
+
+```javascript
+(() => {
+  const computed = window.getComputedStyle(document.body);
+
+  const sampleEl = (selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const s = window.getComputedStyle(el);
+    return {
+      fontFamily: s.fontFamily,
+      fontSize: s.fontSize,
+      fontWeight: s.fontWeight,
+      color: s.color,
+      backgroundColor: s.backgroundColor,
+      letterSpacing: s.letterSpacing,
+      lineHeight: s.lineHeight,
+      textTransform: s.textTransform,
+      borderRadius: s.borderRadius,
+    };
+  };
+
+  const header = document.querySelector('header, [class*="header"], [class*="Header"]');
+  const footer = document.querySelector('footer, [class*="footer"], [class*="Footer"]');
+
+  const buttons = Array.from(document.querySelectorAll('button, a[class*="btn"], a[class*="button"], [role="button"]'))
+    .slice(0, 8)
+    .map(el => {
+      const s = window.getComputedStyle(el);
+      return {
+        text: el.innerText?.trim().slice(0, 40),
+        bg: s.backgroundColor,
+        color: s.color,
+        radius: s.borderRadius,
+        textTransform: s.textTransform,
+        letterSpacing: s.letterSpacing,
+      };
+    })
+    .filter(b => b.bg && b.bg !== 'rgba(0, 0, 0, 0)');
+
+  return {
+    readyState: document.readyState,
+    finalUrl: location.href,
+    pageTitle: document.title,
+    bodyBg: computed.backgroundColor,
+    bodyColor: computed.color,
+    bodyFont: computed.fontFamily,
+    bodyFontSize: computed.fontSize,
+    bodyFontWeight: computed.fontWeight,
+    headerBg: header ? window.getComputedStyle(header).backgroundColor : null,
+    headerColor: header ? window.getComputedStyle(header).color : null,
+    footerBg: footer ? window.getComputedStyle(footer).backgroundColor : null,
+    footerColor: footer ? window.getComputedStyle(footer).color : null,
+    buttons,
+    heading: sampleEl('h1, h2, h3'),
+    nav: sampleEl('nav'),
+    link: sampleEl('a'),
+  };
+})()
+```
+
+If the captured buttons are all transparent/grey utility chips, run a second pass over `main a, main button` filtering for solid dark or coloured backgrounds to find the true primary CTA.
+
+To visually confirm the page loaded, take a screenshot with `mcp__Claude_in_Chrome__computer` `{ action: "screenshot", tabId: <tabId> }`.
+
+---
+
+## Step 4 — Extract the hero image
+
+Run this snippet (IIFE-wrapped for the REPL) via `javascript_tool`:
+
+```javascript
+(() => {
+  const heroImages = Array.from(document.querySelectorAll(
+    'main img, [class*="hero"] img, [class*="banner"] img, section img, [class*="grid"] img, [class*="carousel"] img'
+  )).filter(img => {
+    const r = img.getBoundingClientRect();
+    return r.width > 400 && img.src && !img.src.includes('data:') && img.naturalWidth > 400;
+  }).map(img => ({
+    src: img.src,
+    alt: img.alt,
+    naturalW: img.naturalWidth,
+    naturalH: img.naturalHeight,
+    vw: Math.round(img.getBoundingClientRect().width),
+    vh: Math.round(img.getBoundingClientRect().height),
+  }));
+
+  return { heroImages: heroImages.slice(0, 5) };
+})()
+```
+
+**Hero image selection rules:**
+
+1. Pick the **first landscape image** (`naturalW > naturalH`) with `naturalW ≥ 800` — this is almost always the primary campaign image.
+2. **Clean the URL for email**: strip high-DPR multipliers (`dpr_2.0,`) but keep the full width (`w_1200`) — email clients scale via `width="600"` on the `<img>`, so the image stays crisp on retina.
+3. If no large landscape image is found, fall back to a large square campaign image, then the OG image (`meta[property="og:image"]`). **Verify OG images before using them** (load via `new Image()` in `javascript_tool` and check dimensions; some brands' OG image is just a logo card, which duplicates the header logo and looks wrong).
+4. If still nothing, skip the hero block entirely — don't use a placeholder.
+
+**Hero block HTML** (goes between the header and the campaign block):
+
+```html
+<!-- Hero image -->
+<tr>
+  <td style="padding:0; line-height:0; font-size:0;">
+    <img
+      src="{HERO_IMAGE_URL}"
+      alt="{HERO_IMAGE_ALT}"
+      width="600"
+      class="hero-img img-fluid"
+      style="display:block; width:600px; max-width:100%; height:auto; border:0; outline:none; text-decoration:none;"
+    />
+  </td>
+</tr>
+```
+
+Also add `.hero-img` to the mobile media query: `width: 100% !important; height: auto !important;`
+
+---
+
+## Step 5 — Extract the logo
+
+Run this snippet (IIFE-wrapped) via `javascript_tool`:
+
+```javascript
+(() => {
+  // Prefer <img> in header/logo container
+  const logoImg = document.querySelector(
+    'img[class*="logo"], img[alt*="logo" i], [class*="logo"] img, [class*="brand"] img, header img, a[aria-label*="home" i] img'
+  );
+
+  // Detect inline SVG logo (common in modern brands like ZARA)
+  const logoSvgEl = document.querySelector(
+    '[class*="logo"] svg, [class*="brand"] svg, header svg, a[aria-label*="home" i] svg, a[href="/"] svg'
+  );
+
+  // Get full SVG markup if found
+  const logoSvgMarkup = logoSvgEl ? logoSvgEl.outerHTML : null;
+
+  // OG image as last resort
+  const ogImage = document.querySelector('meta[property="og:image"]')?.content;
+
+  const header = document.querySelector('header, [class*="header"]');
+  const headerImgs = Array.from(header?.querySelectorAll('img') || []).map(img => ({
+    src: img.src, alt: img.alt, w: img.naturalWidth, h: img.naturalHeight
+  }));
+
+  return {
+    logoImgSrc: logoImg?.src || null,
+    logoSvgMarkup,
+    ogImage,
+    headerImgs,
+  };
+})()
+```
+
+**Watch out for multi-brand headers** (e.g. Nike's header contains Jordan and Converse SVGs too). If several SVGs are found, list them all with their parent link's `aria-label`/`href` and pick the one whose parent links to the homepage (`/`) or whose aria-label matches the brand name.
+
+**Logo decision tree:**
+
+1. If `logoImgSrc` is a valid image URL → use it for `__BRAND_HEADER_LOGO_URL__` and `__BRAND_FOOTER_LOGO_URL__`.
+2. If the logo is an inline SVG (`logoSvgMarkup` is set, `logoImgSrc` is null):
+   - Extract the full SVG `outerHTML`.
+   - In the template, **replace** the `<img>` logo tags with the inline SVG directly.
+   - For the **header** (dark bg): set `fill="#ffffff"` on the SVG path.
+   - For the **footer** (dark bg): set `fill="#ffffff"` on the SVG path.
+   - For a **light bg** variant: set `fill="#000000"`.
+   - If the icon sits inside a mostly-empty square viewBox, **crop the viewBox to the path bounds** so the logo isn't rendered tiny inside whitespace.
+   - Wrap in a non-MSO conditional: `<!--[if !mso]><!--> … SVG … <!--<![endif]-->` with an MSO fallback of plain uppercase text styled with letter-spacing.
+3. If neither → use `ogImage` as a fallback, or leave a `[LOGO NOT FOUND]` placeholder and tell the user.
+
+---
+
+## Step 6 — Map brand tokens
+
+From the extracted data, derive these values:
+
+| Token | Source / Rule |
+|---|---|
+| `BRAND_NAME` | Brand display name (infer from domain or page title) |
+| `FONT_STACK` | `bodyFont` — strip quotes if needed, add `Helvetica, Arial, sans-serif` fallback |
+| `BODY_BG` | Usually `#f2f2f2` (light grey canvas) regardless of site body bg; use `#f5f5f5` minimum |
+| `HEADER_BG` | If site header is dark → `#000000`. If coloured → that colour. If transparent/white → use the brand's primary CTA colour or `#000000` |
+| `CARD_BG` | Always `#ffffff` |
+| `CARD_BORDER` | `#e0e0e0` default; lighten brand primary if they have one |
+| `CARD_ACCENT_STRIPE` | Brand's primary CTA button bg colour; default `#000000` |
+| `TEXT_PRIMARY` | `bodyColor` if dark; else `#000000` |
+| `SOFT_BG` | `#ffffff` (white, same as card) or very light grey |
+| `CTA_BG` | Primary CTA button bg from `buttons[]` |
+| `CTA_TEXT` | Primary CTA button color from `buttons[]`; usually `#ffffff` |
+| `CTA_TEXT_TRANSFORM` | `uppercase` or `none` from `buttons[].textTransform` |
+| `CTA_LETTER_SPACING` | From `buttons[].letterSpacing`; use `0.1em` if `normal` |
+| `FOOTER_BG` | Dark colour — use `#000000` unless site footer is distinctly different |
+| `FOOTER_TEXT` | `#ffffff` |
+| `FOOTER_TEXT_MUTED` | `#888888` |
+| `FOOTER_DIVIDER` | `#555555` |
+| `RADIUS_LG` | `0px` if brand is sharp (buttons radius=0); `8px` medium; `18px` round |
+| `RADIUS_SM` | Match CTA button radius from `buttons[]` |
+| `FONT_WEIGHT_BODY` | `bodyFontWeight`; use `300` if the brand is light-weight (e.g. Zara) |
+| `ADDRESS` | Infer from `footer` text or `/about`/`/contact` page; use `[ADDRESS — not found]` if missing |
+
+**Colour normalisation:** convert all `rgb(r, g, b)` values to `#RRGGBB` hex before writing into the HTML.
+
+```javascript
+// Helper (run in javascript_tool if needed)
+const rgbToHex = (rgb) => {
+  const [r, g, b] = rgb.match(/\d+/g).map(Number);
+  return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('').toUpperCase();
+};
+```
+
+---
+
+## Step 7 — Build the HTML
+
+Read the base template **bundled with this skill**:
+
+```
+Read: <this skill's directory>/template.html
+```
+
+Substitute all `__BRAND_X__` tokens. Key structural rules for the final HTML:
+
+- **Width:** 600px fixed, 100% on mobile.
+- **Header:** black (or brand colour) background. Logo centred, padding `28px 32px 26px`.
+- **Remove the soft transition band** (the `__BRAND_HEADER_BG_SOFT__` row) — replace it with a simple `24px` padding spacer above the campaign block.
+- **Hero image block:** insert between the header row and the main canvas `<td>`, using the HTML from Step 4. Zero padding, zero line-height on the containing `<td>` so it sits flush against the header.
+- **Campaign block:** `{{generated/campaignManager/banner}}{{generated/campaignManager/html}}{{generated/campaignManager/productRecommendation}}` — must pass through untouched in their own `<td>` with top padding.
+- **Content card:** white, `border:1px solid #e0e0e0`, `border-radius:RADIUS_LG`, 4px black top-stripe, `padding:36px 36px 32px`. Contains `{{content}}` token.
+- **Help block:** below the card, same border style. "NEED HELP?" in uppercase bold, body text, CTA button right-aligned.
+- **Footer:** black background. Logo (white variant) centred, footer links row, received copy, address. All text muted white.
+- **ParcelLab tokens** that must survive verbatim: `{{content}}`, `{{preview}}`, `{{schemaOrgMarkup}}`, `{{generated/campaignManager/banner}}`, `{{generated/campaignManager/html}}`, `{{generated/campaignManager/productRecommendation}}`.
+
+Write to: `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html` — where `$HOME` is the current user's home directory. Create the folder if missing. **Do NOT write under `~/Documents`** — the preview server cannot read it (macOS TCC protection).
+
+---
+
+## Step 8 — Preview in the Claude app preview panel (live-editable)
+
+Show the layout in the app's **preview panel** via the `mcp__Claude_Preview__*` tools. This serves the HTML file from disk, so follow-up edit requests are a simple loop: edit the file → reload → the user watches the change land. (Do NOT use `show_widget` — it bakes a static snapshot into the chat and cannot reflect later edits. Do NOT use Bash `python3 -m http.server` — always go through `preview_start`.)
+
+**Serving directory — TCC warning:** the preview server's spawned process **cannot read `~/Documents`** (macOS TCC protection → 404 "No permission to list directory"). Always serve from `$HOME/parcellab-previews/`.
+
+1. Ensure the launch config exists at `{project}/.claude/launch.json`, substituting the current user's real home path for `{HOME}`:
+
+```json
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "layout-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-c",
+        "import sys; sys.path = [p for p in sys.path if p]; import http.server, socketserver, functools; H = functools.partial(http.server.SimpleHTTPRequestHandler, directory='{HOME}/parcellab-previews'); socketserver.TCPServer(('127.0.0.1', 8098), H).serve_forever()"
+      ],
+      "port": 8098
+    }
+  ]
+}
+```
+
+(The `sys.path` cleanup works around the Python 3.14 empty-path issue; the inline `-c` server avoids `--directory` cwd quirks.)
+
+2. `mcp__Claude_Preview__preview_start` → `{ name: "layout-preview" }` (reuses the server if already running).
+3. Navigate: `mcp__Claude_Preview__preview_eval` → `window.location.href = 'http://127.0.0.1:8098/{brand}-parcellab-layout.html'`
+4. Confirm with `mcp__Claude_Preview__preview_screenshot`.
+
+**Iteration loop** (when the user asks for changes): edit `$HOME/parcellab-previews/{brand}-parcellab-layout.html` directly (it is the canonical working copy), then `preview_eval` → `window.location.reload()`, then `preview_screenshot` to confirm.
+
+> **Note:** ParcelLab tokens (`{{content}}`, `{{generated/...}}`, `{{schemaOrgMarkup}}`) render as literal text in the preview — that is expected. The preview is for confirming branding, logo, hero image, colours and structure, not the injected order content.
+
+Ask the user: *"Does this look right before I push to ParcelLab?"*
+
+---
+
+## Step 9 — Push to ParcelLab via the MCP connector
+
+Once the user approves, read the final HTML from `$HOME/parcellab-previews/` and call the ParcelLab MCP tool ending in `__journey_write_layout`:
+
+```
+journey_write_layout → {
+  "account": {ACCOUNT_ID},
+  "data": {
+    "name": "{BRAND_NAME}",
+    "prettyName": "{BRAND_NAME}",
+    "content": "<the full layout HTML as a string>",
+    "language": "en",
+    "autoLayout": []
+  }
+}
+```
+
+- Omit `id` to **create** a new layout; pass `id` to **update** an existing one (PATCH semantics).
+- `"autoLayout"` must be an **empty list** `[]` — not `false` or `true`.
+- To check existing layouts first, call the tool ending in `__journey_list_journey_layouts` with `{ "account": [{ACCOUNT_ID}] }` (optionally `search: "{BRAND_NAME}"` to avoid duplicates).
+
+---
+
+## Step 10 — Report back
+
+On success, tell the user:
+
+- Layout **ID** (e.g. `19584`)
+- Layout **prettyName**
+- **Account:** {ACCOUNT_ID}
+- **Status:** draft
+- Next step options: assign to a journey in the ParcelLab portal, or publish.
+
+On failure:
+- Validation error (400) → read the error details, fix the field, retry. `autoLayout not_a_list` → ensure `autoLayout` is `[]` not a bool.
+- Auth/permission error → the ParcelLab MCP connector needs re-authentication; tell the user to reconnect it in Settings → Connectors.
+
+---
+
+## Useful MCP calls (reference)
+
+- List layouts on the account: tool ending `__journey_list_journey_layouts` → `{ "account": [{ACCOUNT_ID}], "ordering": "-created_at" }`
+- Inspect one layout: tool ending `__journey_get_journey_layout` → `{ "id": <layout id> }`
+- Update a layout: tool ending `__journey_write_layout` → `{ "account": {ACCOUNT_ID}, "id": <layout id>, "data": { ...changed fields... } }`
+
+---
+
+## Differences from `parcellab-brand-layout` (CLI version)
+
+| Concern | CLI skill | This desktop skill |
+|---|---|---|
+| Browser | `mcp__playwright__browser_navigate` / `browser_evaluate` | `mcp__Claude_in_Chrome__navigate` / `javascript_tool` |
+| JS return | arrow fn with `return` | IIFE `(() => {...})()` (REPL last-expression) |
+| Page screenshot | `browser_take_screenshot` | `computer` `{action:"screenshot"}` |
+| Preview | `python3 -m http.server` + Playwright screenshot | `preview_start` server + preview panel (live-editable; serves `$HOME/parcellab-previews/`) |
+| Push to ParcelLab | `parcellab` CLI (`api request POST`) | ParcelLab MCP connector (`journey_write_layout`) |
+| Template | read from sibling `brand-style-guide` skill | bundled `template.html` in this skill's folder |
