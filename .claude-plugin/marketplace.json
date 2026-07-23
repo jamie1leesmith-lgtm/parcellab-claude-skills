@@ -9,6 +9,11 @@
       "name": "parcellab-brand-layout",
       "source": "./plugins/parcellab-brand-layout",
       "description": "Create branded transactional email layouts in your ParcelLab account from any brand website URL. Desktop app: browses with Claude-in-Chrome, previews live in the app, pushes via the ParcelLab MCP connector."
+    },
+    {
+      "name": "parcellab-create-order",
+      "source": "./plugins/parcellab-create-order",
+      "description": "Create a real order in your ParcelLab account via the production Order API. Fills in realistic dummy data when you only provide partial context (country, scenario, tracked/untracked)."
     }
   ]
 }
