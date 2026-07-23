@@ -1,0 +1,5 @@
+# Dependencies — rebuildable from package.json / package-lock.json, never commit these
+node_modules/
+
+# macOS Finder cruft
+.DS_Store

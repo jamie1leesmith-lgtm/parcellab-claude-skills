@@ -1,0 +1,9 @@
+{
+  "name": "parcellab-demo-request",
+  "description": "Create a custom ParcelLab demo request from a prospect website URL. Researches the site, collects four representative products from real product pages, verifies image URLs, asks for approval, then submits via the Custom Demo Creator API.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Jamie Lee-Smith",
+    "email": "jamie.lee-smith@parcellab.com"
+  }
+}

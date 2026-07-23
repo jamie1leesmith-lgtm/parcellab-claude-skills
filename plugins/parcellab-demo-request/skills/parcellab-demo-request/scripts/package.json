@@ -1,0 +1,9 @@
+{
+  "name": "parcellab-demo-request-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for the parcelLab demo request Claude Code skill",
+  "type": "module",
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}

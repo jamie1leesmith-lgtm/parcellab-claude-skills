@@ -14,6 +14,11 @@
       "name": "parcellab-create-order",
       "source": "./plugins/parcellab-create-order",
       "description": "Create a real order in your ParcelLab account via the production Order API. Fills in realistic dummy data when you only provide partial context (country, scenario, tracked/untracked)."
+    },
+    {
+      "name": "parcellab-demo-request",
+      "source": "./plugins/parcellab-demo-request",
+      "description": "Create a custom ParcelLab demo request from a prospect website URL. Researches the site, collects four representative products, verifies image URLs, asks for approval, then submits via the Custom Demo Creator API."
     }
   ]
 }
