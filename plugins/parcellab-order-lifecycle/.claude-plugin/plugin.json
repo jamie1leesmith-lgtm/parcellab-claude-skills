@@ -1,0 +1,9 @@
+{
+  "name": "parcellab-order-lifecycle",
+  "description": "Simulate a full ParcelLab post-purchase journey: source a real product from a brand site, create an untracked order, then push a timed sequence of tracking checkpoints (warehouse -> carrier -> delivery) so ParcelLab fires the comms for each stage.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Jamie Lee-Smith",
+    "email": "jamie.lee-smith@parcellab.com"
+  }
+}

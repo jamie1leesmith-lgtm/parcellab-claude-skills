@@ -19,6 +19,11 @@
       "name": "parcellab-demo-request",
       "source": "./plugins/parcellab-demo-request",
       "description": "Create a custom ParcelLab demo request from a prospect website URL. Researches the site, collects four representative products, verifies image URLs, asks for approval, then submits via the Custom Demo Creator API."
+    },
+    {
+      "name": "parcellab-order-lifecycle",
+      "source": "./plugins/parcellab-order-lifecycle",
+      "description": "Simulate a full ParcelLab post-purchase journey: source a real product, create an untracked order, then push a timed sequence of tracking checkpoints (warehouse -> carrier -> delivery) so ParcelLab fires the comms for each stage."
     }
   ]
 }
