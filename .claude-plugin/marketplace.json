@@ -8,7 +8,7 @@
     {
       "name": "parcellab-brand-layout",
       "source": "./plugins/parcellab-brand-layout",
-      "description": "Create branded transactional email layouts in your ParcelLab account from any brand website URL. Desktop app: browses with Claude-in-Chrome, previews live in the app, pushes via the ParcelLab MCP connector."
+      "description": "Create branded transactional email layouts in your ParcelLab account from any brand website URL. Browses and previews with Claude Code's built-in browser (Browser pane), pushes via the ParcelLab MCP connector."
     },
     {
       "name": "parcellab-create-order",

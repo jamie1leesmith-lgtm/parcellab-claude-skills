@@ -1,13 +1,17 @@
 ---
 name: parcellab-brand-layout-desktop
-description: Create a branded transactional email layout in the user's ParcelLab account from a brand website URL — DESKTOP APP version. Browses with the Claude-in-Chrome extension, previews live in the Claude app preview panel, and pushes via the ParcelLab MCP connector. Trigger on phrases like "create a ParcelLab layout for [brand]", "add a layout for [brand] to ParcelLab", "build a [brand] email layout", "push a [brand] layout to parcellab", or any request to generate a journey layout in ParcelLab from a brand website while running in the Claude desktop app. Requires the Claude-in-Chrome extension and the ParcelLab MCP connector.
+description: Create a branded transactional email layout in the user's ParcelLab account from a brand website URL — built-in-browser version. Browses and previews with Claude Code's built-in browser (the Browser pane, `mcp__Claude_Browser__*`) and pushes via the ParcelLab MCP connector. Trigger on phrases like "create a ParcelLab layout for [brand]", "add a layout for [brand] to ParcelLab", "build a [brand] email layout", "push a [brand] layout to parcellab", or any request to generate a journey layout in ParcelLab from a brand website. Requires Claude Code's built-in browser and the ParcelLab MCP connector.
 ---
 
-# ParcelLab — Create Branded Journey Layout (Desktop App)
+# ParcelLab — Create Branded Journey Layout (Built-in Browser)
 
-Given a brand website URL, scrape the live site with the **Claude-in-Chrome** browser extension, extract brand styles and logo, generate a branded email layout HTML, preview it **live in the Claude app preview panel**, and push it to the **user's ParcelLab account** via the **ParcelLab MCP connector**.
+Given a brand website URL, scrape the live site with **Claude Code's built-in browser** (the Browser pane, `mcp__Claude_Browser__*`), extract brand styles and logo, generate a branded email layout HTML, preview it **live in the same Browser pane**, and push it to the **user's ParcelLab account** via the **ParcelLab MCP connector**.
 
-> **Why this variant exists:** the original `parcellab-brand-layout` skill is hard-wired to the Playwright MCP and the ParcelLab CLI, which are available in the Claude Code CLI but not in the desktop app. This version uses the desktop app's browser tools (Claude-in-Chrome), the live preview panel, and the ParcelLab MCP connector — no CLI installation required.
+> **Why this variant exists:** the original `parcellab-brand-layout` skill is hard-wired to the Playwright MCP and the ParcelLab CLI. This version uses the built-in browser (one tool family for both scraping *and* the live preview) plus the ParcelLab MCP connector — no CLI, no Playwright, and no external Chrome extension required.
+
+> **Built-in browser vs. Claude-in-Chrome:** the built-in Browser pane runs in a fresh context (no logged-in sessions), which is fine for public brand homepages. If you ever need to scrape a site behind a login, that's the one case where Claude-in-Chrome (the user's real Chrome) would be required instead — this skill does not cover it.
+
+> **Browser pane tabs:** `mcp__Claude_Browser__*` tools take a `tabId`; the primary tab is `"main"`. This skill reuses the `"main"` tab throughout — scraping the brand site first, then navigating the same tab to the local preview.
 
 > **MCP tool naming:** ParcelLab MCP tools appear with a per-connector prefix (e.g. `mcp__<connector-id>__journey_write_layout`). This skill refers to them by their **suffix** — match whatever prefix is present in your tool list.
 
@@ -17,12 +21,9 @@ Given a brand website URL, scrape the live site with the **Claude-in-Chrome** br
 
 Verify both tool families are available before doing anything else:
 
-1. **Claude-in-Chrome**: `mcp__Claude_in_Chrome__navigate` must be in the tool list. If not, stop and tell the user:
-   > "The Claude-in-Chrome extension isn't connected. Open the Claude-in-Chrome browser extension, make sure a Chrome window is connected, and try again."
+1. **Built-in browser**: `mcp__Claude_Browser__preview_start` / `mcp__Claude_Browser__navigate` must be in the tool list (they are loaded by default in Claude Code — no ToolSearch needed). If they are genuinely unavailable, stop and tell the user the built-in browser isn't available in this session.
 2. **ParcelLab MCP**: a tool ending in `__journey_write_layout` must be available (it may be deferred — search the tool list / ToolSearch for `journey_write_layout`). If not, stop and tell the user:
    > "The ParcelLab MCP connector isn't enabled. Enable it in Settings → Connectors, then try again."
-
-Optionally call `mcp__Claude_in_Chrome__tabs_context_mcp` with `{createIfEmpty:true}` to get a tab id up front. Most tools below auto-create a tab when called standalone, but keep the `tabId` handy for follow-up JS calls on the same page.
 
 ---
 
@@ -40,19 +41,21 @@ The layout must be created in **the user's own account** — never assume a hard
 
 ## Step 2 — Navigate to the brand homepage
 
+Open the Browser pane at the brand URL:
+
 ```
-mcp__Claude_in_Chrome__navigate → { url: <the URL the user provided> }
+mcp__Claude_Browser__preview_start → { url: <the URL the user provided> }
 ```
 
-Called standalone, `navigate` will create/attach a tab for you and return the tab list — **note the `tabId`** and reuse it for every `javascript_tool` call below so you stay on the same page. Wait for the page to fully load. Note the final redirected URL (some brands redirect to a locale, e.g. `zara.com → zara.com/uk/`).
+This opens a browser tab (no dev server needed) — note the `tabId` (the primary tab is `"main"`) and reuse it for every `javascript_tool` / `computer` call below. If the pane is already open, use `mcp__Claude_Browser__navigate → { tabId: "main", url: <URL> }` instead. Wait for the page to fully load. Note the final redirected URL (some brands redirect to a locale, e.g. `zara.com → zara.com/uk/`).
 
 ---
 
 ## Step 3 — Extract brand styles
 
-Run the extraction via `mcp__Claude_in_Chrome__javascript_tool` with `{ action: "javascript_exec", tabId: <tabId>, text: <snippet> }`.
+Run the extraction via `mcp__Claude_Browser__javascript_tool` with `{ action: "javascript_exec", tabId: "main", text: <snippet> }`.
 
-> **IMPORTANT — REPL semantics:** `javascript_tool` returns the value of the *last expression* (like a console REPL); it does **not** honour a top-level `return`. Wrap the extraction in an **IIFE** so the last expression is the object you want, i.e. `(() => { ... return {...}; })()`. All snippets below are already wrapped this way.
+> **IMPORTANT — REPL semantics:** `javascript_tool` returns the value of the *last expression* (like a console REPL) and serialises it as JSON; it does **not** honour a top-level `return`. Wrap the extraction in an **IIFE** so the last expression is the object you want, i.e. `(() => { ... return {...}; })()`. All snippets below are already wrapped this way.
 
 ```javascript
 (() => {
@@ -116,13 +119,13 @@ Run the extraction via `mcp__Claude_in_Chrome__javascript_tool` with `{ action: 
 
 If the captured buttons are all transparent/grey utility chips, run a second pass over `main a, main button` filtering for solid dark or coloured backgrounds to find the true primary CTA.
 
-To visually confirm the page loaded, take a screenshot with `mcp__Claude_in_Chrome__computer` `{ action: "screenshot", tabId: <tabId> }`.
+To visually confirm the page loaded, take a screenshot with `mcp__Claude_Browser__computer` `{ action: "screenshot", tabId: "main" }`.
 
 ---
 
 ## Step 4 — Extract the hero image
 
-Run this snippet (IIFE-wrapped for the REPL) via `javascript_tool`:
+Run this snippet (IIFE-wrapped for the REPL) via `mcp__Claude_Browser__javascript_tool`:
 
 ```javascript
 (() => {
@@ -174,7 +177,7 @@ Also add `.hero-img` to the mobile media query: `width: 100% !important; height:
 
 ## Step 5 — Extract the logo
 
-Run this snippet (IIFE-wrapped) via `javascript_tool`:
+Run this snippet (IIFE-wrapped) via `mcp__Claude_Browser__javascript_tool`:
 
 ```javascript
 (() => {
@@ -289,9 +292,9 @@ Write to: `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html
 
 ---
 
-## Step 8 — Preview in the Claude app preview panel (live-editable)
+## Step 8 — Preview in the Browser pane (live-editable)
 
-Show the layout in the app's **preview panel** via the `mcp__Claude_Preview__*` tools. This serves the HTML file from disk, so follow-up edit requests are a simple loop: edit the file → reload → the user watches the change land. (Do NOT use `show_widget` — it bakes a static snapshot into the chat and cannot reflect later edits. Do NOT use Bash `python3 -m http.server` — always go through `preview_start`.)
+Serve the HTML file from disk and open it in the built-in Browser pane. This keeps follow-up edits a simple loop: edit the file → reload the pane → the user watches the change land. (Do NOT use `show_widget` — it bakes a static snapshot into the chat and cannot reflect later edits. Do NOT run `python3 -m http.server` via Bash — always go through `preview_start`.)
 
 **Serving directory — TCC warning:** the preview server's spawned process **cannot read `~/Documents`** (macOS TCC protection → 404 "No permission to list directory"). Always serve from `$HOME/parcellab-previews/`.
 
@@ -316,11 +319,11 @@ Show the layout in the app's **preview panel** via the `mcp__Claude_Preview__*` 
 
 (The `sys.path` cleanup works around the Python 3.14 empty-path issue; the inline `-c` server avoids `--directory` cwd quirks.)
 
-2. `mcp__Claude_Preview__preview_start` → `{ name: "layout-preview" }` (reuses the server if already running).
-3. Navigate: `mcp__Claude_Preview__preview_eval` → `window.location.href = 'http://127.0.0.1:8098/{brand}-parcellab-layout.html'`
-4. Confirm with `mcp__Claude_Preview__preview_screenshot`.
+2. `mcp__Claude_Browser__preview_start` → `{ name: "layout-preview" }` (starts the python server from launch.json, reusing it if already running).
+3. Point the pane at the file: `mcp__Claude_Browser__navigate` → `{ tabId: "main", url: "http://127.0.0.1:8098/{brand}-parcellab-layout.html" }`.
+4. Confirm with `mcp__Claude_Browser__computer` `{ action: "screenshot", tabId: "main" }` (or `mcp__Claude_Browser__read_page` to verify structure/text).
 
-**Iteration loop** (when the user asks for changes): edit `$HOME/parcellab-previews/{brand}-parcellab-layout.html` directly (it is the canonical working copy), then `preview_eval` → `window.location.reload()`, then `preview_screenshot` to confirm.
+**Iteration loop** (when the user asks for changes): edit `$HOME/parcellab-previews/{brand}-parcellab-layout.html` directly (it is the canonical working copy), then reload with `mcp__Claude_Browser__navigate` → `{ tabId: "main", url: <same URL> }` (or `javascript_tool` → `window.location.reload()`), then screenshot to confirm.
 
 > **Note:** ParcelLab tokens (`{{content}}`, `{{generated/...}}`, `{{schemaOrgMarkup}}`) render as literal text in the preview — that is expected. The preview is for confirming branding, logo, hero image, colours and structure, not the injected order content.
 
@@ -375,13 +378,15 @@ On failure:
 
 ---
 
-## Differences from `parcellab-brand-layout` (CLI version)
+## Differences from `parcellab-brand-layout` (CLI/Playwright version)
 
-| Concern | CLI skill | This desktop skill |
+| Concern | CLI skill | This built-in-browser skill |
 |---|---|---|
-| Browser | `mcp__playwright__browser_navigate` / `browser_evaluate` | `mcp__Claude_in_Chrome__navigate` / `javascript_tool` |
+| Browser | `mcp__playwright__browser_navigate` / `browser_evaluate` | `mcp__Claude_Browser__navigate` / `javascript_tool` (built-in Browser pane, tab `"main"`) |
 | JS return | arrow fn with `return` | IIFE `(() => {...})()` (REPL last-expression) |
-| Page screenshot | `browser_take_screenshot` | `computer` `{action:"screenshot"}` |
-| Preview | `python3 -m http.server` + Playwright screenshot | `preview_start` server + preview panel (live-editable; serves `$HOME/parcellab-previews/`) |
+| Page screenshot | `browser_take_screenshot` | `mcp__Claude_Browser__computer` `{action:"screenshot"}` |
+| Preview | `python3 -m http.server` + Playwright screenshot | `mcp__Claude_Browser__preview_start {name}` server + same Browser pane (live-editable; serves `$HOME/parcellab-previews/`) |
 | Push to ParcelLab | `parcellab` CLI (`api request POST`) | ParcelLab MCP connector (`journey_write_layout`) |
 | Template | read from sibling `brand-style-guide` skill | bundled `template.html` in this skill's folder |
+
+> **Prior variant:** an earlier version of this skill used the Claude-in-Chrome extension (`mcp__Claude_in_Chrome__*`) plus a separate `mcp__Claude_Preview__*` panel. Both are now replaced by the single built-in Browser pane. Only revert to Claude-in-Chrome if you must scrape a login-gated site.

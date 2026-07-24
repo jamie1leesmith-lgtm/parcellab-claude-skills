@@ -1,7 +1,7 @@
 {
   "name": "parcellab-brand-layout",
-  "description": "Create branded transactional email layouts in your ParcelLab account from any brand website URL, with live preview in the Claude desktop app.",
-  "version": "1.0.0",
+  "description": "Create branded transactional email layouts in your ParcelLab account from any brand website URL. Browses and previews with Claude Code's built-in browser (Browser pane) and pushes via the ParcelLab MCP connector.",
+  "version": "1.1.0",
   "author": {
     "name": "Jamie Lee-Smith",
     "email": "jamie.lee-smith@parcellab.com"

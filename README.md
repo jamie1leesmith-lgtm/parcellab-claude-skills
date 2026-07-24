@@ -35,20 +35,21 @@ Swap `parcellab-create-order` for whichever skill you want — install as many o
 
 ### parcellab-brand-layout
 
-Creates a branded transactional email layout in **your ParcelLab account** from any brand website URL. Claude scrapes the brand's styles and logo, builds an email layout, shows a live preview in the Claude app, and — after you approve — pushes the layout to ParcelLab as a draft.
+Creates a branded transactional email layout in **your ParcelLab account** from any brand website URL. Claude scrapes the brand's styles and logo using Claude Code's **built-in browser** (the Browser pane), builds an email layout, previews it live in that same pane, and — after you approve — pushes the layout to ParcelLab as a draft. No Chrome extension or CLI required.
 
 **Prerequisites:**
 
-1. **Claude desktop app** (Mac)
-2. **Claude-in-Chrome browser extension** — installed in Chrome with a window connected
-3. **ParcelLab MCP connector** — enabled in Settings → Connectors, signed in with your ParcelLab account
-4. **Python 3** — for the local preview server (`python3 --version` to check; `xcode-select --install` if missing)
+1. **Claude Code with the built-in browser** (the Browser pane / `mcp__Claude_Browser__*` tools — loaded by default)
+2. **ParcelLab MCP connector** — enabled in Settings → Connectors, signed in with your ParcelLab account
+3. **Python 3** — for the local preview server (`python3 --version` to check; `xcode-select --install` if missing)
 
 The skill detects your ParcelLab account(s) via the connector and confirms the target account with you before creating anything.
 
+> **Note:** the built-in browser runs in a fresh context (no logged-in sessions), which is fine for public brand homepages. Scraping a site behind a login is the one case that would still need Claude-in-Chrome instead — this skill doesn't cover that.
+
 **Troubleshooting:**
 
-- *"Claude-in-Chrome isn't connected"* → open Chrome, click the Claude extension, connect a window
+- *"The built-in browser isn't available"* → make sure you're on a Claude Code version with the Browser pane tools
 - *"ParcelLab MCP connector isn't enabled"* → Settings → Connectors → enable/re-authenticate ParcelLab
 - *Wrong account targeted* → tell Claude the account ID explicitly; it always confirms before pushing
 - *Preview 404* → the preview folder must be `~/parcellab-previews/` (never under `~/Documents` — macOS blocks the preview server there)
