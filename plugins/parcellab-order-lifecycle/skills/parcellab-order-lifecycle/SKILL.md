@@ -29,7 +29,8 @@ fresh order number, no carryover — unless the user explicitly says reuse/resen
 
 - Open the site in the Browser pane (`mcp__Claude_Browser__preview_start {url}` then `read_page`).
 - Find one real product-detail page matching the idea. Extract `article_name`,
-  `article_image_url`, `unit_price`, `sku` (slug of the name if none exposed).
+  `article_image_url`, `article_store_url` (the product page URL itself),
+  `unit_price`, `sku` (slug of the name if none exposed).
 - Verify the image URL loads (navigate to it or check network 200 + image type).
 - One product by default; repeat per extra item the user asks for.
 
@@ -49,6 +50,35 @@ the driver):
    (Do **not** put `checkpoints` in `add_tracking` — that field is output-only
    and the API rejects it.) **For a split shipment, send both `add_tracking`
    mutations in the same `mutations` array of one PUT** — see *Split shipments*.
+
+   **Always set `tracking.articles` on every `add_tracking` mutation, even for
+   a single-shipment order — not just `articles_order` at the order level.**
+   Tracking-triggered comms (Out for Delivery, Delivered, delay updates) render
+   their `{{articlesTableWithImages}}` placeholder from the **tracking-level**
+   `articles` array, not from `articles_order` — that field only feeds the
+   order-level confirmation email. Omitting it is why article name/image/price
+   can look fine in the order-confirmation email but come back blank in every
+   later shipment comm. Mirror the same items (with matching `line_item_id`s)
+   from `articles_order` into `tracking.articles`:
+
+   ```json
+   "tracking": {
+     "tracking_number": "<randomised>",
+     "courier": "<chosen courier>",
+     "articles": [
+       {
+         "line_item_id": "1",
+         "article_name": "Classic T-Shirt — Black, M",
+         "quantity": 1,
+         "article_image_url": "https://picsum.photos/seed/tshirt/400/400",
+         "article_store_url": "https://example.com/products/classic-t-shirt"
+       }
+     ]
+   }
+   ```
+
+   For a split shipment, each tracking's `articles` gets only the line items
+   in that parcel (see *Split shipments*).
 
 ## Event sequence
 
@@ -234,3 +264,12 @@ the real proof of success, not the 204s.
   to a status, or no Journey/trigger exists for it in the account. Report the
   attached checkpoint; don't promise an email beyond what
   `contacted_with_messages` shows.
+- **Article name/image/price blank in shipment comms (Out for Delivery,
+  Delivered, delay updates) even though the order-confirmation email looked
+  fine** → `{{articlesTableWithImages}}` in those comms renders from the
+  **tracking-level** `add_tracking.tracking.articles` array, not from the
+  order-level `articles_order`. If `tracking.articles` was omitted (a
+  single-shipment order easily misses this since only *Split shipments*
+  called it out before), the table has nothing to render. Always mirror the
+  order's articles into `tracking.articles` on every `add_tracking` mutation
+  — see *Order + tracking setup*, step 2.
