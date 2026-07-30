@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "onyx": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/onyx-server.mjs"],
+      "env": {
+        "ONYX_API_URL": "${ONYX_API_URL}",
+        "ONYX_API_TOKEN": "${ONYX_API_TOKEN}",
+        "ONYX_PERSONA_ID": "${ONYX_PERSONA_ID}"
+      }
+    }
+  }
+}

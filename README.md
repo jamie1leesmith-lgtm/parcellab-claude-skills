@@ -26,10 +26,22 @@ Swap `parcellab-create-order` for whichever skill you want — install as many o
 
 | Skill | What it does | Trigger example |
 |-------|--------------|-----------------|
+| `onyx` | Pulls knowledge from your parcelLab Onyx instance into Claude — semantic search, cited RAG answers, and document retrieval | *"Search Onyx for our return policy on damaged items"* |
 | `parcellab-brand-layout` | Builds a branded transactional email layout in your ParcelLab account from a brand URL, with live preview in the desktop app | *"Create a ParcelLab layout for www.nike.com"* |
 | `parcellab-create-order` | Creates a real order in your ParcelLab account via the production Order API, filling in realistic dummy data | *"Push a test order to ParcelLab for a UK delivery"* |
 | `parcellab-demo-request` | Creates a custom demo request from a prospect website URL — collects products, verifies images, submits to the Custom Demo Creator | *"Create a demo request for www.example.com"* |
 | `parcellab-order-lifecycle` | Simulates a full post-purchase journey: creates an untracked order, then pushes timed checkpoints (warehouse → carrier → delivery) so ParcelLab fires the comms for each stage | *"Simulate the full journey for [brand]"* |
+
+---
+
+### onyx
+
+Pulls knowledge from your parcelLab Onyx instance directly into Claude — semantic search, cited RAG answers, and full-document retrieval, via three tools (`onyx_search`, `onyx_ask`, `onyx_fetch_document`) and two commands (`/onyx-search`, `/onyx-ask`).
+
+**Prerequisites:**
+
+1. **Node.js 18+** — the MCP server and setup script use only Node's built-ins, no `npm install` needed.
+2. **Your own Onyx account and API token** — after installing, run `/onyx-setup` and follow its two questions to connect your account. Nobody's credentials are bundled with the plugin; each person configures their own.
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "name": "onyx",
+  "version": "0.2.0",
+  "description": "Pull knowledge from your Onyx instance into Claude — semantic search, cited RAG answers, and full-document retrieval over the Onyx REST API.",
+  "author": {
+    "name": "parcelLab",
+    "email": "jamie.lee-smith@parcellab.com"
+  },
+  "keywords": ["onyx", "danswer", "rag", "search", "knowledge-base", "mcp"]
+}
