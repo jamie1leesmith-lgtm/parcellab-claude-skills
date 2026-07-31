@@ -57,7 +57,7 @@ If the user's message already states the account number plainly, this can be a o
    - Other surfaces (OSP, Journey previews) — check the matching `parcellab-product-api` skill for its preview URL convention before guessing one.
 4. Drive the repro with `computer` (`left_click`, `type`, etc.), confirming coordinates against a fresh screenshot each time the layout might have reflowed — don't chain clicks from stale coordinates. Prefer `find`/`read_page` refs over guessed coordinates when the DOM is stable enough to give them.
 5. **Capture real evidence as you go, not just at the end:**
-   - Key-state screenshots: `computer {action: "screenshot", tabId, save_to_disk: true}` — before the repro and at the moment the bug fires. (An "after" capture only happens later, in Step 6, if a mitigation is applied.)
+   - Key-state screenshots: `computer {action: "screenshot", tabId, save_to_disk: true}` — before the repro and at the moment the bug fires. (An "after" capture only happens later, in Step 5, if a mitigation is applied.)
    - A recording of the exact sequence, when a single screenshot won't show the problem (state carrying across steps, a race, a reflow):
      ```
      gif_creator {action: "start_recording", tabId}
@@ -89,7 +89,18 @@ The report documents the bug **as found** — this step happens whether or not a
    - Read the saved screenshot/GIF file and base64-encode it, then inline it as `<img src="data:image/png;base64,{data}">` (or `data:image/gif;base64,...` for the recording).
    - Caption each image with what it's showing and at which repro step.
 4. Publish with the `Artifact` tool — HTML, favicon `🐛`, a title naming the bug, a one-line `description`. Tell the user it's private until they share it from the artifact's own share menu; don't imply it's already been sent anywhere.
-5. Report the findings to the user now, before asking anything about mitigation: what was reproduced, root cause (config vs. product bug), the artifact link. Let this land as its own moment — don't immediately roll into a mitigation pitch in the same breath.
+5. **Always also hand over a standalone HTML file and a PDF**, without being asked — the claude.ai artifact link needs a Claude account to view, and the people a bug report gets shared with (engineering, account owners, the client) often don't have one:
+   - The filled-in HTML file used to publish the artifact is already self-contained (no CDN fonts, no external assets — everything inlined per the artifact design rules) and already sits on disk at whatever path you wrote it to. That file *is* the shareable HTML deliverable, no extra step needed.
+   - Render the same file to PDF with headless Chrome so there's a static, universally-openable copy too:
+     ```bash
+     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+       --headless --disable-gpu --no-pdf-header-footer --print-to-pdf-no-header \
+       --print-to-pdf="<same-dir>/<bug-name>.pdf" \
+       "file://<path-to-the-report-html>"
+     ```
+     If Chrome isn't at that path on this machine, check `/Applications/Chromium.app/...` or `google-chrome`/`chromium` on `PATH` before giving up — don't skip the PDF silently, say plainly if no renderer is available.
+   - Deliver both files with `SendUserFile` (`display: "attach"`, since they're for download/forwarding, not inline viewing) in the same turn as the artifact link.
+6. Report the findings to the user now, before asking anything about mitigation: what was reproduced, root cause (config vs. product bug), the artifact link, and the attached HTML/PDF. Let this land as its own moment — don't immediately roll into a mitigation pitch in the same breath.
 
 ---
 
@@ -104,12 +115,13 @@ Do not raise mitigation unprompted immediately after the report — if the user 
 3. Only after that express confirmation: edit the draft via `parcellab-cli ... update` **on the confirmed account**, publish, read back the published config to confirm it landed on the account/resource you intended.
 4. Replay the exact repro in Claude-in-Chrome to confirm the fix — capture that too (a genuine "after" screenshot, not assumed).
 5. Update the **same** published artifact (redeploy the same file path) to add the mitigation section and the before/after evidence — don't leave the report saying "not yet applied" once it has been.
+6. **Regenerate and redeliver the HTML and PDF exports from Step 4.5** against the updated file, and send them again. The first round you handed over is now stale (still says "not yet applied") — don't leave whoever received it holding an out-of-date copy while only the live artifact link gets the update. Say plainly that this replaces the earlier files, since the two exports don't auto-update the way the artifact link's URL does.
 
 ---
 
 ## Step 6 — Final report back
 
-State plainly: what was reproduced, root cause (config vs. product bug), whether a mitigation was applied and what trade-off it carries, and the artifact link (same URL throughout, updated in place if a mitigation landed). If the defect is systemic, say so explicitly so it gets raised with engineering rather than left as tribal knowledge sitting in one account's report.
+State plainly: what was reproduced, root cause (config vs. product bug), whether a mitigation was applied and what trade-off it carries, the artifact link (same URL throughout, updated in place if a mitigation landed), and the attached HTML/PDF (regenerated if a mitigation landed after the first delivery). If the defect is systemic, say so explicitly so it gets raised with engineering rather than left as tribal knowledge sitting in one account's report.
 
 ---
 
@@ -122,3 +134,4 @@ State plainly: what was reproduced, root cause (config vs. product bug), whether
 - **Screenshot/recording capture fails** — Claude-in-Chrome runs the user's real Chrome; if a tab or profile issue blocks capture, fall back to the built-in Browser pane for the repro itself and tell the user plainly that the report will use prose descriptions instead of real images, rather than silently dropping the evidence.
 - **Multiple accounts/portals affected** — repeat Step 3's comparison across accounts too, not just within one, before calling something "isolated" to a single portal. Each account that ends up mitigated needs its own Step 5 authorisation — approval for one account's fix is never approval for another's, even if they look identical.
 - **The mitigation is itself a policy change** (not just a bug workaround) — say so in both the Step 5 confirmation and the final report, the same way removing `keep_article` changed Puma's actual refund policy, not just its bug exposure.
+- **No headless-Chrome/Chromium available for the PDF export** — say so plainly rather than silently only delivering the HTML file; the artifact link and the HTML file still work as fallbacks for sharing.

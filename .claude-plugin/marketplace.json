@@ -33,7 +33,7 @@
     {
       "name": "parcellab-bug-investigation",
       "source": "./plugins/parcellab-bug-investigation",
-      "description": "Investigate and document a ParcelLab product bug: inspect live config via parcellab-cli, reproduce interactively in Claude-in-Chrome with real screenshot/recording capture, isolate root cause against sibling portals/configs, and publish a shareable bug-report artifact before any mitigation is applied. Any mitigation requires express, account-number-specific authorisation."
+      "description": "Investigate and document a ParcelLab product bug: inspect live config via parcellab-cli, reproduce interactively in Claude-in-Chrome with real screenshot/recording capture, isolate root cause against sibling portals/configs, and publish a shareable bug-report artifact (plus a standalone HTML file and PDF for people without Claude access) before any mitigation is applied. Any mitigation requires express, account-number-specific authorisation."
     }
   ]
 }
