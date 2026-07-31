@@ -1,0 +1,351 @@
+<title>[BUG TITLE]</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --surface: #ffffff;
+    --surface-tint: #efeee9;
+    --ink: #201f1d;
+    --muted: #6b6a66;
+    --line: #ddd9d2;
+    --accent: #35597a;
+    --accent-ink: #1e3a52;
+    --accent-soft: #e4ecf1;
+    --critical: #ad3b2d;
+    --critical-soft: #f7e8e5;
+    --good: #3c7a53;
+    --good-soft: #e7f1ea;
+    --code-bg: #1e2124;
+    --code-ink: #e6e4dd;
+    --code-accent: #8fb8d6;
+    --code-string: #c9d98a;
+    --code-muted: #8a8d90;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181a; --surface: #1f2124; --surface-tint: #26282b;
+      --ink: #ece9e2; --muted: #9a978f; --line: #34363a;
+      --accent: #7fa8c9; --accent-ink: #bcdcf3; --accent-soft: #22303c;
+      --critical: #e0796a; --critical-soft: #3a2521;
+      --good: #6fbf8b; --good-soft: #1f3327;
+      --code-bg: #101214; --code-ink: #e6e4dd; --code-accent: #8fb8d6;
+      --code-string: #c9d98a; --code-muted: #7d8083;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17181a; --surface: #1f2124; --surface-tint: #26282b;
+    --ink: #ece9e2; --muted: #9a978f; --line: #34363a;
+    --accent: #7fa8c9; --accent-ink: #bcdcf3; --accent-soft: #22303c;
+    --critical: #e0796a; --critical-soft: #3a2521;
+    --good: #6fbf8b; --good-soft: #1f3327;
+    --code-bg: #101214; --code-ink: #e6e4dd; --code-accent: #8fb8d6;
+    --code-string: #c9d98a; --code-muted: #7d8083;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f5f1; --surface: #ffffff; --surface-tint: #efeee9;
+    --ink: #201f1d; --muted: #6b6a66; --line: #ddd9d2;
+    --accent: #35597a; --accent-ink: #1e3a52; --accent-soft: #e4ecf1;
+    --critical: #ad3b2d; --critical-soft: #f7e8e5;
+    --good: #3c7a53; --good-soft: #e7f1ea;
+    --code-bg: #1e2124; --code-ink: #e6e4dd; --code-accent: #8fb8d6;
+    --code-string: #c9d98a; --code-muted: #8a8d90;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 17px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 760px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  .eyebrow {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 12.5px; font-weight: 600; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent);
+  }
+
+  h1 {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 34px; font-weight: 700; letter-spacing: -0.01em;
+    line-height: 1.15; margin: 10px 0 6px; text-wrap: balance;
+  }
+
+  .subtitle { color: var(--muted); font-size: 17px; margin: 0 0 28px; max-width: 62ch; }
+
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 10px 28px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px; color: var(--muted);
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: 14px 0; margin-bottom: 36px;
+  }
+  .meta div { display: flex; flex-direction: column; gap: 2px; }
+  .meta span { color: var(--ink); font-weight: 600; }
+  .meta code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; }
+  .chip {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.03em;
+    padding: 5px 11px; border-radius: 3px; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .chip.critical { background: var(--critical-soft); color: var(--critical); }
+  .chip.critical::before { background: var(--critical); }
+  .chip.good { background: var(--good-soft); color: var(--good); }
+  .chip.good::before { background: var(--good); }
+  .chip.neutral { background: var(--surface-tint); color: var(--muted); }
+  .chip.neutral::before { background: var(--muted); }
+
+  section { margin-bottom: 40px; }
+
+  h2 {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  }
+  h3 {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px; font-weight: 700; margin: 22px 0 8px; color: var(--ink);
+  }
+
+  p { margin: 0 0 14px; max-width: 66ch; }
+  strong { font-weight: 700; }
+
+  ol.steps { margin: 0 0 8px; padding-left: 0; list-style: none; counter-reset: step; }
+  ol.steps li { counter-increment: step; position: relative; padding-left: 40px; margin-bottom: 16px; max-width: 62ch; }
+  ol.steps li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 0.05em;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 13px; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ol.steps li .observed {
+    display: block; margin-top: 6px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14.5px; color: var(--critical); background: var(--critical-soft);
+    padding: 8px 12px; border-radius: 4px;
+  }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 18px 0 8px; }
+  .compare .col { border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; background: var(--surface); }
+  .compare .col.before { border-top: 3px solid var(--critical); }
+  .compare .col.after { border-top: 3px solid var(--good); }
+  .compare h4 {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 10px;
+  }
+  .compare .col.before h4 { color: var(--critical); }
+  .compare .col.after h4 { color: var(--good); }
+  .compare ul { margin: 0; padding-left: 18px; font-size: 14.5px; }
+  .compare li { margin-bottom: 6px; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
+  table {
+    border-collapse: collapse; width: 100%;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 13.5px; background: var(--surface);
+  }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); background: var(--surface-tint); font-weight: 700;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td code, th code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px; }
+  tr.flagged td:first-child { position: relative; }
+  tr.flagged td:first-child::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--critical);
+  }
+
+  pre {
+    background: var(--code-bg); color: var(--code-ink);
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 13px; line-height: 1.6; padding: 16px 18px; border-radius: 6px;
+    overflow-x: auto; margin: 0 0 8px;
+  }
+  pre .k { color: var(--code-accent); }
+  pre .s { color: var(--code-string); }
+  pre .m { color: var(--code-muted); }
+  .code-label {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px;
+  }
+
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    padding: 14px 18px; border-radius: 0 6px 6px 0; font-size: 15px; margin: 0 0 8px;
+  }
+  .callout strong { color: var(--accent-ink); }
+
+  /* Evidence: real captures, not prose */
+  figure.evidence {
+    margin: 0 0 20px; border: 1px solid var(--line); border-radius: 8px;
+    overflow: hidden; background: var(--surface);
+  }
+  figure.evidence img { display: block; width: 100%; height: auto; }
+  figure.evidence figcaption {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--line);
+  }
+  figure.evidence figcaption strong { color: var(--ink); }
+  .evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  footer {
+    margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 12.5px; color: var(--muted);
+  }
+
+  @media (max-width: 560px) {
+    .compare, .evidence-grid { grid-template-columns: 1fr; }
+    h1 { font-size: 27px; }
+  }
+</style>
+
+<div class="page">
+  <div class="eyebrow">[SURFACE / PRODUCT AREA] — Bug Report</div>
+  <h1>[ONE-LINE PLAIN DESCRIPTION OF WHAT GOES WRONG]</h1>
+  <p class="subtitle">
+    [1-2 SENTENCE SUBTITLE: what the user sees, in their own words, before you explain why]
+  </p>
+
+  <!--
+    Chips: pick verdict + status. Don't reuse both "critical" chips below verbatim —
+    they're examples of the two kinds you'll actually need (root-cause verdict, mitigation status).
+  -->
+  <div class="chips">
+    <span class="chip critical">Root cause: [config error | product bug in the front end | product bug in the back end]</span>
+    <span class="chip good">[Mitigated on X | Not yet mitigated | No mitigation applies]</span>
+    <span class="chip neutral">[Config verified correct | Config also needs a fix]</span>
+  </div>
+
+  <div class="meta">
+    <div><span>Account</span> [ACCOUNT ID · account name]</div>
+    <div><span>Resource</span> <code>[portal/page code]</code> · id [ID]</div>
+    <div><span>Test case</span> <code>[order/reference used to reproduce]</code></div>
+    <div><span>Reported by</span> [NAME]</div>
+    <div><span>Date</span> [DATE]</div>
+  </div>
+
+  <section>
+    <h2>Summary</h2>
+    <p>[What breaks, in one paragraph — lead with the symptom, then the one-sentence mechanism, before any detail.]</p>
+    <p>[Second paragraph, only if needed — e.g. "config was verified correct via parcellab-cli" or the opposite.]</p>
+  </section>
+
+  <section>
+    <h2>Steps to reproduce</h2>
+    <ol class="steps">
+      <li>
+        [Step 1 — starting state, exact login/reference used]
+      </li>
+      <li>
+        [Step 2 — the action taken]
+        <span class="observed">Observed: [what actually happened, stated plainly]</span>
+      </li>
+      <!-- Add/remove <li> as needed. Keep numbering only because these steps are genuinely sequential. -->
+    </ol>
+  </section>
+
+  <section>
+    <h2>Evidence</h2>
+    <!--
+      Read the saved screenshot/GIF file from disk and base64-encode it, then inline it here —
+      a file:// path will not survive publishing. Delete this section if you only have a
+      description to give (and say so plainly in Step 5 of the skill, don't hide the gap).
+    -->
+    <div class="evidence-grid">
+      <figure class="evidence">
+        <img src="data:image/png;base64,[BASE64 SCREENSHOT DATA]" alt="[what this shows]">
+        <figcaption><strong>[Step label, e.g. "Before"]</strong> — [one line on what to notice]</figcaption>
+      </figure>
+      <figure class="evidence">
+        <img src="data:image/png;base64,[BASE64 SCREENSHOT DATA]" alt="[what this shows]">
+        <figcaption><strong>[Step label, e.g. "Bug fires"]</strong> — [one line on what to notice]</figcaption>
+      </figure>
+    </div>
+    <!-- For a recording instead of stills: <img src="data:image/gif;base64,[BASE64 GIF DATA]" alt="[repro sequence]"> inside one figure.evidence -->
+  </section>
+
+  <section>
+    <h2>Before / after [the fix — delete this section if no mitigation was applied]</h2>
+    <div class="compare">
+      <div class="col before">
+        <h4>Before</h4>
+        <ul>
+          <li>[symptom 1]</li>
+          <li>[symptom 2]</li>
+        </ul>
+      </div>
+      <div class="col after">
+        <h4>After</h4>
+        <ul>
+          <li>[fixed behaviour 1]</li>
+          <li>[fixed behaviour 2]</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Root cause</h2>
+    <p>[Explain the mechanism — what's actually happening, not just what's visible.]</p>
+    <div class="code-label">[command used to pull this evidence, e.g. parcellab returns portal show 39603]</div>
+    <pre>{
+  <span class="k">"[field]"</span>: <span class="s">"[value]"</span>
+}</pre>
+    <p>[Why this config/behaviour causes the symptom.]</p>
+    <div class="callout">
+      <strong>[One-line takeaway, e.g. "This is a front-end defect, not specific to this account."]</strong>
+      [Say plainly whether this could reproduce elsewhere, and under what condition.]
+    </div>
+  </section>
+
+  <section>
+    <h2>[Comparison across sibling resources — delete if not applicable]</h2>
+    <p>[One line on why you compared these, e.g. "to check whether any other portal on this account could hit the same defect."]</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>[Resource]</th><th>[Relevant config]</th><th>[Condition A]</th><th>[Condition B]</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>[code]</code></td><td>[config]</td><td>[yes/no]</td><td>[yes/no]</td></tr>
+          <tr class="flagged"><td><code>[affected one]</code></td><td>[config]</td><td>[yes/no]</td><td><strong>[yes/no — the one that matters]</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mitigation</h2>
+    <!--
+      Publish this section as "Not yet applied" FIRST, before any config write —
+      the report always exists before a mitigation does. Only fill in the real
+      details and redeploy (same file path) once Step 5's account-number-specific
+      authorisation has been given and the change is live.
+    -->
+    <p><span class="chip neutral">Not yet applied</span></p>
+    <p>[Once applied: what was changed, how it was verified live, and the exact command(s)/readback used. Name the account/resource explicitly.]</p>
+    <div class="callout">
+      <strong>[Name the trade-off if there is one, e.g. "This is a policy trade-off, not a fix."]</strong>
+      [What changes for real customers as a result, and what should happen once the underlying bug is actually fixed.]
+    </div>
+  </section>
+
+  <section>
+    <h2>Suggested fix direction</h2>
+    <p>[Non-binding direction for engineering — the mechanism to fix, not a prescriptive implementation.]</p>
+  </section>
+
+  <footer>
+    Compiled from a live reproduction in Claude-in-Chrome and a config comparison via parcellab-cli.
+    [Note any PII handling, e.g. "No customer PII beyond the test order used for reproduction."]
+  </footer>
+</div>

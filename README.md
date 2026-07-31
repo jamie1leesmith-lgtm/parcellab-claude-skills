@@ -31,6 +31,7 @@ Swap `parcellab-create-order` for whichever skill you want — install as many o
 | `parcellab-create-order` | Creates a real order in your ParcelLab account via the production Order API, filling in realistic dummy data | *"Push a test order to ParcelLab for a UK delivery"* |
 | `parcellab-demo-request` | Creates a custom demo request from a prospect website URL — collects products, verifies images, submits to the Custom Demo Creator | *"Create a demo request for www.example.com"* |
 | `parcellab-order-lifecycle` | Simulates a full post-purchase journey: creates an untracked order, then pushes timed checkpoints (warehouse → carrier → delivery) so ParcelLab fires the comms for each stage | *"Simulate the full journey for [brand]"* |
+| `parcellab-bug-investigation` | Investigates a product bug end to end: checks live config via `parcellab-cli`, reproduces it in Claude-in-Chrome with real screenshot/recording capture, isolates root cause against sibling portals, and publishes a shareable bug report — always *before* any mitigation, which needs express account-number-specific sign-off | *"Investigate this bug on [portal]"* |
 
 ---
 
@@ -87,6 +88,18 @@ Researches a prospect's website, collects four representative products from real
 Simulates a complete post-purchase journey: sources a real product from a brand site, creates an **untracked** order, then pushes a timed sequence of tracking checkpoints so ParcelLab ingests each stage and fires the configured comms. Uses `references/run-lifecycle.sh`.
 
 **Prerequisites:** ParcelLab Order API access. See `references/status-codes.md` for the checkpoint status codes used.
+
+### parcellab-bug-investigation
+
+Investigates and documents a live product bug: confirms the exact account up front, pulls draft + published config via `parcellab-cli`, reproduces the issue in Claude-in-Chrome (the only surface that can save real screenshots and export a recording of the repro), compares against sibling portals/configs to tell config-specific from systemic, then **publishes the bug report before touching anything**. A mitigation only happens afterward, if you ask for one, and only after you expressly confirm the exact account number/code again — not just a general "yes."
+
+**Prerequisites:**
+
+1. **Claude-in-Chrome connected** — this skill uses it specifically (not the built-in Browser pane) because only its `computer`/`gif_creator` tools can save a screenshot or export a GIF to disk
+2. **`parcellab-cli`** configured for the account under investigation
+3. The relevant **`parcellab-product-api`** skill(s) for whatever surface you're debugging (returns, OSP, Journey, filters, carrier connections, product feed, etc. — this skill routes to `parcellab-product-configuration` as the entry point, it doesn't duplicate their config knowledge)
+
+**Note:** the whole investigation (Steps 1-4) is read-only, and the bug report is written and published before any config change. Applying a mitigation is a separate, later decision that requires restating and confirming the exact account number/resource code — not implied by an earlier general approval — especially when the change alters real customer-facing behaviour rather than just the bug's trigger condition.
 
 ## Updating
 

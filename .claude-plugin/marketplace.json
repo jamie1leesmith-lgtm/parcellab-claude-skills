@@ -29,6 +29,11 @@
       "name": "parcellab-order-lifecycle",
       "source": "./plugins/parcellab-order-lifecycle",
       "description": "Simulate a full ParcelLab post-purchase journey: source a real product, create an untracked order, then push a timed sequence of tracking checkpoints (warehouse -> carrier -> delivery) so ParcelLab fires the comms for each stage."
+    },
+    {
+      "name": "parcellab-bug-investigation",
+      "source": "./plugins/parcellab-bug-investigation",
+      "description": "Investigate and document a ParcelLab product bug: inspect live config via parcellab-cli, reproduce interactively in Claude-in-Chrome with real screenshot/recording capture, isolate root cause against sibling portals/configs, and publish a shareable bug-report artifact before any mitigation is applied. Any mitigation requires express, account-number-specific authorisation."
     }
   ]
 }
