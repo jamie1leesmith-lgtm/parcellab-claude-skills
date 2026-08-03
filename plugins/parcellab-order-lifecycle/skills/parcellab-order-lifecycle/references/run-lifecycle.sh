@@ -10,7 +10,8 @@
 # is HTTP 204.
 # Env: EVENTS_DIR (required), GAP_SECONDS (default 120), LOG_FILE
 #      (default $EVENTS_DIR/run.log), DRYRUN (default 0).
-# Live mode also needs PARCELLAB_USER_ID and PARCELLAB_TOKEN.
+# Live mode also needs PARCELLAB_ACCOUNT_ID (or the legacy PARCELLAB_USER_ID)
+# and PARCELLAB_TOKEN.
 set -euo pipefail
 
 EVENTS_DIR="${EVENTS_DIR:?EVENTS_DIR required}"
@@ -28,9 +29,10 @@ API_URL="https://api.parcellab.com/v4/track/events/"
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOG_FILE"; }
 
 if [ "$DRYRUN" != "1" ]; then
-  : "${PARCELLAB_USER_ID:?PARCELLAB_USER_ID required}"
+  ACCOUNT_ID="${PARCELLAB_ACCOUNT_ID:-${PARCELLAB_USER_ID:-}}"
+  : "${ACCOUNT_ID:?PARCELLAB_ACCOUNT_ID (or legacy PARCELLAB_USER_ID) required}"
   : "${PARCELLAB_TOKEN:?PARCELLAB_TOKEN required}"
-  AUTH=$(printf '%s:%s' "$PARCELLAB_USER_ID" "$PARCELLAB_TOKEN" | base64 | tr -d '\n')
+  AUTH=$(printf '%s:%s' "$ACCOUNT_ID" "$PARCELLAB_TOKEN" | base64 | tr -d '\n')
 fi
 
 # Portable (bash 3.2) collection of sorted payload files.

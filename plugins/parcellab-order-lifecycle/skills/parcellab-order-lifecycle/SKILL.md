@@ -14,7 +14,13 @@ fresh order number, no carryover — unless the user explicitly says reuse/resen
 
 ## Workflow
 
-1. **Confirm credentials.** `test -n "$PARCELLAB_USER_ID" && test -n "$PARCELLAB_TOKEN" && echo ok`. If missing, stop and tell the user.
+1. **Resolve the account and confirm credentials.** See *Account resolution and
+   confirmation* below. If either value is missing, follow *If credentials are
+   missing* — don't guess them.
+
+   ```bash
+   test -n "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" && test -n "$PARCELLAB_TOKEN" && echo ok
+   ```
 2. **Gather inputs:** brand site URL + a rough product idea (e.g. "coffee machine"), destination country, and any overrides (scenario, gap, extra items, **split shipment** — see *Split shipments*).
 3. **Source the product** (see *Product sourcing*).
 4. **Gate A — product approval.** Show product(s); wait for approval.
@@ -24,6 +30,65 @@ fresh order number, no carryover — unless the user explicitly says reuse/resen
 7. **Gate B — plan approval.** Show order summary + carrier + scenario + gap. Wait for approval.
 8. **Launch the driver in the background** (see *Timing & background execution*).
 9. **Report** progress from the log (see *Reporting*).
+
+## Account resolution and confirmation
+
+**Resolve the account, in this order:**
+
+1. An account the user named explicitly in this conversation.
+2. `$PARCELLAB_ACCOUNT_ID`.
+3. `$PARCELLAB_USER_ID` (legacy alias — accept it, never write it).
+
+If none resolve, set the default up now: ask which account they want, find it
+with `parcellab account account search --name "<term>"`, and offer to write it
+to the `env` block of `~/.claude/settings.json` as `PARCELLAB_ACCOUNT_ID`. Then
+tell them to quit and reopen the app — environment variables are only read at
+startup.
+
+Point the CLI's write guard at that same account too:
+`parcellab settings edit-mode set account-restricted --account <id>`, then confirm
+it took with `parcellab settings edit-mode show`. Use their own leaf account — a
+parent account does not work. Without this the CLI may permit writes to a
+colleague's demo account and block their own, and that stays invisible until a
+write fails.
+
+**Confirm before the first write of the conversation.** Resolve the account's
+human name with `parcellab account account show <id>` and ask:
+
+> Using **<account name>** (`<id>`) — your default. Correct, or use a different
+> account?
+
+A bare account number means nothing to a human reader; a wrong *name* is
+obvious. Do not skip the name lookup.
+
+Rules:
+
+- Confirm once per conversation, before the first write — not before every call.
+- An account the user names explicitly still gets confirmed, the same way.
+- Read-only inspection needs no confirmation. Every write does.
+
+### If credentials are missing
+
+Stop. Do not guess values and do not proceed. Say this:
+
+> **If you have just set these up, quit and reopen the app** — environment
+> variables are only read at startup.
+>
+> Otherwise, let's set them up now. I need your parcelLab Order API credential.
+> In the portal it's shown as a base64 value — paste that and I'll handle the
+> rest. (A raw token works too; I'll just need your account ID as well.)
+
+On receiving a base64 value: decode it, split on the first `:` — the part before
+is the account ID, the part after is the token. This is why the base64 form is
+preferred: one paste gives both, and it removes the commonest setup error, which
+is pasting the whole encoded blob in as the token and getting an unexplained
+`401`.
+
+Write both to the `env` block of `~/.claude/settings.json`, merging into any
+existing `env` block rather than replacing it. Then tell the user to quit and
+reopen the app.
+
+Never print the token back to the user or repeat it anywhere in your reply.
 
 ## Product sourcing
 
@@ -40,7 +105,7 @@ Two `PUT https://api.parcellab.com/v4/track/orders/` calls, done directly (not b
 the driver):
 
 1. **Untracked order** — build a payload following the `parcellab-create-order`
-   shape: `account` (= `PARCELLAB_USER_ID`), `order_number` (`<XXX>-<ts>`),
+   shape: `account` (the resolved account id, `${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`), `order_number` (`<XXX>-<ts>`),
    destination country ISO3, recipient, shipping address, `articles_order`,
    currency/timezone from the country. Save as `create.json` with **no
    `mutations`**. Send it → HTTP 201.
@@ -175,7 +240,7 @@ surprise after the fact.
 every session has:**
 
 1. Try `journey_list_journey_configurations` (account Product-API MCP tools)
-   with `account=[$PARCELLAB_USER_ID]`, `release_status="published"`. **If
+   with `account=[${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}]`, `release_status="published"`. **If
    this tool isn't available in the current session, skip this step
    entirely** — say so briefly and move on to Gate B. Never block the run on
    its absence.
