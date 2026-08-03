@@ -1,6 +1,6 @@
 ---
 name: parcellab-bug-investigation
-description: Investigate and document a parcelLab product bug — inspect live config via parcellab-cli, reproduce interactively in Claude-in-Chrome (captures real screenshots/recordings), isolate root cause by comparing against sibling portals/configs, and publish a shareable bug-report artifact before any mitigation is applied. Trigger on phrases like "troubleshoot this portal", "investigate this bug", "reproduce this issue", "something weird is happening on [portal/page]", "document this bug for the team", or any request to debug and write up unexpected behaviour in a live parcelLab account/portal/page.
+description: Investigate and document a parcelLab product bug — inspect live config via the parcellab CLI, reproduce interactively in Claude-in-Chrome (captures real screenshots/recordings), isolate root cause by comparing against sibling portals/configs, and publish a shareable bug-report artifact before any mitigation is applied. Trigger on phrases like "troubleshoot this portal", "investigate this bug", "reproduce this issue", "something weird is happening on [portal/page]", "document this bug for the team", or any request to debug and write up unexpected behaviour in a live parcelLab account/portal/page.
 ---
 
 # parcelLab — Bug Investigation & Write-up
@@ -25,7 +25,53 @@ Never infer, reuse, or carry over an account ID/code from memory, a prior sessio
 
 If the user's message already states the account number plainly, this can be a one-line restatement rather than a full question — but it must still name the number back to them. If it's ambiguous (a name without a number, "the usual account," multiple candidates), stop and ask which account, don't guess from context.
 
+**This skill is deliberately stricter than the repo-wide convention below.** Two
+differences, both intentional — do not "simplify" them into the shared rules:
+
+- Confirmation happens **before the first CLI call of any kind**, not just before
+  the first write. An investigation run against the wrong account wastes the whole
+  effort and reads config that isn't the user's to look at.
+- The default account from *Account resolution and confirmation* only supplies the
+  account this step **proposes**. It is never used unconfirmed. `$PARCELLAB_ACCOUNT_ID`
+  is a starting suggestion here, not an answer.
+
 ---
+
+## Account resolution and confirmation
+
+**Resolve the account, in this order:**
+
+1. An account the user named explicitly in this conversation.
+2. `$PARCELLAB_ACCOUNT_ID`.
+3. `$PARCELLAB_USER_ID` (legacy alias — accept it, never write it).
+
+If none resolve, set the default up now: ask which account they want, find it
+with `parcellab account account search --name "<term>"`, and offer to write it
+to the `env` block of `~/.claude/settings.json` as `PARCELLAB_ACCOUNT_ID`. Then
+tell them to quit and reopen the app — environment variables are only read at
+startup.
+
+Point the CLI's write guard at that same account too:
+`parcellab settings edit-mode set account-restricted --account <id>`, then confirm
+it took with `parcellab settings edit-mode show`. Use their own leaf account — a
+parent account does not work. Without this the CLI may permit writes to a
+colleague's demo account and block their own, and that stays invisible until a
+write fails.
+
+**Confirm before the first write of the conversation.** Resolve the account's
+human name with `parcellab account account show <id>` and ask:
+
+> Using **<account name>** (`<id>`) — your default. Correct, or use a different
+> account?
+
+A bare account number means nothing to a human reader; a wrong *name* is
+obvious. Do not skip the name lookup.
+
+Rules:
+
+- Confirm once per conversation, before the first write — not before every call.
+- An account the user names explicitly still gets confirmed, the same way.
+- Read-only inspection needs no confirmation. Every write does.
 
 ## Step 1 — Identify the resource and inspect config
 
@@ -39,7 +85,7 @@ If the user's message already states the account number plainly, this can be a o
    - Filters, client/shop, domains/senders, webhook OAuth → `product-api-filter-builder`, `product-api-filter-fields`, `product-api-client-shop-setup`, `product-api-domains-senders-whitelists`, `product-api-webhook-oauth-integrations`
    - Carrier/checkpoint/product-feed data issues that aren't really "config" → `carrier-checkpoint-debug`, `carrier-connection-setup`, `product-feed-debug`, or `shopify-admin-graphql-debug` for live Shopify order/customer/fulfillment facts
    - If it's genuinely unclear which area owns the symptom, say so and check more than one rather than guessing the wrong owner.
-3. Follow `product-api-cli-evidence-loop`'s discipline for the CLI work itself: check Codex-Knowledge for known behaviour first, inspect live config with `parcellab-cli` (draft via `... show <id>`, published via `... lookup <code> --draft false`). **This entire investigation — Steps 1 through 4 — is read-only.** No writes happen before the report exists, regardless of how obvious the fix looks.
+3. Follow `product-api-cli-evidence-loop`'s discipline for the CLI work itself: check Codex-Knowledge for known behaviour first, inspect live config with `parcellab` (draft via `... show <id>`, published via `... lookup <code> --draft false`). **This entire investigation — Steps 1 through 4 — is read-only.** No writes happen before the report exists, regardless of how obvious the fix looks.
 4. Note anything config-driven that could plausibly explain the reported behaviour — filters, required-field settings, targeting rules, reason/option hierarchies, checkpoint matching rules. This is what lets you say later whether it's "config is wrong" or "the product has a bug," instead of guessing.
 
 ---
@@ -73,7 +119,7 @@ If the user's message already states the account number plainly, this can be a o
 
 ## Step 3 — Isolate root cause (still read-only)
 
-1. Compare the broken resource against siblings on the same account (other portals, other clients, other layouts) — pull each one's relevant config via `parcellab-cli` and diff the fields that plausibly matter to the symptom.
+1. Compare the broken resource against siblings on the same account (other portals, other clients, other layouts) — pull each one's relevant config via `parcellab` and diff the fields that plausibly matter to the symptom.
 2. State plainly whether the defect is **config-specific** (fixable by editing this account's config) or **systemic** (a product/front-end bug that would reproduce anywhere the same conditions are met, even if this account is the only place it currently fires).
 3. If you can already see what a config mitigation would look like, note it for the report — but do not propose it as an action yet, and absolutely do not write anything. That gate is Step 5, after the report is published.
 
@@ -112,7 +158,7 @@ Do not raise mitigation unprompted immediately after the report — if the user 
 2. Ask for **express, account-number-specific authorisation** — a general "yes" is not enough. The confirmation question itself must restate the exact account number and resource code, so the user is approving a specific, named target, not a vague intent:
    > "This will edit and publish account **{ID}**, portal **{code}** — removing/changing {specific config}. Confirm this is the correct account and you want it applied?"
    Use `AskUserQuestion` with the account number and code written into the question text itself, not just implied by prior conversation context. If the user has been discussing multiple accounts in the same session, this restatement is what prevents a mitigation landing on the wrong one.
-3. Only after that express confirmation: edit the draft via `parcellab-cli ... update` **on the confirmed account**, publish, read back the published config to confirm it landed on the account/resource you intended.
+3. Only after that express confirmation: edit the draft via `parcellab ... update` **on the confirmed account**, publish, read back the published config to confirm it landed on the account/resource you intended.
 4. Replay the exact repro in Claude-in-Chrome to confirm the fix — capture that too (a genuine "after" screenshot, not assumed).
 5. Update the **same** published artifact (redeploy the same file path) to add the mitigation section and the before/after evidence — don't leave the report saying "not yet applied" once it has been.
 6. **Regenerate and redeliver the HTML and PDF exports from Step 4.5** against the updated file, and send them again. The first round you handed over is now stale (still says "not yet applied") — don't leave whoever received it holding an out-of-date copy while only the live artifact link gets the update. Say plainly that this replaces the earlier files, since the two exports don't auto-update the way the artifact link's URL does.
