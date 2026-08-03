@@ -1,7 +1,7 @@
 {
   "name": "parcellab-create-order",
   "description": "Create a real order in your ParcelLab account via the production Order API. Fills in realistic dummy data when you only provide partial context (country, scenario, tracked/untracked).",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Jamie Lee-Smith",
     "email": "jamie.lee-smith@parcellab.com"

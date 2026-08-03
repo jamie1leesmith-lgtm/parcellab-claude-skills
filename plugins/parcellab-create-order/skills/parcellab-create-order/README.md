@@ -108,24 +108,19 @@ If a code isn't recognised, the API returns HTTP 200 but `mutations[0].result.su
 
 ---
 
-## Installation (for someone new)
+## Installation
 
-1. Copy this folder to `~/.claude/skills/parcellab-create-order/`.
-2. Add credentials to `~/.claude/settings.json`:
+Install this as a plugin from the marketplace — see **Install** and **Your
+default account** in the [repo README](../../../../README.md#your-default-account).
+Setup is a conversation: ask Claude to set up your parcelLab skills and it walks
+you through it.
 
-   ```json
-   {
-     "env": {
-       "PARCELLAB_USER_ID": "<your numeric account ID>",
-       "PARCELLAB_TOKEN": "<your raw API token>"
-     }
-   }
-   ```
+Then try it: *"create a parcellab order for a German customer with two items in
+transit"*.
 
-   If your portal gives you a pre-encoded blob (a single base64 string), decode it: the part before the `:` is the account ID, the part after is the raw token. Store the parts separately.
-
-3. Restart Claude Code so the env vars are loaded.
-4. Try it: *"create a parcellab order for a German customer with two items in transit"*.
+> Earlier versions of this file told you to copy the folder into
+> `~/.claude/skills/`. That predates this being a plugin — don't do it, you'll
+> end up with the skill installed twice.
 
 ---
 
