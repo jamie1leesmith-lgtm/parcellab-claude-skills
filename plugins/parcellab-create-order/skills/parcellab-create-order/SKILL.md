@@ -11,11 +11,13 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
 
 ## Workflow
 
-1. **Confirm credentials are present.** Check `PARCELLAB_USER_ID` and `PARCELLAB_TOKEN` are set in the environment. If either is missing, stop and tell the user — don't try to guess them or proceed.
+1. **Resolve the account and confirm credentials.** See *Account resolution and confirmation* below for which account to use and how to confirm it.
 
    ```bash
-   test -n "$PARCELLAB_USER_ID" && test -n "$PARCELLAB_TOKEN" && echo ok
+   test -n "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" && test -n "$PARCELLAB_TOKEN" && echo ok
    ```
+
+   If either is missing, follow *If credentials are missing* below — don't guess values and don't proceed.
 
 2. **Gather context from the user's message.** Look for: destination country, courier, scenario (e.g. "delivered", "in transit", "return"), number of items, tracking vs untracked, language. Anything they don't mention, you make up — see *Defaults & dummy data* below.
 
@@ -33,7 +35,7 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
 5. **Send it.** PUT to `https://api.parcellab.com/v4/track/orders/` with the encoded auth header. Capture status and body:
 
    ```bash
-   AUTH=$(printf '%s:%s' "$PARCELLAB_USER_ID" "$PARCELLAB_TOKEN" | base64)
+   AUTH=$(printf '%s:%s' "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" "$PARCELLAB_TOKEN" | base64)
    curl -sS -X PUT "https://api.parcellab.com/v4/track/orders/" \
      -H "Authorization: Parcellab-API-Token $AUTH" \
      -H "Content-Type: application/json" \
@@ -50,6 +52,65 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
    - A link to the order in the parcelLab dashboard if helpful: `https://portal.parcellab.com/` (you don't know the exact deep link format; just point them at the portal)
 
    Then delete the temp payload file.
+
+## Account resolution and confirmation
+
+**Resolve the account, in this order:**
+
+1. An account the user named explicitly in this conversation.
+2. `$PARCELLAB_ACCOUNT_ID`.
+3. `$PARCELLAB_USER_ID` (legacy alias — accept it, never write it).
+
+If none resolve, set the default up now: ask which account they want, find it
+with `parcellab account account search --name "<term>"`, and offer to write it
+to the `env` block of `~/.claude/settings.json` as `PARCELLAB_ACCOUNT_ID`. Then
+tell them to quit and reopen the app — environment variables are only read at
+startup.
+
+Point the CLI's write guard at that same account too:
+`parcellab settings edit-mode set account-restricted --account <id>`, then confirm
+it took with `parcellab settings edit-mode show`. Use their own leaf account — a
+parent account does not work. Without this the CLI may permit writes to a
+colleague's demo account and block their own, and that stays invisible until a
+write fails.
+
+**Confirm before the first write of the conversation.** Resolve the account's
+human name with `parcellab account account show <id>` and ask:
+
+> Using **<account name>** (`<id>`) — your default. Correct, or use a different
+> account?
+
+A bare account number means nothing to a human reader; a wrong *name* is
+obvious. Do not skip the name lookup.
+
+Rules:
+
+- Confirm once per conversation, before the first write — not before every call.
+- An account the user names explicitly still gets confirmed, the same way.
+- Read-only inspection needs no confirmation. Every write does.
+
+### If credentials are missing
+
+Stop. Do not guess values and do not proceed. Say this:
+
+> **If you have just set these up, quit and reopen the app** — environment
+> variables are only read at startup.
+>
+> Otherwise, let's set them up now. I need your parcelLab Order API credential.
+> In the portal it's shown as a base64 value — paste that and I'll handle the
+> rest. (A raw token works too; I'll just need your account ID as well.)
+
+On receiving a base64 value: decode it, split on the first `:` — the part before
+is the account ID, the part after is the token. This is why the base64 form is
+preferred: one paste gives both, and it removes the commonest setup error, which
+is pasting the whole encoded blob in as the token and getting an unexplained
+`401`.
+
+Write both to the `env` block of `~/.claude/settings.json`, merging into any
+existing `env` block rather than replacing it. Then tell the user to quit and
+reopen the app.
+
+Never print the token back to the user or repeat it anywhere in your reply.
 
 ## Payload shape
 
@@ -123,7 +184,7 @@ A realistic tracked order with one article:
 ```
 
 Notes:
-- `account` is the numeric `PARCELLAB_USER_ID`.
+- `account` is the numeric account id resolved in *Account resolution and confirmation* — `${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`.
 - `order_number` must be unique per account. **Prefix it with the first three letters of the business/brand name, uppercased, then a timestamp** — `<XXX>-$(date +%s)` — so orders are easy to find in the portal (e.g. Moonpig → `MOO-1784828280`, Nike → `NIK-…`). Strip leading "www."/articles and non-letters before taking the three letters; if no brand is given, fall back to `ORD-$(date +%s)`. Unless the user gives an explicit order number, always follow this scheme.
 - `line_item_id` must be unique within `articles_order`.
 - **Always populate each `add_tracking` mutation's `tracking.articles` with the items that ship in that parcel** (each entry needs at least `line_item_id`, `sku`, `article_name`, `quantity`, `unit_price`; `line_item_id` must match the corresponding `articles_order` entry). `articles_order` is the full order; `tracking.articles` is what's in the box. The parcelLab Returns Order API derives returnable items from `tracking.articles`, so leaving it empty means the returns portal shows **no selectable items** even though the products are present in `articles_order`.
