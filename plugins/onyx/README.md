@@ -29,6 +29,14 @@ retrieve full documents — then use that material for whatever you're working o
 
 Each person who installs this plugin needs their **own** Onyx credentials — nothing is shared or bundled with the plugin.
 
+> **If Onyx already worked for you before installing this plugin, you're done —
+> skip this section.** Credentials live in the `env` block of your global
+> `~/.claude/settings.json`, not inside the plugin. Anything that wrote
+> `ONYX_API_URL` / `ONYX_API_TOKEN` / `ONYX_PERSONA_ID` there previously (a
+> hand-rolled MCP server, a manual edit) leaves them in place when it's removed,
+> and this plugin's MCP server reads those same three variables — so it inherits
+> your existing auth. Only run `/onyx-setup` if `/onyx-search` actually fails.
+
 ### Quick setup (recommended)
 
 1. In Claude Code, run:
@@ -37,8 +45,8 @@ Each person who installs this plugin needs their **own** Onyx credentials — no
    /onyx-setup
    ```
 
-2. Answer the two questions it asks (your Onyx base API URL, and your personal API token — see "Getting an Onyx token" below).
-3. Fully quit and reopen Claude Code so the Onyx MCP server restarts with your new credentials.
+2. Answer the two questions it asks (your Onyx base API URL, and your personal API token — see "Getting an Onyx token" below). Claude may hand you a command to run in the app's built-in terminal rather than take the token in chat — click the terminal icon at the top right, paste, and press Enter. **Nothing appears on screen as you type or paste the token; that's intentional, not a failure.**
+3. Fully quit Claude Code (**⌘Q**, not just closing the window) and reopen it, so the Onyx MCP server restarts with your new credentials.
 4. Try `/onyx-search <something>` to confirm it worked.
 
 `/onyx-setup` writes your credentials into the `env` block of your global `~/.claude/settings.json`, leaving every other setting in that file untouched. It's safe to run again later (e.g. if your token changes) — it updates in place rather than duplicating anything.

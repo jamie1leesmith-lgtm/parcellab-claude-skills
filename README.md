@@ -11,7 +11,15 @@ A private Claude Code plugin marketplace for parcelLab team skills. Install skil
 3. Enter this repo as the marketplace source: `jamie1leesmith-lgtm/parcellab-claude-skills`
 4. Pick the skill you want → **Install** (repeat for any others)
 
-Installed skills become available automatically in new conversations.
+Installed skills become available automatically in **new** conversations — the
+one you installed from won't see them.
+
+Already running these skills as hand-copied `SKILL.md` files? Read
+[Already have these skills the old way?](#already-have-these-skills-the-old-way-remove-them-first)
+before installing.
+
+Then do the [One-time setup](#one-time-setup) once — it takes about two minutes
+and every parcelLab skill depends on it.
 
 ## Install (Claude Code CLI)
 
@@ -63,22 +71,73 @@ Two skills additionally need an Order API token (`PARCELLAB_TOKEN`):
 You need the parcelLab CLI installed — internal users have this already. Then, in
 the Claude Code desktop app:
 
-1. Install the skills you want: **+** → **Plugins** → **Add plugin** →
-   marketplace source `jamie1leesmith-lgtm/parcellab-claude-skills`.
-2. Start a conversation and say *"set up my parcelLab skills"*.
-3. Claude checks the CLI is reachable, logs you in (`parcellab auth login` opens
-   your browser), finds your demo account by name, and writes it to
-   `settings.json` — you approve the edit when prompted.
-4. Claude points the CLI's write guard at that same account
-   (`parcellab settings edit-mode set account-restricted --account <id>`). This
-   is what stops a skill writing into a colleague's demo account — there are 13
-   of them side by side under *Demo SolCon*, so it matters.
-5. For the two order skills, Claude asks for your Order API credential. **Paste
-   the base64-encoded value from the portal** — it contains both your account ID
-   and token, so one paste covers everything. The raw token works too, it just
-   takes an extra step.
-6. **Quit and reopen the app.** Environment variables are only read at startup,
-   so nothing above takes effect until you do.
+**1. Install the plugins.** **+** → **Plugins** → **Add plugin** → marketplace
+source `jamie1leesmith-lgtm/parcellab-claude-skills` → install the ones you want.
+
+**2. Start a new conversation and paste this exact prompt:**
+
+> **Set up the parcelLab skills for the plugins I've just installed. Check the
+> `parcellab` CLI, log me in if needed, find my demo account, write it to my
+> global settings, and set the CLI edit-mode guard to that account.**
+
+Say it in a *fresh* conversation, not the one you were installing from — newly
+installed plugins aren't loaded into a conversation that was already running.
+
+That wording matters. "Set up parcelLab" on its own is vague enough that Claude
+may only configure whichever single skill you last mentioned. The prompt above
+names all four things the setup actually does.
+
+**3. Claude runs the setup.** It checks the CLI is reachable, logs you in
+(`parcellab auth login` opens your browser), finds your demo account by name,
+and writes `PARCELLAB_ACCOUNT_ID` to the `env` block of your global
+`~/.claude/settings.json` — you approve the edit when prompted.
+
+**4. Claude points the CLI's write guard at that same account**
+(`parcellab settings edit-mode set account-restricted --account <id>`). This is
+what stops a skill writing into a colleague's demo account — there are 13 of them
+side by side under *Demo SolCon*, so it matters.
+
+**5. Order API token — only if you installed `parcellab-create-order` or
+`parcellab-order-lifecycle`.** Nothing else needs it. See
+[Entering your Order API token](#entering-your-order-api-token) below — this is
+the one step that does *not* happen in the chat box.
+
+**6. Quit and reopen the app.** Not just close the window — fully quit
+(**⌘Q** on macOS). Environment variables are only read at startup, so nothing
+above takes effect until you do.
+
+**7. Check it worked.** In a new conversation, ask *"which parcelLab account am I
+set up against?"* — Claude should name your demo account and its ID without
+asking you anything.
+
+### Entering your Order API token
+
+Claude will not accept a token pasted into the chat box, and shouldn't — chat
+messages are stored in the conversation transcript. Instead it hands you a
+command to run yourself, in the terminal built into the app. Expect this, it's
+not an error:
+
+1. **Click the terminal icon at the top right of the Claude Code window.** A
+   terminal panel opens below the conversation. It's a normal shell on your Mac.
+2. **Paste the command Claude gave you and press Enter.** It'll prompt you for
+   the credential.
+3. **Paste the base64 value from the portal**, then press Enter.
+   - **Nothing will appear as you paste — no dots, no asterisks, no cursor
+     movement. That is correct.** The input is hidden on purpose. Paste once,
+     press Enter once, and trust it. Pasting twice because "it didn't work" is
+     the most common way this goes wrong.
+   - Use the **base64** value from the portal, not the raw token. It contains
+     both your account ID and your token, so one paste covers both. Pasting the
+     base64 blob into a field that wanted the raw token is what produces an
+     unexplained `401` later.
+4. **Quit and reopen the app** (**⌘Q**). The token is written to
+   `~/.claude/settings.json`, and that file is only read at startup — the skill
+   will still say "credentials missing" until you restart.
+5. Back in a new conversation, ask Claude to push a test order. If it 401s, the
+   token went in wrong: rerun the same command and paste again.
+
+Claude never echoes the token back to you, and it should never appear in the
+conversation. If you ever see it in chat, it went in the wrong place — rotate it.
 
 Everything after that is automatic. Before any skill writes to your account it
 confirms which one:
@@ -96,6 +155,15 @@ Pulls knowledge from your parcelLab Onyx instance directly into Claude — seman
 
 1. **Node.js 18+** — the MCP server and setup script use only Node's built-ins, no `npm install` needed.
 2. **Your own Onyx account and API token** — after installing, run `/onyx-setup` and follow its two questions to connect your account. Nobody's credentials are bundled with the plugin; each person configures their own.
+
+> **Already had Onyx working before installing this plugin?** It'll just work,
+> no setup needed. Credentials live in the `env` block of your global
+> `~/.claude/settings.json` (`ONYX_API_URL`, `ONYX_API_TOKEN`,
+> `ONYX_PERSONA_ID`) — *not* inside the plugin. Anything that wrote those keys
+> before (a hand-rolled MCP server, a manual edit) leaves them there when it's
+> removed, and this plugin's MCP server reads the exact same three variables. So
+> the plugin inherits your existing auth. Only run `/onyx-setup` if
+> `/onyx-search` actually fails.
 
 ---
 
@@ -172,9 +240,48 @@ Investigates and documents a live product bug: confirms the exact account up fro
 
 **Note:** the whole investigation (Steps 1-4) is read-only, and the bug report is written and published before any config change. Applying a mitigation is a separate, later decision that requires restating and confirming the exact account number/resource code — not implied by an earlier general approval — especially when the change alters real customer-facing behaviour rather than just the bug's trigger condition. If a mitigation is applied after the report already went out, the HTML/PDF get regenerated and redelivered — they don't auto-update the way the artifact's URL does.
 
+## Already have these skills the old way? Remove them first
+
+Some of the team are running earlier versions of these skills that were shared
+by hand — a `SKILL.md` copied straight into `~/.claude/skills/`. **Delete those
+before installing from this marketplace.**
+
+Why: a hand-copied skill and a plugin skill can carry the same (or a very
+similar) name. When two skills match the same request, you have no control over
+which one Claude picks, and the hand-copied one is frozen at whatever day it was
+copied — it won't have the account-confirmation guard, the CLI edit-mode guard,
+or any later fix. You'd get intermittent old behaviour with no obvious cause,
+which is a miserable thing to debug.
+
+To find them:
+
+```bash
+ls ~/.claude/skills/
+```
+
+Anything parcelLab- or onyx-related in that listing is a hand-copied copy —
+plugin skills do not live there. Move them somewhere else rather than deleting,
+so you can get them back if something's missing:
+
+```bash
+mkdir -p ~/claude-skills-archive && mv ~/.claude/skills/<name> ~/claude-skills-archive/
+```
+
+Then quit and reopen the app. Once you're happy the marketplace versions cover
+everything you were using, the archive folder can go.
+
+This is the point of the repo: one canonical version of each skill, updated in
+one place, so fixes and new skills reach everyone instead of being re-copied by
+hand and silently drifting apart.
+
 ## Updating
 
 Fixes pushed to this repo reach installed users via plugin update (Manage plugins → update, or `/plugin marketplace update parcellab-skills` in the CLI). Bump `version` in the plugin's `plugin.json` when releasing changes.
+
+Because everyone installs from the same source, an update is a push from the
+maintainer and a *Manage plugins → update* from each person — no re-sharing
+files, and no way for two people to end up on quietly different versions of the
+same skill.
 
 ## For maintainers — adding a new skill
 
