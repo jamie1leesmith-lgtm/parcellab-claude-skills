@@ -1130,8 +1130,11 @@ Then follow `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/product-scrape
 collect exactly four products as
 `{ name, product_type, price, options, image_url, pdp_url }`.
 
-**Four different product types**, and **a couple of values from each variant axis the site
-exposes**. One image per product — variants share it.
+**Four different product types**, and **up to three values from each variant axis**. For
+clothing collect **Size *and* Colour** — a Size-only garment looks thin on the variant picker.
+Colour is often not on the PDP itself: some sites publish each colourway as a separate page
+with the colour name only in the link between them, so the sibling links must be harvested.
+One image per product — variants share it, including across colours.
 
 ### Assemble the payload
 

@@ -14,13 +14,25 @@ function instead of calling it.
 jumpers: the cross-product exchange should look like a real decision, not a like-for-like
 swap.
 
-**A couple of values from each variant axis the site exposes**, typically Size and Colour,
-or shoe size. Every product needs **at least two variants** so a small→medium swap
-demonstrates an even exchange inside that one product — the most common real returns case
-and the quickest thing to show.
+**Up to three values from each variant axis the site exposes**, and **for clothing get both
+Size and Colour** — a Size-only garment looks thin on a variant picker, where Size × Colour
+fills it out and makes the demo look like a real product. Footwear is usually shoe size
+alone, which is fine.
+
+Every product needs **at least two variants** so a small→medium swap demonstrates an even
+exchange inside that one product — the most common real returns case and the quickest thing
+to show. Three sizes × three colours gives nine variants; `shape_product_mix.py` caps both
+axes and values-per-axis at three, so 27 variants per product is the ceiling.
+
+**Colour is often not on the PDP you are standing on.** Some sites publish each colourway as
+its own product page — Nike serves `/t/<slug>/HV0949-063` and `/t/<slug>/HV0949-451` as the
+same garment in two colours, with the colour name only in the link label. The snippet below
+harvests those sibling links, because without that step apparel from such a site comes back
+with a Size axis only. Verified against Nike: it recovers *Obsidian*, *Dark Grey Heather*
+and *Black* for a jacket whose page exposes no colour picker at all.
 
 Only **one image per product** is needed. Variants share it, so there is no need to find a
-photo per colour.
+photo per colour — a Colour axis with one shared image is fine for the demo.
 
 ## Find listing pages, then PDP links
 
@@ -90,11 +102,33 @@ generic extraction snippet below.
 (() => {
   const clean = (s) => (s || '').trim().replace(/\s+/g, ' ');
 
-  const name = clean(
-    document.querySelector('h1')?.innerText ||
-    document.querySelector('[class*="product-name"], [class*="product-title"], [itemprop="name"]')?.innerText ||
-    document.title
-  ).slice(0, 120);
+  // Name: take the most specific of the three candidates, not the first that exists.
+  // On some sites `h1` is only the sub-brand — Nike renders "Nike Tech", "Nike Form",
+  // "Nike Calm 2.0" — so preferring h1 outright creates products named after a range.
+  const stripSuffix = (s) => clean(s)
+    .replace(/\s*[.|–-]\s*Nike\s+\w+\s*$/i, '')   // ". Nike UK" style site suffix
+    .replace(/\s*[|–]\s*[^|–]{1,30}$/, (m) => /shop|store|official|\.com/i.test(m) ? '' : m)
+    .replace(/\s*-\s*Size\s+[\w.]+\s*$/i, '')          // JSON-LD often appends "- Size 3.5"
+    .trim();
+
+  let ldName = null;
+  for (const node of document.querySelectorAll('script[type="application/ld+json"]')) {
+    try {
+      const blocks = [].concat(JSON.parse(node.textContent));
+      for (const b of blocks) { if (b?.name && (b['@type'] === 'Product' || b.offers)) { ldName = b.name; break; } }
+    } catch { /* malformed JSON-LD is common; skip it */ }
+    if (ldName) break;
+  }
+
+  const candidates = [
+    document.querySelector('h1')?.innerText,
+    document.querySelector('[class*="product-name"], [class*="product-title"], [itemprop="name"]')?.innerText,
+    ldName,
+    document.title,
+  ].map(stripSuffix).filter(Boolean);
+
+  // Longest wins: a sub-brand fragment is always shorter than the full product name.
+  const name = (candidates.sort((a, b) => b.length - a.length)[0] || '').slice(0, 120);
 
   // Product type: breadcrumb tail is the most reliable signal, then meta.
   const crumbs = Array.from(
@@ -160,10 +194,12 @@ generic extraction snippet below.
     } catch { /* not product JSON; skip */ }
   }
 
-  // Fallback: labelled selects and swatch groups in the DOM.
-  if (!axes.length) {
+  // Fallback: labelled selects and swatch groups in the DOM. Runs whenever an axis is
+  // still missing — not only when none were found — because Size and Colour often come
+  // from different places on the same page.
+  if (axes.length < 2) {
     for (const group of document.querySelectorAll(
-      'select, fieldset, [data-option-name], [class*="swatch"], [class*="variant-option"]'
+      'select, fieldset, [data-option-name], [class*="swatch"], [class*="variant-option"], [class*="colorway" i], [class*="colour" i], [class*="color" i]'
     )) {
       const label = group.getAttribute('data-option-name')
         || group.getAttribute('aria-label')
@@ -171,10 +207,47 @@ generic extraction snippet below.
         || group.getAttribute('name') || '';
       if (!/size|colour|color/i.test(label)) continue;
       const values = Array.from(
-        group.querySelectorAll('option, label, button, [role="radio"]')
-      ).map(n => n.value || n.innerText || '');
+        group.querySelectorAll('option, label, button, [role="radio"], a[href]')
+      ).map(n => n.value || n.getAttribute('aria-label') || n.getAttribute('title') || n.innerText || '');
       pushAxis(label, values);
     }
+  }
+
+  // Size grid rendered as bare labels with no labelled wrapper (Nike does this).
+  // Only pull values that *look* like sizes, so a country picker can't be harvested.
+  if (!axes.some(a => /size/i.test(a.name))) {
+    const sizeish = Array.from(document.querySelectorAll('label, [role="radio"], button'))
+      .map(e => clean(e.innerText))
+      .filter(t => t && t.length <= 10 &&
+        /^(UK|EU|US)?\s*\d+(\.\d+)?$|^(XXS|XS|S|M|L|XL|XXL|2XL|3XL)$/i.test(t));
+    pushAxis('Size', sizeish);
+  }
+
+  // Colour swatches with the name only in an image alt / aria-label / title.
+  if (!axes.some(a => /colou?r/i.test(a.name))) {
+    const swatches = Array.from(document.querySelectorAll(
+      '[class*="colorway" i] img, [class*="swatch" i] img, [aria-label*="colour" i], [aria-label*="color" i]'
+    )).map(e => clean(e.getAttribute('alt') || e.getAttribute('aria-label') || e.getAttribute('title')))
+      .map(t => t.replace(/^(select\s+)?colou?r:?\s*/i, '').trim())
+      .filter(t => t && t.length <= 30 && !/^\d+$/.test(t));
+    pushAxis('Colour', swatches);
+  }
+
+  // Sibling colourways published as separate PDPs under the same slug. Nike does this:
+  // /t/<slug>/HV0949-063 and /t/<slug>/HV0949-451 are the same garment in two colours,
+  // each link labelled with the real colour name. Without this, apparel from such a site
+  // gets a Size axis only.
+  if (!axes.some(a => /colou?r/i.test(a.name))) {
+    const slug = location.pathname.split('/').slice(0, -1).join('/');
+    const labels = Array.from(document.querySelectorAll('a[href*="/t/"]'))
+      .filter(a => (a.getAttribute('href') || '').startsWith(slug))
+      .map(a => clean(a.getAttribute('aria-label') || a.querySelector('img')?.alt || a.innerText))
+      .filter(Boolean);
+    // "Obsidian/Black" lists secondary colours too; the leading segment is the colour
+    // name and reads better on a variant picker. Fall back to the full label if that
+    // collapses to fewer than two distinct values.
+    const lead = [...new Set(labels.map(t => clean(t.split('/')[0])).filter(t => t && t.length <= 30))];
+    pushAxis('Colour', lead.length >= 2 ? lead : [...new Set(labels)]);
   }
 
   // Image scoring — verbatim from demo-request, which is proven.
@@ -229,6 +302,12 @@ short label like `Jumper`, `Jeans`, `Trainers` is all it needs to be.
 - **Variant axes come back empty** — fine. The shaping script falls back to a Size axis of
   `S`/`M`/`L`, which still gives the in-product size swap. **Do not invent colour values**
   to fill the gap; a product photographed in red offered as "Navy" looks broken.
+- **Only a Size axis came back for a garment** — check the sibling-colourway path before
+  accepting it. If the site genuinely publishes one colour per product and links no siblings,
+  Size alone is the honest answer; say so at the approval gate rather than padding it.
+- **Colour values arrive as multi-colour strings** like `Obsidian/Black/Bright Violet`. The
+  snippet takes the leading segment, which is the colour name and reads better on a picker.
+  If that collapses to fewer than two distinct values it keeps the full labels instead.
 - **A variant picker that needs a click to reveal values** — click it, re-run the snippet.
   Not worth more than one attempt per product; the Size fallback is acceptable.
 - **Price still null** — ask the user for that product's price rather than inventing one. A

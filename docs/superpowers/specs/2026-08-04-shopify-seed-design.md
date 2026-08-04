@@ -202,10 +202,26 @@ typically Size and Colour, or shoe size. A product needs **at least two variants
 small→medium swap demonstrates an even exchange inside that single product, which is the
 most common real returns case and the fastest thing to show.
 
-- Take up to 3 values per axis, minimum 2. A 3×2 Size/Colour matrix is 6 variants.
+- Take up to 3 values per axis and at most 3 axes, minimum 2 values. A 3×3 Size/Colour
+  matrix is 9 variants; 3 axes × 3 values is the 27-variant ceiling.
+- **For clothing, get Size *and* Colour.** A Size-only garment looks thin on a variant
+  picker; Size × Colour makes it look like a real product. Footwear is usually size alone.
 - Drop any axis the site exposes with only one value — a single-value option is noise.
 - If no axis can be scraped at all, fall back to one `Size` axis of `S`/`M`/`L`.
 - **Never fabricate colour values.** Pull the real ones or omit the axis.
+
+**Colour is frequently not on the PDP being scraped.** Some sites publish each colourway as
+its own product page, with the colour name only in the link between them — Nike serves
+`/t/<slug>/HV0949-063` and `/t/<slug>/HV0949-451` as one garment in two colours. Harvesting
+those sibling links is what recovers the axis; without it, apparel from such a site returns
+Size only. Verified against Nike: it recovers *Obsidian*, *Dark Grey Heather* and *Black* for
+a jacket whose page exposes no colour picker at all, giving 3 × 3 = 9 variants.
+
+**Product names must not be taken from `h1` alone.** On Nike the `h1` is only the sub-brand —
+"Nike Tech", "Nike Form", "Nike Calm 2.0" — so preferring it names products after a range
+rather than a product. Take the *most specific* of `h1`, the page `<title>` and JSON-LD
+`name`, stripping the site suffix and any trailing size/colour qualifier; the longest
+surviving candidate wins, since a sub-brand fragment is always shorter.
 
 Image validation **reuses `demo-request`'s existing script** rather than raw `curl`:
 

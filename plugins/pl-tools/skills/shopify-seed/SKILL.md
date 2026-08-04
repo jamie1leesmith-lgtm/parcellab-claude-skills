@@ -168,8 +168,18 @@ link to a product URL that redirects back to the listing or 404s, which is why m
 four PDP candidates are worth gathering up front.
 
 **Four different product types**, and **up to three values from each variant axis the site
-exposes** (`shape_product_mix.py` caps both axes and values-per-axis at 3). One image per
-product — variants share it.
+exposes** (`shape_product_mix.py` caps both axes and values-per-axis at 3).
+
+**For clothing, get Size *and* Colour** — three sizes × three colours is nine variants, which
+looks like a real product on the variant picker where Size alone looks thin. Footwear is
+usually shoe size only, which is fine.
+
+Colour often isn't on the PDP itself: some sites publish each colourway as a separate product
+page and put the colour name only in the link between them. The scrape reference harvests
+those siblings — check a garment came back with two axes before accepting one, and never
+invent colour values to pad it.
+
+One image per product — variants share it, including across colours.
 
 ### Assemble the payload
 
