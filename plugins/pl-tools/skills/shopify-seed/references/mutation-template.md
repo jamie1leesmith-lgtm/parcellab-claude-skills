@@ -190,7 +190,7 @@ the instant the mutation returns:
         }
       }
       variants(first: 50) {
-        nodes { inventoryQuantity selectedOptions { name value } }
+        nodes { inventoryQuantity availableForSale selectedOptions { name value } }
       }
     }
   }

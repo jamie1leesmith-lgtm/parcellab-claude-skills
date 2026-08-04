@@ -121,14 +121,27 @@ dig it out of an Admin URL:
 ```bash
 source ~/.claude/parcellab-shopify-seed.env
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
-  --query '{ locations(first: 5) { nodes { id name isActive } } }'
+  --query '{ locations(first: 20) { nodes { id name isActive fulfillsOnlineOrders shipsInventory } } }'
 ```
 
 Read-only, so **no `--allow-mutations`** — that flag is only for writes.
 
-Take the first node with `isActive: true`. The `id` comes back as
-`gid://shopify/Location/123456`, which is exactly what `ProductSetInventoryInput.locationId`
-expects. No numeric-ID conversion needed.
+**Pick the location the online store actually sells from**, in this order:
+
+1. `isActive` **and** `fulfillsOnlineOrders` **and** `shipsInventory`
+2. `isActive` **and** `fulfillsOnlineOrders`
+3. any `isActive` — and say so, because stock placed here may not be sellable
+
+Do not just take the first active location. A store can have several, and stock sitting at
+one the online store does not fulfil from leaves every variant stocked but **unsellable** —
+which looks exactly like the zero-stock failure, with the numbers all appearing correct.
+Verify with `availableForSale` on a variant after the push (Step 8 checks this).
+
+Name the chosen location in your output, and if you fell through to case 3, say which
+locations were rejected and why.
+
+The `id` comes back as `gid://shopify/Location/123456`, which is exactly what
+`ProductSetInventoryInput.locationId` expects. No numeric-ID conversion needed.
 
 If no active location exists, stop and tell the user — stock cannot be set without one.
 
@@ -365,13 +378,17 @@ Read-only — no `--allow-mutations`.
 
 The same by-ID query returns `variants` too, so confirm stock from that one response
 rather than a second tag-based call — a silently dropped variant removes an exchange
-target. Every product needs **≥2 variants**, and every variant needs `inventoryQuantity`
-above zero. A zero-stock variant is invisible as an exchange target — the demo would show
-fewer options than expected and look broken.
+target. Every product needs **≥2 variants**, every variant needs `inventoryQuantity` above
+zero, and every variant needs **`availableForSale: true`**. A zero-stock variant is invisible
+as an exchange target — the demo would show fewer options than expected and look broken.
 
-**If either check fails** — fewer than 2 variants, or any variant at zero stock — name the
-product and the offending variant, say it will be invisible as an exchange target, and do
-not report success.
+`availableForSale: false` while `inventoryQuantity` is above zero means the stock went to a
+location the online store does not sell from. The numbers all look right and nothing is
+purchasable. Re-check the Step 2 location choice: prefer one with `fulfillsOnlineOrders`.
+
+**If any of the three checks fails** — fewer than 2 variants, a variant at zero stock, or a
+variant not available for sale — name the product and the offending variant, say it will be
+invisible as an exchange target, and do not report success.
 
 ---
 
