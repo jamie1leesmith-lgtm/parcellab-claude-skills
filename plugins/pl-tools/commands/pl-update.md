@@ -49,9 +49,34 @@ Be specific, because "update" reads as success even when nothing moved:
   up as success; I need to know whether to restart.
 - **Failed** — report the error verbatim. Do not retry silently.
 
-If you can see what changed (for example by reading the marketplace repo's recent
-commits at `~/.claude/plugins/marketplaces/parcellab-skills/`), give me a one-line
-summary of what is new. Skip this if it is not obvious — don't guess.
+## 5a. Always tell me what actually changed
+
+**This is expected, not optional.** "Updated to `59edc95ed68f`" tells me nothing —
+a SHA is not a changelog, and without a summary I have no idea whether the update
+matters to me or which skills to re-test.
+
+The marketplace clone was re-cloned at step 2, so it already contains the new
+commits. Diff the version I had against the version I now have:
+
+```bash
+cd ~/.claude/plugins/marketplaces/parcellab-skills
+git log --oneline <old-version-from-step-1>..<new-version-from-step-3>
+```
+
+Then summarise it **by skill and by what it means for me**, not as a raw commit
+list. Group related commits — five commits touching one skill is one change to me.
+Separate user-facing changes from docs and internals, and lead with anything that
+alters how a skill behaves or what it asks. Say explicitly when a skill went from
+broken to working, or gained a new question, since those are the ones worth
+re-testing.
+
+**If the old version was a pinned semver rather than a SHA** (older installs may
+show something like `2.0.1`), `git log 2.0.1..<sha>` fails — the tag doesn't exist.
+Fall back to `git log --oneline -15` and say the range is approximate rather than
+exact.
+
+If the log is genuinely empty or unreadable, say so plainly. Don't invent a summary,
+and don't describe changes you haven't read.
 
 ## 6. Restart, only if something changed
 
