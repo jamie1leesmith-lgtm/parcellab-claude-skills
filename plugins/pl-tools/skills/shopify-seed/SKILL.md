@@ -228,3 +228,58 @@ altered. Surface any `warnings` too, and offer to swap a product out.
 Quote figures **without currency symbols**; dev-store currency varies.
 
 **No writes before an explicit yes.**
+
+---
+
+## Step 6 — Archive the previous prospect's products
+
+Only after the Step 5 approval.
+
+Every product this skill creates carries the tags `pl-demo-seed` and
+`pl-prospect-<handle>`, which is what makes cleanup possible. Find the previous run:
+
+```bash
+shopify store execute -s "$SHOPIFY_DEMO_STORE" \
+  --query '{ products(first: 50, query: "tag:pl-demo-seed status:active") { nodes { id title } } }'
+```
+
+If any come back, archive them using the aliased `productUpdate` shape in
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`:
+
+```bash
+shopify store execute -s "$SHOPIFY_DEMO_STORE" \
+  --query-file /tmp/archive.graphql --variable-file /tmp/archive.json --allow-mutations
+```
+
+Archived products leave the storefront and the returns portal but are **not destroyed** —
+un-archive in the Admin to recover them. Report what was archived, by name.
+
+If nothing is tagged, say so and move on — a first run against a clean store is normal.
+
+---
+
+## Step 7 — Push the new products
+
+Generate `/tmp/seed.graphql` and `/tmp/seed.json` from
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, mapping the
+shaped output onto the mutation:
+
+- `options[]` → `productOptions[]`, with 1-based `position`
+- `variants[].option_values[]` → `optionValues[]` (`option_name` → `optionName`)
+- `variants[].quantity` and `location_id` → `inventoryQuantities[]` with `name: "available"`
+- `image_url` → a single `files[]` entry with `contentType: IMAGE`
+- `product_type` → `productType`, `tags` → `tags`
+
+These files are generated per run, not shipped — the products differ every time.
+
+```bash
+shopify store execute -s "$SHOPIFY_DEMO_STORE" \
+  --query-file /tmp/seed.graphql --variable-file /tmp/seed.json --allow-mutations
+```
+
+`--allow-mutations` is mandatory for writes — without it the mutation is refused. Treat
+that as a safety feature, not an annoyance. `--query-file` and `--query` are mutually
+exclusive, as are `--variable-file` and `--variables`.
+
+Check `userErrors` on **every alias**, not just the first. Any non-empty `userErrors` →
+report it and stop; do not continue to verification with a partial seed.
