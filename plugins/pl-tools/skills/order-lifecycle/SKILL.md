@@ -293,10 +293,36 @@ After Gate B the sequence runs unattended.
 
 Tail `EVENTS_DIR/run.log`. After each event report the pushed `event_status` and
 HTTP code (**204 = accepted**, not yet attached). On any non-2xx, surface it and
-pause for the user. Once the sequence completes, wait a few minutes then verify
-attachment with a public order-info lookup (account + courier/tracking_number)
-and report the actual checkpoint list and `contacted_with_messages` — that is
-the real proof of success, not the 204s.
+pause for the user. Once the sequence completes, verify attachment with a public
+order-info lookup (account + courier/tracking_number) and report the actual
+checkpoint list and `contacted_with_messages` — that is the real proof of
+success, not the 204s.
+
+**Wait at least 5 minutes after the final event before treating a missing comm as
+a problem.** Comms do not arrive at a uniform lag: in a live run the order
+confirmation, dispatch and out-for-delivery comms each appeared within ~3-4
+minutes of their event, but `package_delivered_*` took **over 5 minutes** —
+noticeably longer than the rest. Checking at ~3 minutes showed all four
+checkpoints attached with only three comms, which looks exactly like a broken
+delivered trigger and isn't.
+
+**Do not go digging in Journey config before that 5 minutes has elapsed.** Doing
+so wastes real effort on a non-problem — and in one investigation produced a
+plausible-but-wrong diagnosis (the delivered action has
+`recipientCustomer: false, recipientPlTest: true`, which looks like the cause
+until you notice the out-for-delivery action that *did* fire carries the
+identical recipient config).
+
+Two things confirmed live on account 1626718, worth not re-deriving:
+
+- **`delivery_location_type: "Unknown"` is fine.** The `Delivered` trigger's event
+  accepts `eventTypes: ["Postbox", "Unknown", "Doorstep", "HomeDeposit"]`, so a
+  synthetic `Delivered` event with no explicit location still matches and still
+  fires. Treat `Unknown` as expected, not as a fault.
+- **`InTransit` attaches as checkpoint `InboundScan`**, displayed as
+  "Dispatched" — parcelLab relabels the event status on the timeline. The
+  checkpoint you get back will not always be named after the event you sent, so
+  match on position and timestamp rather than on `status_code` alone.
 
 ## Failure modes
 

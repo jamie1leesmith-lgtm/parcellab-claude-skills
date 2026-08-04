@@ -53,6 +53,20 @@ matching Journey/trigger; a 204 confirms ingestion, not that mail sent.
 Attachment is **asynchronous** — allow several minutes before checking whether
 a checkpoint landed; don't conclude failure from an immediate re-read.
 
+**Comm lag is uneven — allow 5+ minutes for the delivered comm specifically.**
+Measured live: order confirmation, dispatch and out-for-delivery each landed
+within ~3-4 minutes of their event; `package_delivered_*` took over 5. A check at
+~3 minutes therefore shows every checkpoint attached but the delivered comm
+missing, which reads as a broken trigger and is not one.
+
+Also confirmed live, so nobody re-derives them:
+
+- `InTransit` attaches as checkpoint **`InboundScan`**, displayed "Dispatched".
+  The checkpoint is not always named after the event you sent.
+- `Delivered` sent without a location yields `delivery_location_type: "Unknown"`,
+  which **still matches** the `Delivered` trigger — its event accepts
+  `eventTypes: ["Postbox", "Unknown", "Doorstep", "HomeDeposit"]`.
+
 ## Proven default sequence — genuine happy path (no delay)
 
 ```
