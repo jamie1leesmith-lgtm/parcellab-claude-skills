@@ -19,7 +19,8 @@ Every task's requirements implicitly include this section.
 - **`description:` is trigger text, not a label.** Keep the word **parcelLab** spelled out.
 - **All internal file references use `${CLAUDE_PLUGIN_ROOT}`.** Never `~/.claude/skills/…`, never a path relative to this repo. Installed users run from `~/.claude/plugins/cache/parcellab-skills/pl-tools/<version>/`.
 - **Tests are stdlib `unittest`.** `pytest` is not installed. Never `pip install`. Run with: `cd plugins/pl-tools/scripts && python3 -m unittest discover -s tests -v`
-- **Exactly four products, of four different types.** Not four jumpers. `check_images.mjs` also hard-requires exactly 4.
+- **Exactly four products** — anything else must raise. `check_images.mjs` also hard-requires exactly 4.
+- **Four *different* product types** — a jumper, jeans, shoes, a jacket, not four jumpers. This is strongly preferred but **must not raise**: `product_type` is scraped heuristically from breadcrumbs, so hard-failing a run because two breadcrumbs matched would abort demo prep over unreliable data. Surface it as a warning at the approval gate, where the human can swap a product before anything is written.
 - **Every product needs ≥2 variants.** A size swap inside one product is the fastest even-exchange demo and the most common real returns case.
 - **One image per product, none per variant.** Every variant of a product shares the product image. Do not use `ProductVariantSetInput.file`.
 - **Non-zero stock on every variant in the matrix.** A zero-stock variant is invisible as an exchange target, so the demo silently shows fewer options and looks broken.
