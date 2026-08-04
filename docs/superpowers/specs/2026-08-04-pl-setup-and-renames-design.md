@@ -115,7 +115,7 @@ than mitigated.
 
 **What consolidation costs.** Granular install goes away — the README's current
 first line, *"Install skills individually — take only the ones you need"*, stops
-being true. Every skill's description then loads in every session: roughly 600
+being true. Every skill's description then loads in every session: ~918 measured
 tokens always-on for six, against the ~2,529 the org's `parcellab-product-api`
 already costs for 24. Accepted as the cheaper side of the trade.
 
