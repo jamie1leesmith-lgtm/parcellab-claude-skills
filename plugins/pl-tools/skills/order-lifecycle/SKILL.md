@@ -413,6 +413,36 @@ Run it with the Bash tool's `run_in_background`. Do a `DRYRUN=1` pass first to
 sanity-check the sequence without hitting the API (the log shows the timestamp
 each event would be stamped with).
 
+## Gate C — order enrichment
+
+An offer with a fast exit, not a form. **The default is send-as-is** — skipping
+takes one word:
+
+> Anything else to add to this order, or send as-is?
+
+Then list the menu below. Do **not** ask an open "any other fields?" — that is
+unanswerable unless the user has the Order API spec memorised.
+
+Anything Gate B flagged as **required** (for example a `client_key` needed to make
+the chosen journey eligible) appears here pre-filled and is **not** optional.
+
+| Extra | Fields | State this |
+|---|---|---|
+| Dynamic recipients | `additional_recipients: [{role, email}]` — write to **both** order and tracking level | Role must match the Journey's `advancedRecipients` **exactly**, case-sensitive. **Preserve the user's spelling even if it looks like a typo** — the match is literal, and "fixing" it breaks a Journey using the same misspelling. Setting the field mails nobody unless the Journey lists that role. |
+| Promise dates | `announced_delivery_date`, `announced_delivery_date_min`, `announced_delivery_date_max` | **`YYYY-MM-DD` only.** A full ISO datetime is rejected. (`order_date` *does* take full ISO — the two fields differ.) |
+| Client key | `client_key` | Pre-filled when Gate B's journey requires one |
+| Order financials | `order_tax_amount`, `order_net_amount`, `order_discount_amount` | For invoice-style comms |
+| Extra articles | more `articles_order` entries, each with a unique `line_item_id` | Mirror them into every `add_tracking`'s `tracking.articles` or the shipment comms render an empty article table |
+| Tags / custom fields | `tags`, `additional_attributes` | What filter-driven Journey triggers key on |
+| Delivery detail | `delivery_method`, `courier_service_level`, `requires_signature` | Mostly cosmetic in comms |
+
+**Split shipments are not offered here** — they are chosen at Gate B, because a
+split needs a scenario per shipment.
+
+After the menu, show the final plan — order summary, carrier(s), scenario per
+shipment, event list with expected comms, and the gap — then wait for approval.
+This is the last stop before anything reaches production.
+
 ## Confirmation gates
 
 Three gates. All three are blocking — a run with no user response at any gate
