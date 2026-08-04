@@ -136,6 +136,10 @@ def build_mix(payload):
 
     handle = payload.get("prospect_handle") or "prospect"
     location_id = payload.get("location_id")
+    if location_id is None or not str(location_id).strip():
+        raise ValueError(
+            "location_id is required — resolve it from the store's locations query"
+        )
     # Distinguish "absent" from an explicit 0 -- `or` would silently turn a zero,
     # which breaks every exchange target, into the default.
     raw_stock = payload.get("stock_per_variant")

@@ -278,6 +278,24 @@ class BuildMixTests(unittest.TestCase):
         for product in result["products"]:
             self.assertIsInstance(product["price"], str)
 
+    def test_rejects_missing_location_id(self):
+        payload = self.payload(["28.00", "28.00", "64.00", "90.00"])
+        del payload["location_id"]
+        with self.assertRaises(ValueError):
+            build_mix(payload)
+
+    def test_rejects_none_location_id(self):
+        payload = self.payload(["28.00", "28.00", "64.00", "90.00"])
+        payload["location_id"] = None
+        with self.assertRaises(ValueError):
+            build_mix(payload)
+
+    def test_rejects_empty_location_id(self):
+        payload = self.payload(["28.00", "28.00", "64.00", "90.00"])
+        payload["location_id"] = "   "
+        with self.assertRaises(ValueError):
+            build_mix(payload)
+
 
 class CliTests(unittest.TestCase):
     def run_script(self, payload):

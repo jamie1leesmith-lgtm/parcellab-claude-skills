@@ -145,9 +145,27 @@ collect exactly four products as
 **Four different product types**, and **a couple of values from each variant axis the site
 exposes**. One image per product — variants share it.
 
+### Assemble the payload
+
+Derive `prospect_handle` from the prospect URL: take the host, drop a leading `www.`, drop
+the TLD (and any `.co.uk`-style second-level suffix), lowercase it, and replace any run of
+non-alphanumeric characters with a single hyphen — `https://www.acme-store.co.uk/collections/new`
+gives `acme-store`, so the seeded products tag as `pl-prospect-acme-store`.
+
+Write `/tmp/seed-products.json` with the full shape `shape_product_mix.py` needs — not just
+the products:
+
+```json
+{
+  "products": [ … the four scraped products … ],
+  "location_id": "<the gid:// value from Step 2>",
+  "prospect_handle": "<derived above>"
+}
+```
+
 ### Validate the images
 
-Write the four products to a scratchpad file, then reuse `demo-request`'s checker:
+Reuse `demo-request`'s checker against the same file:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/check_images.mjs /tmp/seed-products.json
