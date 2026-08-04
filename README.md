@@ -1,6 +1,8 @@
 # parcelLab Claude skills
 
-A private Claude Code plugin marketplace for parcelLab team skills. Install skills **individually** — take only the ones you need.
+A private Claude Code plugin marketplace for parcelLab team skills. One plugin,
+**`pl-tools`**, carries all five parcelLab skills plus its setup command. Onyx
+ships separately.
 
 > 🔒 **This repo is private.** You need to be invited as a collaborator before you can add it as a marketplace or install anything. Ask Jamie (`jamie1leesmith-lgtm`) for access.
 
@@ -9,7 +11,7 @@ A private Claude Code plugin marketplace for parcelLab team skills. Install skil
 1. Open the Claude desktop app → **Code** tab
 2. Click **+** next to the prompt box → **Plugins** → **Add plugin**
 3. Enter this repo as the marketplace source: `jamie1leesmith-lgtm/parcellab-claude-skills`
-4. Pick the skill you want → **Install** (repeat for any others)
+4. Install **`pl-tools`** (and **`onyx`** if you want Onyx search too)
 
 Installed skills become available automatically in **new** conversations — the
 one you installed from won't see them.
@@ -25,21 +27,26 @@ and every parcelLab skill depends on it.
 
 ```
 /plugin marketplace add jamie1leesmith-lgtm/parcellab-claude-skills
-/plugin install parcellab-create-order@parcellab-skills
+/plugin install pl-tools@parcellab-skills
 ```
 
-Swap `parcellab-create-order` for whichever skill you want — install as many or as few as you like.
+Add `/plugin install onyx@parcellab-skills` for Onyx knowledge search.
 
 ## Available skills
 
-| Skill | What it does | Trigger example |
+Everything below `pl-tools` arrives in one install. Type `/pl` to see them all —
+they deliberately don't share the `parcellab-` prefix used by the org's
+`parcellab-product-api` plugin, so the two sets stay separable.
+
+| Handle | What it does | Trigger example |
 |-------|--------------|-----------------|
-| `onyx` | Pulls knowledge from your parcelLab Onyx instance into Claude — semantic search, cited RAG answers, and document retrieval | *"Search Onyx for our return policy on damaged items"* |
-| `parcellab-brand-layout` | Builds a branded transactional email layout in your ParcelLab account from a brand URL, with live preview in the desktop app | *"Create a ParcelLab layout for www.nike.com"* |
-| `parcellab-create-order` | Creates a real order in your ParcelLab account via the production Order API, filling in realistic dummy data | *"Push a test order to ParcelLab for a UK delivery"* |
-| `parcellab-demo-request` | Creates a custom demo request from a prospect website URL — collects products, verifies images, submits to the Custom Demo Creator | *"Create a demo request for www.example.com"* |
-| `parcellab-order-lifecycle` | Simulates a full post-purchase journey: creates an untracked order, then pushes timed checkpoints (warehouse → carrier → delivery) so ParcelLab fires the comms for each stage | *"Simulate the full journey for [brand]"* |
-| `parcellab-bug-investigation` | Investigates a product bug end to end: checks live config via the `parcellab` CLI, reproduces it in Claude-in-Chrome with real screenshot/recording capture, isolates root cause against sibling portals, and publishes a shareable bug report as an artifact, HTML file, and PDF — always *before* any mitigation, which needs express account-number-specific sign-off | *"Investigate this bug on [portal]"* |
+| `pl-tools:create-order` | Creates a real order in your parcelLab account via the production Order API, filling in realistic dummy data | *"Push a test order to parcelLab for a UK delivery"* |
+| `pl-tools:order-lifecycle` | Simulates a full post-purchase journey: creates an untracked order, then pushes timed checkpoints (warehouse → carrier → delivery) so parcelLab fires the comms for each stage | *"Simulate the full journey for [brand]"* |
+| `pl-tools:branded-template` | Builds a branded transactional email layout in your parcelLab account from a brand URL, with live preview in the desktop app | *"Create a parcelLab layout for www.nike.com"* |
+| `pl-tools:demo-request` | Creates a custom demo request from a prospect website URL — collects products, verifies images, submits to the Custom Demo Creator | *"Create a demo request for www.example.com"* |
+| `pl-tools:bug-investigation` | Investigates a product bug end to end: checks live config via the `parcellab` CLI, reproduces it in Claude-in-Chrome with real screenshot/recording capture, isolates root cause against sibling portals, and publishes a shareable bug report as an artifact, HTML file, and PDF — always *before* any mitigation, which needs express account-number-specific sign-off | *"Investigate this bug on [portal]"* |
+| `pl-tools:pl-setup` | One-time setup: account, CLI write guard, and Order API token | *`/pl-setup`* |
+| `onyx` *(separate plugin)* | Pulls knowledge from your parcelLab Onyx instance into Claude — semantic search, cited RAG answers, and document retrieval | *"Search Onyx for our return policy on damaged items"* |
 
 ---
 
@@ -55,12 +62,11 @@ holds your demo account:
 { "env": { "PARCELLAB_ACCOUNT_ID": "1626718" } }
 ```
 
-You do not set this up by hand. Ask Claude to set up your parcelLab skills, or
-just use a skill — the first run walks you through it, looks your account up by
-name, and writes the file for you.
+You do not set this up by hand — `/pl-setup` writes it for you, looking your
+account up by name so you can confirm it's the right one.
 
 Two skills additionally need an Order API token (`PARCELLAB_TOKEN`):
-`parcellab-create-order` and `parcellab-order-lifecycle`. Nothing else does.
+`create-order` and `order-lifecycle`. Nothing else does.
 
 > `PARCELLAB_USER_ID` is still accepted as an alias for `PARCELLAB_ACCOUNT_ID`,
 > so anyone set up before this convention keeps working. New setups use
@@ -71,73 +77,40 @@ Two skills additionally need an Order API token (`PARCELLAB_TOKEN`):
 You need the parcelLab CLI installed — internal users have this already. Then, in
 the Claude Code desktop app:
 
-**1. Install the plugins.** **+** → **Plugins** → **Add plugin** → marketplace
-source `jamie1leesmith-lgtm/parcellab-claude-skills` → install the ones you want.
-
-**2. Start a new conversation and paste this exact prompt:**
-
-> **Set up the parcelLab skills for the plugins I've just installed. Check the
-> `parcellab` CLI, log me in if needed, find my demo account, write it to my
-> global settings, and set the CLI edit-mode guard to that account.**
-
-Say it in a *fresh* conversation, not the one you were installing from — newly
-installed plugins aren't loaded into a conversation that was already running.
-
-That wording matters. "Set up parcelLab" on its own is vague enough that Claude
-may only configure whichever single skill you last mentioned. The prompt above
-names all four things the setup actually does.
-
-**3. Claude runs the setup.** It checks the CLI is reachable, logs you in
-(`parcellab auth login` opens your browser), finds your demo account by name,
-and writes `PARCELLAB_ACCOUNT_ID` to the `env` block of your global
-`~/.claude/settings.json` — you approve the edit when prompted.
-
-**4. Claude points the CLI's write guard at that same account**
-(`parcellab settings edit-mode set account-restricted --account <id>`). This is
-what stops a skill writing into a colleague's demo account — there are 13 of them
-side by side under *Demo SolCon*, so it matters.
-
-**5. Order API token — only if you installed `parcellab-create-order` or
-`parcellab-order-lifecycle`.** Nothing else needs it. See
-[Entering your Order API token](#entering-your-order-api-token) below — this is
-the one step that does *not* happen in the chat box.
-
-**6. Quit and reopen the app.** Not just close the window — fully quit
-(**⌘Q** on macOS). Environment variables are only read at startup, so nothing
-above takes effect until you do.
-
-**7. Check it worked.** In a new conversation, ask *"which parcelLab account am I
-set up against?"* — Claude should name your demo account and its ID without
-asking you anything.
-
-### Entering your Order API token
-
-Claude will not accept a token pasted into the chat box, and shouldn't — chat
-messages are stored in the conversation transcript. Instead it hands you a
-command to run yourself, in the terminal built into the app. Expect this, it's
-not an error:
-
-1. **Click the terminal icon at the top right of the Claude Code window.** A
-   terminal panel opens below the conversation. It's a normal shell on your Mac.
-2. **Paste the command Claude gave you and press Enter.** It'll prompt you for
+1. **Install:** **+** → **Plugins** → **Add plugin** → marketplace source
+   `jamie1leesmith-lgtm/parcellab-claude-skills` → install `pl-tools`.
+2. **In a _new_ conversation, run `/pl-setup`.** Not the one you installed
+   from — newly installed plugins aren't loaded into a conversation that was
+   already running.
+3. It checks the CLI, logs you in (`parcellab auth login` opens your browser),
+   finds your demo account **by name** so you can confirm it, writes
+   `PARCELLAB_ACCOUNT_ID` to your global settings, and points the CLI's write
+   guard at that same account
+   (`parcellab settings edit-mode set account-restricted`). That guard is what
+   stops a skill writing into a colleague's demo account — there are 13 side by
+   side under *Demo SolCon*.
+4. **Order API token — only if you use `create-order` or `order-lifecycle`.**
+   `/pl-setup` asks. If you say yes, it hands you one command to run in the app's
+   built-in terminal (**click the terminal icon, top right**), which prompts for
    the credential.
-3. **Paste the base64 value from the portal**, then press Enter.
-   - **Nothing will appear as you paste — no dots, no asterisks, no cursor
-     movement. That is correct.** The input is hidden on purpose. Paste once,
-     press Enter once, and trust it. Pasting twice because "it didn't work" is
-     the most common way this goes wrong.
-   - Use the **base64** value from the portal, not the raw token. It contains
-     both your account ID and your token, so one paste covers both. Pasting the
-     base64 blob into a field that wanted the raw token is what produces an
-     unexplained `401` later.
-4. **Quit and reopen the app** (**⌘Q**). The token is written to
-   `~/.claude/settings.json`, and that file is only read at startup — the skill
-   will still say "credentials missing" until you restart.
-5. Back in a new conversation, ask Claude to push a test order. If it 401s, the
-   token went in wrong: rerun the same command and paste again.
 
-Claude never echoes the token back to you, and it should never appear in the
-conversation. If you ever see it in chat, it went in the wrong place — rotate it.
+   **Nothing appears on screen as you paste it — no dots, no asterisks, no
+   cursor movement. That is correct**; the input is hidden on purpose. Paste
+   once, press Enter once. Pasting twice because "it didn't work" is the most
+   common way this goes wrong.
+
+   Paste the **base64** value from the portal, not the raw token — it carries
+   both your account ID and your token, so one paste covers both.
+5. **Fully quit the app (⌘Q) and reopen.** Not just closing the window.
+   Environment variables are read only at startup, so nothing above takes effect
+   until you do.
+6. **Check it worked.** Ask *"which parcelLab account am I set up against?"* —
+   Claude should name your demo account and its ID without asking you anything.
+
+The token never enters the chat, a command-line argument, or your shell history.
+Claude will not accept it pasted into the chat box, and shouldn't — chat messages
+are stored in the conversation transcript. If you ever see your token in chat, it
+went in the wrong place: rotate it.
 
 Everything after that is automatic. Before any skill writes to your account it
 confirms which one:
@@ -167,7 +140,7 @@ Pulls knowledge from your parcelLab Onyx instance directly into Claude — seman
 
 ---
 
-### parcellab-brand-layout
+### pl-tools:branded-template
 
 Creates a branded transactional email layout in **your ParcelLab account** from any brand website URL. Claude scrapes the brand's styles and logo using Claude Code's **built-in browser** (the Browser pane), builds an email layout, previews it live in that same pane, and — after you approve — pushes the layout to ParcelLab as a draft. No Chrome extension required.
 
@@ -190,7 +163,7 @@ The skill confirms the target account with you before creating anything.
 - *Wrong account targeted* → tell Claude the account ID explicitly; it always confirms before pushing
 - *Preview 404* → the preview folder must be `~/parcellab-previews/` (never under `~/Documents` — macOS blocks the preview server there)
 
-### parcellab-create-order
+### pl-tools:create-order
 
 Creates (or updates) a real order in your ParcelLab account with a single request to the production Order API. Give it a bit of context — a country, a scenario, tracked vs. untracked — and it fills the rest with plausible dummy data.
 
@@ -201,24 +174,24 @@ Creates (or updates) a real order in your ParcelLab account with a single reques
 > orders into whichever account it's pointed at. There is no test environment
 > toggle, which is why it confirms the account before every first write.
 
-### parcellab-demo-request
+### pl-tools:demo-request
 
 Researches a prospect's website, collects four representative products from real product pages, verifies the image URLs, asks you to approve the selection, then submits a custom demo request through the Custom Demo Creator API.
 
 **Prerequisites:**
 
-1. **Node.js** — the skill runs helper scripts in `skills/parcellab-demo-request/scripts/`
+1. **Node.js** — the skill runs helper scripts in `plugins/pl-tools/skills/demo-request/scripts/`
 2. **Install script dependencies once** — `node_modules` is intentionally *not* committed, so run `npm install` inside that `scripts/` folder before first use (installs Playwright)
 3. Custom Demo Creator API access
 
-### parcellab-order-lifecycle
+### pl-tools:order-lifecycle
 
 Simulates a complete post-purchase journey: sources a real product from a brand site, creates an **untracked** order, then pushes a timed sequence of tracking checkpoints so ParcelLab ingests each stage and fires the configured comms. Uses `references/run-lifecycle.sh`.
 
 **Prerequisites:**
 
 1. **Your default account plus an Order API token** — the same credentials as
-   `parcellab-create-order`, so setting up either skill sets up both. See
+   `create-order`, so setting up either skill sets up both. See
    [Your default account](#your-default-account). The skill stops on its first
    step if they aren't set, and tells you how to fix it.
 2. **Bash and `curl`** — the checkpoint driver is a shell script
@@ -226,7 +199,7 @@ Simulates a complete post-purchase journey: sources a real product from a brand 
 
 See `references/status-codes.md` for the checkpoint status codes used.
 
-### parcellab-bug-investigation
+### pl-tools:bug-investigation
 
 Investigates and documents a live product bug: confirms the exact account up front, pulls draft + published config via the `parcellab` CLI, reproduces the issue in Claude-in-Chrome (the only surface that can save real screenshots and export a recording of the repro), compares against sibling portals/configs to tell config-specific from systemic, then **publishes the bug report before touching anything** — as a claude.ai artifact, a standalone HTML file, and a PDF, so it can be shared with people who don't have Claude access. A mitigation only happens afterward, if you ask for one, and only after you expressly confirm the exact account number/code again — not just a general "yes."
 
@@ -307,9 +280,39 @@ same skill.
 
 ## For maintainers — adding a new skill
 
-1. Copy the skill into `plugins/<name>/skills/<name>/`
-2. Add `plugins/<name>/.claude-plugin/plugin.json` (name, description, version, author)
-3. Register it in `.claude-plugin/marketplace.json`
-4. `git add . && git commit -m "Add <name> skill" && git push`
+New parcelLab skills go inside `pl-tools`. No new plugin, no new marketplace entry.
+
+1. Create `plugins/pl-tools/skills/<name>/SKILL.md`, with frontmatter `name:`
+   **matching the directory name exactly** — a mismatch makes the skill vanish
+   silently from the plugin's inventory.
+2. Keep "parcelLab" in the `description:`. That text is what Claude matches
+   against to decide whether to trigger the skill; the directory name is only the
+   typed handle. Don't use `pl-` in the identifier either — the `pl-tools:` prefix
+   already namespaces it, and repeating it just stutters.
+3. Bump `version` in `plugins/pl-tools/.claude-plugin/plugin.json`.
+4. `git add . && git commit -m "feat(pl-tools): add <name> skill" && git push`
+5. Verify it shipped and appears:
+   `claude plugin marketplace update parcellab-skills`,
+   `claude plugin update pl-tools@parcellab-skills`, then
+   `claude plugin details pl-tools@parcellab-skills` to confirm it's listed.
 
 Never commit `node_modules` — it's covered by `.gitignore`.
+
+### Renaming things — read this first
+
+Not every `parcellab-` string in this repo is ours. A blind find-and-replace
+breaks working behaviour in ways that don't look like errors. Leave these alone:
+
+- **`parcellab-product-api` / `parcellab-product-configuration`** — the *org's*
+  plugin, from `parcelLab/parcellab-cli`. `bug-investigation` routes to it.
+- **`parcellab-brand-layout`** — the *external* Cowork/CLI variant in another
+  repo, which `branded-template` references for contrast.
+- **`$HOME/parcellab-previews/`** and **`{brand}-parcellab-layout.html`** —
+  a real directory and real output filenames.
+- **`~/.claude/parcellab-demo-request.env`** — a user config file that exists on
+  disk. Renaming it breaks working setups.
+- **`parcellab-demo-request-scripts`** — an npm package name, internal to that
+  `scripts/` project.
+
+Both `SKILL.md` files carrying the first two have an HTML comment saying so,
+immediately above the reference.

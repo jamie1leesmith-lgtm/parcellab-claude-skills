@@ -1,9 +1,0 @@
-{
-  "name": "parcellab-bug-investigation",
-  "description": "Investigate and document a parcelLab product bug: inspect live config via parcellab-cli, reproduce interactively in Claude-in-Chrome with real screenshot/recording capture, isolate root cause by comparing against sibling portals/configs, and publish a shareable bug-report artifact (plus a standalone HTML file and PDF for people without Claude access) before any mitigation is applied. Any mitigation requires express, account-number-specific authorisation.",
-  "version": "1.1.0",
-  "author": {
-    "name": "Jamie Lee-Smith",
-    "email": "jamie.lee-smith@parcellab.com"
-  }
-}

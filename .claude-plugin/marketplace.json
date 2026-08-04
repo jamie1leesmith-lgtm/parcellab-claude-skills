@@ -1,5 +1,6 @@
 {
   "name": "parcellab-skills",
+  "description": "Internal Claude Code tooling for the parcelLab team: order and journey simulation, branded email layouts, demo requests, bug investigation, and Onyx knowledge search.",
   "owner": {
     "name": "Jamie Lee-Smith",
     "email": "jamie.lee-smith@parcellab.com"
@@ -11,29 +12,9 @@
       "description": "Pull knowledge from your parcelLab Onyx instance into Claude — semantic search, cited RAG answers, and full-document retrieval. Run /onyx-setup after installing to connect your own account."
     },
     {
-      "name": "parcellab-brand-layout",
-      "source": "./plugins/parcellab-brand-layout",
-      "description": "Create branded transactional email layouts in your ParcelLab account from any brand website URL. Browses and previews with Claude Code's built-in browser (Browser pane), pushes via the ParcelLab MCP connector."
-    },
-    {
-      "name": "parcellab-create-order",
-      "source": "./plugins/parcellab-create-order",
-      "description": "Create a real order in your ParcelLab account via the production Order API. Fills in realistic dummy data when you only provide partial context (country, scenario, tracked/untracked)."
-    },
-    {
-      "name": "parcellab-demo-request",
-      "source": "./plugins/parcellab-demo-request",
-      "description": "Create a custom ParcelLab demo request from a prospect website URL. Researches the site, collects four representative products, verifies image URLs, asks for approval, then submits via the Custom Demo Creator API."
-    },
-    {
-      "name": "parcellab-order-lifecycle",
-      "source": "./plugins/parcellab-order-lifecycle",
-      "description": "Simulate a full ParcelLab post-purchase journey: source a real product, create an untracked order, then push a timed sequence of tracking checkpoints (warehouse -> carrier -> delivery) so ParcelLab fires the comms for each stage."
-    },
-    {
-      "name": "parcellab-bug-investigation",
-      "source": "./plugins/parcellab-bug-investigation",
-      "description": "Investigate and document a ParcelLab product bug: inspect live config via parcellab-cli, reproduce interactively in Claude-in-Chrome with real screenshot/recording capture, isolate root cause against sibling portals/configs, and publish a shareable bug-report artifact (plus a standalone HTML file and PDF for people without Claude access) before any mitigation is applied. Any mitigation requires express, account-number-specific authorisation."
+      "name": "pl-tools",
+      "source": "./plugins/pl-tools",
+      "description": "parcelLab internal tooling: create orders, simulate post-purchase journeys, build branded email layouts, raise demo requests, and investigate bugs. Five skills plus /pl-setup, which configures your account and credentials in one pass."
     }
   ]
 }
