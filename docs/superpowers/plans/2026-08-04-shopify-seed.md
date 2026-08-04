@@ -1925,14 +1925,13 @@ Then confirm the price shape across the four products:
 - exactly two share a price (the matched pair);
 - at least one is priced **above** that pair — without this the upward payment demo does not exist.
 
-- [ ] **Step 4: Walk one exchange in the returns portal**
-
-The Shopify data being right does not prove the demo works. In the parcelLab returns portal against this store, start a return on a seeded product and confirm:
-
-- the same product's other size appears as an exchange target, with no balance to pay;
-- the dearer product appears as a target and shows a **balance to pay**.
-
-If exchange targets are missing, check variant stock first — that is the usual cause.
+> **Deliberately not a step: walking an exchange in the returns portal.** An earlier version of
+> this plan had one, which was out of scope. This skill's job ends at Shopify — everything returns-
+> related is configured and owned by the user, separately. The Shopify-side guarantees above (two
+> products sharing a price, one priced above them, ≥2 variants each, non-zero stock on every
+> variant) are the whole contract: they are what a portal needs in order to offer valid exchange
+> targets. Verifying the portal itself is not this skill's responsibility and is not required to
+> call it done.
 
 - [ ] **Step 5: Verify the re-run archives rather than accumulates**
 
@@ -2020,9 +2019,10 @@ and left only the current prospect ACTIVE. Nothing was deleted.
    so the check could report a healthy seed as broken. Step 8 now verifies by the product IDs the
    push returned, via `nodes(ids: […])`. The tag query remains correct for Step 6's archive lookup.
 
-### Not verified
+### Scope correction
 
-**The returns-portal exchange walk (Step 4).** It needs a real *order* in the store — a different
-class of write than seeding products, and not authorised — plus confirmation of which of the three
-Shopify Order APIs on account `1626718` is wired to `parcellab-demo-jls`. The Shopify-side
-preconditions an exchange depends on are all confirmed above; the parcelLab side is untested.
+An earlier version of this plan listed a returns-portal exchange walk as an unverified item. That
+was **out of scope and has been removed** — the user owns everything returns-related, separately
+from this skill. The skill's contract ends at Shopify, and every part of it is verified above.
+
+Nothing is outstanding.
