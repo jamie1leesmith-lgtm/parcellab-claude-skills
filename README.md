@@ -20,8 +20,22 @@ Already running these skills as hand-copied `SKILL.md` files? Read
 [Already have these skills the old way?](#already-have-these-skills-the-old-way-remove-them-first)
 before installing.
 
-Then do the [One-time setup](#one-time-setup) once — it takes about two minutes
-and every parcelLab skill depends on it.
+### Each plugin has its own setup command
+
+Run the one for each plugin you installed. They configure different credentials
+and neither covers the other:
+
+| Installed | Run | Sets up |
+|---|---|---|
+| `pl-tools` | **`/pl-setup`** | Your parcelLab account, the CLI write guard, and the Order API token if you use `create-order` or `order-lifecycle`. See [One-time setup](#one-time-setup). |
+| `onyx` | **`/onyx-setup`** | Your Onyx API URL and personal token. See [onyx](#onyx). |
+
+If you installed both, run both — then **quit and reopen the app once (⌘Q)**. Both
+write into the same `env` block, and it's read only at startup, so a single restart
+covers both. Each section below says "restart afterwards", which reads like two
+restarts if you're doing the pair.
+
+`/pl-setup` takes about two minutes and every parcelLab skill depends on it.
 
 ## Install (Claude Code CLI)
 
