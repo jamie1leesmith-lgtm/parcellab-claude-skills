@@ -1,6 +1,6 @@
 {
   "name": "pl-tools",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "parcelLab internal tooling: create orders, simulate post-purchase journeys, build branded email layouts, raise demo requests, and investigate bugs. Run /pl-setup once after installing.",
   "author": {
     "name": "parcelLab",

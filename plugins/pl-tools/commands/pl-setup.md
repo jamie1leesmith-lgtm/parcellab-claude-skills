@@ -7,11 +7,14 @@ failure and tell me what went wrong — never guess a value, and never skip ahea
 
 ## 1. Check the CLI is installed
 
-Run `parcellab --version`. If it is not found, stop and tell me the CLI needs
-installing (internal users get it from the `parcellab-cli` repo). Do not continue.
+Run `command -v parcellab`. If it prints nothing (non-zero exit), stop and tell me
+the CLI needs installing (internal users get it from the `parcellab-cli` repo). Do
+not continue.
 
 Note: the binary is `parcellab`. `parcellab-cli` is the repo it ships from, not a
-command.
+command. **Do not use `parcellab --version`** — that option does not exist and the
+CLI errors on it, which would look like the CLI is missing when it is installed
+and working.
 
 ## 2. Check I am authenticated
 
@@ -55,10 +58,15 @@ invisible until a write fails. There are 13 demo accounts side by side under
 
 If this step fails, say so plainly: setup is incomplete. Do not report success.
 
-## 6. Order API token — ask first
+## 6. Order API token — check first, then ask
 
-Only two skills need an Order API token: `create-order` and `order-lifecycle`.
-Ask me whether I will use them. If not, skip this step and tell me it was skipped.
+**First check whether I already have one:** if `$PARCELLAB_TOKEN` is set, say so
+and skip the rest of this step. Do not ask me to paste a credential I already
+have. (Mention that if it turns out to be wrong or expired — an unexplained `401`
+from an order skill — the fix is to re-run the `--token` command below.)
+
+If it is not set: only two skills need it, `create-order` and `order-lifecycle`.
+Ask whether I will use them. If not, skip this step and tell me it was skipped.
 
 If I will, print this command and ask me to run it myself:
 
