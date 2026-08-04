@@ -56,6 +56,7 @@ they deliberately don't share the `parcellab-` prefix used by the org's
 |-------|--------------|-----------------|
 | `pl-tools:create-order` | Creates a real order in your parcelLab account via the production Order API, filling in realistic dummy data | *"Push a test order to parcelLab for a UK delivery"* |
 | `pl-tools:order-lifecycle` | Simulates a full post-purchase journey: creates an untracked order, then pushes timed checkpoints (warehouse → carrier → delivery) so parcelLab fires the comms for each stage | *"Simulate the full journey for [brand]"* |
+| `pl-tools:shopify-seed` | Loads four of a prospect's real products — with their size and colour variants — into a Shopify dev store, priced so a size swap, an even cross-product swap, and an uneven swap that takes payment all demo correctly | *"Seed [prospect]'s products into my Shopify store"* |
 | `pl-tools:branded-template` | Builds a branded transactional email layout in your parcelLab account from a brand URL, with live preview in the desktop app | *"Create a parcelLab layout for www.nike.com"* |
 | `pl-tools:demo-request` | Creates a custom demo request from a prospect website URL — collects products, verifies images, submits to the Custom Demo Creator | *"Create a demo request for www.example.com"* |
 | `pl-tools:bug-investigation` | Investigates a product bug end to end: checks live config via the `parcellab` CLI, reproduces it in Claude-in-Chrome with real screenshot/recording capture, isolates root cause against sibling portals, and publishes a shareable bug report as an artifact, HTML file, and PDF — always *before* any mitigation, which needs express account-number-specific sign-off | *"Investigate this bug on [portal]"* |
@@ -229,6 +230,35 @@ Simulates a complete post-purchase journey: sources a real product from a brand 
    (`references/run-lifecycle.sh`); no other dependencies to install.
 
 See `references/status-codes.md` for the checkpoint status codes used.
+
+### pl-tools:shopify-seed
+
+Puts a prospect's own products into a Shopify **dev** store so an exchange demo uses
+products they actually sell.
+
+```
+seed acme.com's products into my Shopify store
+```
+
+Browses the prospect's site for four products of different types, keeps a couple of values
+from each variant axis the site exposes, and validates the images resolve. Then it prices
+them so every exchange demo works:
+
+- **a size swap inside one product** — the quickest even exchange, and the most common real
+  returns case
+- **an even swap across a matched pair** — different item, nothing to pay
+- **an uneven swap upward** — into something dearer, so the flow takes payment
+- **an uneven swap downward** where the catalogue allows one, for the refund case
+
+Real prices are kept whenever the catalogue already has a matching pair and a dearer item,
+which is the common case. Any adjustment is reported as `was → now`.
+
+Requires the Shopify CLI. First run confirms which of your authenticated dev stores to use
+and remembers it in `~/.claude/parcellab-shopify-seed.env`.
+
+Re-runs **archive** the previous prospect's products — tagged `pl-demo-seed` — rather than
+deleting them, so nothing is lost and the store does not accumulate the wrong brand's items
+as exchange targets.
 
 ### pl-tools:bug-investigation
 
