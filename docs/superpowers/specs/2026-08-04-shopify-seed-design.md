@@ -1,0 +1,289 @@
+# Design: `shopify-seed` — seed a prospect's own products into a Shopify dev store
+
+**Date:** 2026-08-04
+**Status:** approved, ready for planning
+**Source handoff:** `ParcelLab/Shopify Project/HANDOFF-prospect-product-seeding-skill.md`
+(in the `parcellab-workspace` repo — not this one)
+
+## Problem
+
+A Solutions Consultant demoing the parcelLab returns and exchanges flow wants to point at
+products the prospect actually sells: *"here's the jacket you sell — now imagine your customer
+wants to trade it for something else in your range."* Generic placeholder products break that.
+
+An existing three-product generic seed (`Shopify Project/seed/`) proved the `productSet`
+mutation works. This skill is a different job: take a prospect URL, get **their** products into
+a Shopify dev store, correctly shaped for both exchange flows, in one invocation — repeatably,
+for a different prospect every week, against a store that may still hold the last one's
+products.
+
+## Identity and location
+
+`plugins/pl-tools/skills/shopify-seed/`
+
+- Frontmatter `name: shopify-seed` — **must equal the directory name**, or the skill silently
+  drops out of the plugin inventory.
+- No `pl-` directory prefix; the `pl-tools:` prefix already namespaces it.
+- `description:` is trigger text, not a label. It spells out **parcelLab** and **Shopify** and
+  covers phrasings like *"seed a prospect's products into my Shopify demo store"*,
+  *"load [brand]'s products for an exchange demo"*, *"set up the Shopify store for [prospect]"*.
+- Built with `anthropic-skills:skill-creator`. Not hand-rolled, not copied from a sibling skill.
+- All internal paths use `${CLAUDE_PLUGIN_ROOT}`.
+
+Files:
+
+| Path | Purpose |
+|---|---|
+| `SKILL.md` | The workflow, terse |
+| `references/product-scrape.md` | Browser-pane snippets: name, price, image, sizes |
+| `references/mutation-template.md` | The verified `productSet` shape + archive mutation |
+The price/size/stock rule goes at the **plugin** level, not the skill level:
+
+| Path | Purpose |
+|---|---|
+| `plugins/pl-tools/scripts/shape_product_mix.py` | The price/stock/size rule, pure logic |
+| `plugins/pl-tools/scripts/tests/test_shape_product_mix.py` | stdlib `unittest` |
+
+That is where `pl_credentials.py` and its tests live, and it is the only location the documented
+`python3 -m unittest discover -s tests` command reaches. A skill-level `scripts/tests/` would be
+silently skipped by the repo's own test command.
+
+Audience knows parcelLab. The skill does not explain what a returns portal is. **Keep it
+terse** — the long-form drafts in the source repo were judged far too verbose.
+
+## Verified facts (established 2026-08-04, do not re-derive)
+
+Confirmed live against Shopify CLI **4.6.0** on macOS, and against the current Admin GraphQL
+docs. Some of it contradicts older docs and plausible priors.
+
+### CLI
+
+- **`shopify populate` does not exist.** Dropped after CLI 2.x. Never document it.
+- **`SHOPIFY_CLI_SKIP_UPDATE_CHECK` does not exist.** Invented in an earlier session and
+  propagated into docs as though mandatory. Setting it does nothing. The real control is
+  `shopify config autoupgrade off`.
+- Seeding goes through the `store` topic:
+  - `shopify store auth -s <store>.myshopify.com --scopes write_products,write_inventory`
+  - `shopify store execute -s <store>.myshopify.com --query-file f.graphql --variable-file f.json --allow-mutations`
+- `-s/--store` is required and takes the `myshopify.com` domain.
+- **`--allow-mutations` is required for any write.** Without it mutations are refused. This is a
+  useful safety property and the skill should say so.
+- `--query-file`/`--query` are mutually exclusive, as are `--variable-file`/`--variables`.
+- `shopify store auth` opens a **browser consent step** — warn the user.
+- `shopify store list` covers *organisation* stores and returns "No stores found" for a
+  directly-authenticated dev store. **`shopify store auth list`** is the one that lists
+  directly-authenticated stores, as a `Subdomain`/`Connected` table.
+- Also available: `shopify store graphiql`, `shopify store bulk`, `shopify store info`.
+
+### Install gotchas
+
+`brew install shopify-cli` alone fails — the formula is not in homebrew-core, and current
+Homebrew refuses to load it until the tap is trusted:
+
+```bash
+brew tap shopify/shopify
+brew trust shopify/shopify
+brew install shopify-cli
+```
+
+Turn off auto-upgrade **before anything else**. A self-upgrade fired mid-session on 2026-08-04,
+uninstalled the CLI, failed to install the replacement, and left a dangling symlink with no
+working `shopify` command:
+
+```bash
+shopify config autoupgrade off
+```
+
+### Mutation shape
+
+`productSet(synchronous: true, input: ProductSetInput!)`, called once per product with GraphQL
+aliases so one command creates all of them. Always request `userErrors { field message }` — a
+silent partial failure is worse than an error.
+
+Confirmed fields:
+
+- `ProductSetInput` — `title`, `status`, `tags`, `productOptions`, `variants`, `files`
+- `OptionSetInput` — `name`, `position`, `values`
+- `ProductVariantSetInput` — `price`, `published`, `optionValues`, `inventoryQuantities`, `file`
+- `VariantOptionValueInput` — `optionName`, `name`
+- `ProductSetInventoryInput` — `locationId`, `name` (use `"available"`), `quantity`
+- `FileSetInput` — `originalSource`, `alt`, `filename`, `contentType`, `duplicateResolutionMode`
+
+**Images resolve in the same mutation.** `ProductSetInput.files: [FileSetInput!]`, and
+`originalSource` explicitly accepts an external URL. `contentType` is optional — Shopify sniffs
+it during processing — but pass `IMAGE` for clarity. `ProductVariantSetInput.file` also exists;
+any variant file **must also appear in the product's `files` array**.
+
+## Workflow
+
+### Step 0 — Preflight
+
+`command -v shopify`, then `shopify version`. If missing, the tap/trust/install sequence above.
+Then `shopify config autoupgrade off`, unconditionally, before anything else.
+
+### Step 1 — Resolve the destination store: confirm once, then remember
+
+1. Read `~/.claude/parcellab-shopify-seed.env` for `SHOPIFY_DEMO_STORE`.
+2. **Stored value present, no override:** use it, state it plainly in output, do not re-ask.
+3. **No stored value:** `shopify store auth list`.
+   - Exactly one store → confirm it **by name** and get an explicit yes.
+   - Several → ask which.
+   - None → `shopify store auth -s <store> --scopes write_products,write_inventory`, warning
+     that a browser consent window will open.
+4. Persist the confirmed store to `~/.claude/parcellab-shopify-seed.env`.
+5. Change it only when the user names a different store.
+
+A config file, not an env var: env vars are read only at app startup, so a value the skill
+writes there stays invisible until a full ⌘Q restart. This follows the existing
+`~/.claude/parcellab-demo-request.env` precedent.
+
+**Dev stores only**, stated at the confirmation. Never a production merchant store.
+
+### Step 2 — Resolve the location ID automatically
+
+```
+shopify store execute -s <store> --query '{ locations(first: 5) { nodes { id name isActive } } }'
+```
+
+Read-only, so no `--allow-mutations`. Take the first active location. This returns the
+`gid://shopify/Location/…` form, which is exactly what `ProductSetInventoryInput.locationId`
+expects — the user never hunts a numeric ID out of an Admin URL. That manual find-and-replace
+was the clumsiest part of the original generic seed.
+
+### Step 3 — Collect the prospect's products
+
+Uses Claude Code's built-in **Browser pane** (`mcp__Claude_Browser__*`), matching
+`demo-request`, `branded-template` and `order-lifecycle`. Not Claude-in-Chrome, not Playwright.
+
+`demo-request`'s image-scoring snippet is proven and is reused verbatim. But it collects only
+`{name, imageUrl, pdpUrl}`, and this skill also needs **price** and **sizes** — so the extended
+snippet lives in this skill's `references/product-scrape.md`. **`demo-request` is not
+modified.**
+
+Price extraction, in priority order:
+
+1. JSON-LD `application/ld+json` → `offers.price` (most reliable)
+2. `meta[property="product:price:amount"]`
+3. DOM price text as a last resort
+
+Four products, matching `demo-request`.
+
+Image validation **reuses `demo-request`'s existing script** rather than raw `curl`:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/check_images.mjs <payload.json>
+```
+
+Cross-skill reuse inside the same plugin, so `${CLAUDE_PLUGIN_ROOT}` resolves correctly and
+`demo-request` stays untouched. It is better than a `curl -sIL` check for this skill's purpose
+because it **retries HEAD as a ranged GET on 403/405** — which is exactly the hotlink- and
+referer-protected CDN case that later breaks Shopify's own server-side fetch in Step 8. It
+requires exactly 4 products (matching this design), emits JSON per image, and exits non-zero if
+any fails.
+
+Inherit `demo-request`'s other edge cases: consent modals (**decline non-essential**), lazy-loaded
+images (scroll first), bot protection (say so and stop, don't work around it), login walls
+(out of scope).
+
+### Step 4 — Shape the mix for both exchange flows
+
+The constraint that makes the demo work, and the easy one to miss:
+
+- **≥2 products at the same price** — otherwise an *even* exchange has no valid target.
+- **≥1 product at a different price** — otherwise an *uneven* exchange has nothing to show
+  (that flow displays the balance to pay or refund).
+- **Non-zero stock on every variant** — a zero-stock variant is invisible as an exchange
+  target, so the demo silently shows fewer options and looks broken.
+- **One shared variant axis** so like-for-like size swaps work.
+
+Rule, applied by `shape_product_mix.py`:
+
+1. Normalise all prices to 2dp.
+2. A natural matching pair already exists → **keep every real price untouched.**
+3. No pair → take the two *closest*-priced products and set one to the other's price. Smallest
+   possible change, least visible in the demo.
+4. All prices already identical → nudge exactly one, so the uneven flow has a target.
+5. Size axis: scraped size values if they are consistent across products, else `S`/`M`/`L`.
+6. Stock: a fixed non-zero quantity on every variant.
+
+Every adjustment is reported as `was → now`. Prices are the one place real prospect data may be
+altered; the rule keeps that minimal and always disclosed.
+
+### Step 5 — Approval gate
+
+| # | Product | Real price | Seeded price | Adjusted | Sizes | Image |
+|---|---|---|---|---|---|---|
+
+Plus the destination store, by name. **No writes before an explicit yes.**
+
+### Step 6 — Archive the previous prospect's products
+
+Every seeded product carries `pl-demo-seed` plus `pl-prospect-<handle>` for traceability.
+
+On re-run, query `products(first: 50, query: "tag:pl-demo-seed status:active")` and set those to
+`ARCHIVED`. Archived products disappear from the storefront and the returns portal but nothing
+is destroyed — recoverable by un-archiving. Report what was archived, by name.
+
+**Verify before writing:** `productUpdate` changed its argument from `input:` to `product:` in a
+recent API version. Confirm the current shape against the live schema — do not guess. Uses
+`ProductStatus.ARCHIVED`. Requires `--allow-mutations`.
+
+### Step 7 — Push
+
+Generate the mutation and variable files into the session scratchpad (products differ every
+run, so these are not static shipped files — `references/mutation-template.md` holds the shape).
+One `shopify store execute … --allow-mutations` creates all four via aliases. Parse `userErrors`
+per alias; anything non-empty → report it and stop.
+
+### Step 8 — Verify the images actually landed
+
+**Empty `userErrors` does not mean the images arrived.** Shopify fetches `originalSource`
+server-side and media processing is asynchronous even under `synchronous: true`.
+
+So re-query the seeded products' `media { nodes { status, mediaErrors { details } } }`. Retry
+once after a short wait on `PROCESSING`. Name any product left without an image and suggest
+supplying a direct image URL.
+
+This step is what catches hotlink- or referer-protected prospect CDNs — the failure mode most
+likely to embarrass someone mid-demo, and invisible without it.
+
+### Step 9 — Report
+
+- Each product with its seeded price and Admin link.
+- The demos now available: which pair is the **even** exchange, and which pair is **uneven**
+  with what balance.
+- **No currency symbols** in any quoted figure. A dev store set to a non-GBP or non-USD
+  currency displays different symbols, so demo scripts must not hard-code one.
+
+## Testing
+
+Repo convention is stdlib `unittest`; `pytest` is not installed and nothing is `pip install`ed.
+
+```bash
+cd plugins/pl-tools/scripts && python3 -m unittest discover -s tests -v
+```
+
+`shape_product_mix.py` is pure logic (stdin JSON → stdout JSON) and carries real edge cases, so
+it is unit tested: natural matching pair preserved; no pair → closest two converge; all-identical
+→ exactly one nudged; ties; fewer than three products; price normalisation to 2dp; non-zero stock
+on every variant; the size axis shared across products.
+
+Browser and CLI orchestration is prose in `SKILL.md`, not scripted, and is verified by a live
+run against `parcellab-demo-jls`.
+
+## Constraints
+
+- **Real writes to a real Shopify store.** Dev stores only, destination confirmed by name
+  before mutating, never a production merchant store.
+- `--allow-mutations` is a genuine safety gate — call that out rather than hiding it.
+- GitHub work goes to the personal account `jamie1leesmith-lgtm` only, never the `parcelLab`
+  org. Check `git remote -v` before pushing.
+- Release is: commit, push to `main`, tell the team to run `/pl-update`. **Do not add a
+  `version` field to `pl-tools`** — its version resolves to the git SHA deliberately.
+
+## Definition of done
+
+One invocation takes a prospect URL, produces a product mix valid for both even and uneven
+exchange demos with real images and stock on every variant, and loads it into a named Shopify
+dev store — location ID resolved automatically, previous prospect's products archived, images
+verified as actually present.
