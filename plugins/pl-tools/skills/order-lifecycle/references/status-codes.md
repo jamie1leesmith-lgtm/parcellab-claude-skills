@@ -120,15 +120,40 @@ verify attachment via a lookup before trusting a new sequence.
 
 ## Sequences
 
-- **happy** (default, proven, no delay): InTransit, OutForDelivery, Delivered
-- **happy-with-delay** (only if the user explicitly wants an initial delay on
-  an otherwise-successful shipment): WarehouseDelay, InTransit, OutForDelivery, Delivered
-- **failed-attempt** (untested): InTransit, OutForDelivery, FailedAttempt-NewAttemptNextDay, OutForDelivery, Delivered
-- **exception** (untested): InTransit, Exception-Notified, InTransit, OutForDelivery, Delivered
-- **return** (untested): InTransit, OutForDelivery, FailedAttempt-NewAttemptNextDay, ReturnToSender-NotCollected, ReturnDelivered
-- **partial-delay** (for the "stuck" shipment in a split-shipment demo): send
-  only the first 1-2 stages, then stop emitting events for that tracking —
-  it stays live at whatever status it last reached.
-  - Single-stage (proven): `WarehouseDelay` only.
+The three the skill offers at **Gate B**:
+
+- **happy** (proven, no delay): `InTransit`, `OutForDelivery`, `Delivered`
+- **unhappy** (proven, ends stuck): `InTransit`, `WarehouseDelay` — then stop.
+  The parcel is delayed and never arrives; the last event stands as the live state
+  indefinitely and `is_delayed` becomes `true`.
+- **custom**: derived from the account's Journey config — see *Custom path —
+  journey introspection* in `SKILL.md`.
+
+**Why `unhappy` is two events, not three.** Two alternatives were considered and
+rejected, recorded so they are not re-proposed:
+
+- `InTransit`, `OutForDelivery`, `WarehouseDelay` — incoherent. A *warehouse* delay
+  cannot follow a parcel already out for delivery.
+- `InTransit`, `OutForDelivery`, `FailedAttempt-NewAttemptNextDay` — a better story
+  and it matches the happy path's three-event shape, but `FailedAttempt-*` is
+  unverified and may `204` without attaching. Reachable via the custom path, where
+  the risk is labelled.
+
+Other sequences, available through the custom path — **all untested**, so verify
+attachment with a lookup before trusting any of them:
+
+- **happy-with-delay**: `WarehouseDelay`, `InTransit`, `OutForDelivery`, `Delivered`
+  — all four statuses are individually proven, but this ends *delivered*, so it
+  demonstrates recovery rather than failure.
+- **failed-attempt**: `InTransit`, `OutForDelivery`, `FailedAttempt-NewAttemptNextDay`, `OutForDelivery`, `Delivered`
+- **exception**: `InTransit`, `Exception-Notified`, `InTransit`, `OutForDelivery`, `Delivered`
+- **return**: `InTransit`, `OutForDelivery`, `FailedAttempt-NewAttemptNextDay`, `ReturnToSender-NotCollected`, `ReturnDelivered`
+- **locker collection**: `InTransit`, `OutForDelivery`, `Delivered-ParcelLocker` —
+  maps to a *Collected from Locker or Shop* trigger listening on
+  `eventTypes: ["ParcelLocker"]`, so the correspondence is *inferred*, not proven.
+
+- **partial-delay** (for the "stuck" shipment in a split-shipment demo): send only
+  the first 1-2 stages, then stop emitting events for that tracking.
+  - Single-stage (proven): `WarehouseDelay` only. This is what **unhappy** uses.
   - Two-stage (partly untested): `WarehouseDelay` (proven), then
     `Exception-Notified` (untested — verify via lookup after running).
