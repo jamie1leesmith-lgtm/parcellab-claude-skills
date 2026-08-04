@@ -183,6 +183,80 @@ displaying one, because the sequence itself put a delay first. Only add
 Attachment is asynchronous — after the driver finishes, verify with a lookup
 (see *Reporting*) rather than assuming immediate attachment.
 
+## Gate B — scenario selection
+
+**Ask every run. There is no default and no inferring from context.** The point of
+this skill is demonstrating post-purchase comms, so the user must see which comms
+will fire before any are sent.
+
+Two questions:
+
+1. **One shipment or a split?** A split shipment runs two trackings with
+   independent outcomes — see *Split shipments*.
+2. **Which scenario per shipment?** Three options:
+
+### 1. Happy path (proven)
+
+```
+InTransit → OutForDelivery → Delivered
+```
+
+All three statuses are proven to attach and fire. This is the default *offer*, not
+a default *choice* — still ask.
+
+### 2. Unhappy path (proven)
+
+```
+InTransit → WarehouseDelay      (then stop)
+```
+
+Both statuses are proven. The parcel is delayed and never arrives: stop emitting
+events and the last one stands as the live state indefinitely, exactly as
+*Split shipments* step 5 describes. `is_delayed` becomes `true`.
+
+Do **not** "improve" this to a three-event shape. Two alternatives were considered
+and rejected:
+
+- `InTransit → OutForDelivery → WarehouseDelay` is incoherent — a *warehouse* delay
+  cannot follow a parcel already out for delivery.
+- `InTransit → OutForDelivery → FailedAttempt-NewAttemptNextDay` tells a better
+  story, but `FailedAttempt-*` is unverified and may `204` without ever attaching.
+  It is reachable through the custom path, where its risk is labelled.
+
+### 3. Custom path
+
+Derived from the account's own Journey configuration — see
+*Custom path — journey introspection*.
+
+### What to show the user at this gate
+
+List the events in order, and the comm each is expected to fire. These mappings are
+empirically confirmed on account 1626718 with a standard delivery-notification
+setup:
+
+| Event | Expected comm | Journey trigger |
+|---|---|---|
+| *(order creation)* | `order_confirmation_*` | Order Confirmed |
+| `InTransit` | `shipping_confirmation_*` | Package dispatched from warehouse |
+| `OutForDelivery` | `out_for_delivery_*` | Package out for delivery |
+| `Delivered` | `package_delivered_*` | Delivered (parcel delivered to recipient) |
+| `WarehouseDelay` | delay comm | Package delayed in transit |
+
+Say plainly that comms depend on the account's Journey config, and that this table
+reflects a standard setup rather than a guarantee.
+
+For a split shipment, show this per shipment, labelled A and B.
+
+### Split shipments are chosen here, not at Gate C
+
+A split is a decision about events and comms, so it belongs to Gate B. The
+canonical demo is one shipment on the happy path and one stuck at a delay, side by
+side — expressible directly as *"A: happy, B: unhappy"*.
+
+**Gate C never offers split shipments.** If it did, a split chosen there would
+strand the single scenario chosen here with nothing to say about the second
+shipment.
+
 ## Split shipments (multiple trackings per order)
 
 An order can have two (or more) trackings, each progressing through its own
