@@ -111,8 +111,13 @@ Confirmed fields:
 
 **Images resolve in the same mutation.** `ProductSetInput.files: [FileSetInput!]`, and
 `originalSource` explicitly accepts an external URL. `contentType` is optional — Shopify sniffs
-it during processing — but pass `IMAGE` for clarity. `ProductVariantSetInput.file` also exists;
-any variant file **must also appear in the product's `files` array**.
+it during processing — but pass `IMAGE` for clarity.
+
+**One image per product, and none per variant.** `ProductVariantSetInput.file` exists (and any
+variant file must also appear in the product's `files` array), but this skill does not use it:
+a single product-level image is enough for the demo, and every variant of a product shares it.
+That keeps the mutation to one `files` entry per product and removes the need to source a
+matching photo per colour.
 
 ## Workflow
 
@@ -166,7 +171,18 @@ Price extraction, in priority order:
 2. `meta[property="product:price:amount"]`
 3. DOM price text as a last resort
 
-Four products, matching `demo-request`.
+**Four products of four different types** — a jumper, jeans, shoes, a jacket. Not four
+jumpers. The variety is what makes the cross-product exchange look like a real decision.
+
+**For each product, pull a couple of values from each variant axis the site exposes** —
+typically Size and Colour, or shoe size. A product needs **at least two variants** so a
+small→medium swap demonstrates an even exchange inside that single product, which is the
+most common real returns case and the fastest thing to show.
+
+- Take up to 3 values per axis, minimum 2. A 3×2 Size/Colour matrix is 6 variants.
+- Drop any axis the site exposes with only one value — a single-value option is noise.
+- If no axis can be scraped at all, fall back to one `Size` axis of `S`/`M`/`L`.
+- **Never fabricate colour values.** Pull the real ones or omit the axis.
 
 Image validation **reuses `demo-request`'s existing script** rather than raw `curl`:
 
@@ -187,34 +203,48 @@ images (scroll first), bot protection (say so and stop, don't work around it), l
 
 ### Step 4 — Shape the mix for both exchange flows
 
-The constraint that makes the demo work, and the easy one to miss:
+Four demos have to be possible when this finishes. Each needs a different thing to be true:
 
-- **≥2 products at the same price** — otherwise an *even* exchange has no valid target.
-- **≥1 product at a different price** — otherwise an *uneven* exchange has nothing to show
-  (that flow displays the balance to pay or refund).
-- **Non-zero stock on every variant** — a zero-stock variant is invisible as an exchange
-  target, so the demo silently shows fewer options and looks broken.
-- **One shared variant axis** so like-for-like size swaps work.
+| Demo | Requirement |
+|---|---|
+| **Even, inside one product** — swap S for M | ≥2 variants on a product (Step 3) |
+| **Even, across products** — swap for a different item, nothing to pay | 2 products at the **same** price |
+| **Uneven upward** — customer **pays** the balance | ≥1 product priced **above** that pair |
+| **Uneven downward** — customer is refunded the difference | a product priced **below** the pair *(nice to have)* |
 
-Rule, applied by `shape_product_mix.py`:
+The upward case is the one with a hard directional requirement: exchanging into something
+*more* expensive is what exercises taking payment. A rule that only guaranteed "some other
+price" could satisfy itself by exchanging downward and never show the payment step at all.
+
+And underneath all four: **non-zero stock on every variant.** A zero-stock variant is invisible
+as an exchange target, so the demo silently shows fewer options than expected and looks broken.
+
+Rule, applied by `shape_product_mix.py` to exactly four products:
 
 1. Normalise all prices to 2dp.
-2. A natural matching pair already exists → **keep every real price untouched.**
-3. No pair → take the two *closest*-priced products and set one to the other's price. Smallest
-   possible change, least visible in the demo.
-4. All prices already identical → nudge exactly one, so the uneven flow has a target.
-5. Size axis: scraped size values if they are consistent across products, else `S`/`M`/`L`.
-6. Stock: a fixed non-zero quantity on every variant.
+2. Sort by price ascending. Consider only the two *adjacent* pairs among the three cheapest —
+   this deliberately excludes the most expensive product from the pair, which is what keeps
+   something available above it.
+3. Take whichever of those two pairs has the smaller gap; ties go to the cheaper pair. Converge
+   it by lowering the higher price to the lower. A pair that already matches has a gap of zero,
+   so it wins automatically and **nothing is altered**.
+4. The most expensive product must now be strictly above the pair price. If it is not (every
+   price was identical), nudge it up by `10.00`.
+5. The remaining product is left alone. If it happens to sit below the pair price, the downward
+   refund demo is available too — report that, don't engineer it.
+6. Stock: a fixed non-zero quantity on every variant in the matrix.
 
-Every adjustment is reported as `was → now`. Prices are the one place real prospect data may be
-altered; the rule keeps that minimal and always disclosed.
+Consequences worth stating: a catalogue that already contains a natural pair and a dearer item
+is **not modified at all**, which is the common case. At most two prices ever change, and every
+change is reported as `was → now`. Prices are the one place real prospect data may be altered.
 
 ### Step 5 — Approval gate
 
-| # | Product | Real price | Seeded price | Adjusted | Sizes | Image |
-|---|---|---|---|---|---|---|
+| # | Product | Type | Real price | Seeded price | Adjusted | Variants | Image |
+|---|---|---|---|---|---|---|---|
 
-Plus the destination store, by name. **No writes before an explicit yes.**
+Plus the destination store by name, the four demos the mix now supports, and any duplicate
+product types worth swapping out. **No writes before an explicit yes.**
 
 ### Step 6 — Archive the previous prospect's products
 
@@ -249,9 +279,15 @@ likely to embarrass someone mid-demo, and invisible without it.
 
 ### Step 9 — Report
 
-- Each product with its seeded price and Admin link.
-- The demos now available: which pair is the **even** exchange, and which pair is **uneven**
-  with what balance.
+- Each product with its type, seeded price, variant count and Admin link.
+- **The four demos now available, named explicitly**, taken from the shaping script's own
+  output rather than recomputed:
+  - even inside one product — which product, and which size swap
+  - even across products — which pair
+  - uneven upward — which exchange, and the balance the customer **pays**
+  - uneven downward — which exchange and refund, or that it is unavailable
+- Any price that was adjusted, as `was → now`, so whoever runs the demo knows which figures
+  are not the prospect's real prices.
 - **No currency symbols** in any quoted figure. A dev store set to a non-GBP or non-USD
   currency displays different symbols, so demo scripts must not hard-code one.
 
@@ -264,9 +300,23 @@ cd plugins/pl-tools/scripts && python3 -m unittest discover -s tests -v
 ```
 
 `shape_product_mix.py` is pure logic (stdin JSON → stdout JSON) and carries real edge cases, so
-it is unit tested: natural matching pair preserved; no pair → closest two converge; all-identical
-→ exactly one nudged; ties; fewer than three products; price normalisation to 2dp; non-zero stock
-on every variant; the size axis shared across products.
+it is unit tested:
+
+- a natural pair with a dearer product → **nothing altered at all**
+- all four distinct → the closest of the two eligible pairs converges downward
+- all four identical → pair untouched, most expensive nudged up
+- the most expensive product tied with the pair → nudged above it
+- the pair never includes the most expensive product, so something is always above it
+- ties in gap resolve to the cheaper pair
+- the downward refund demo is reported when a product sits below the pair, and reported as
+  unavailable when none does
+- price normalisation: currency symbols, thousands commas, decimal commas, 2dp rounding,
+  unparseable input raising
+- every variant in the matrix carries non-zero stock
+- variant matrix: two axes produce the cartesian product; a single-value axis is dropped; no
+  axis at all falls back to `S`/`M`/`L`; every product ends with ≥2 variants
+- duplicate product types are surfaced as a warning, not a failure
+- anything other than exactly four products raises
 
 Browser and CLI orchestration is prose in `SKILL.md`, not scripted, and is verified by a live
 run against `parcellab-demo-jls`.
@@ -283,7 +333,9 @@ run against `parcellab-demo-jls`.
 
 ## Definition of done
 
-One invocation takes a prospect URL, produces a product mix valid for both even and uneven
-exchange demos with real images and stock on every variant, and loads it into a named Shopify
-dev store — location ID resolved automatically, previous prospect's products archived, images
-verified as actually present.
+One invocation takes a prospect URL and loads four of that prospect's products — four different
+types, each with at least two real variants, one image each, and stock on every variant — into a
+named Shopify dev store, priced so that all of these work: a size swap inside one product, an
+even swap across a matched pair, and an uneven swap upward that makes the customer **pay** a
+balance. Location ID resolved automatically, the previous prospect's products archived, and
+images verified as actually present rather than assumed.

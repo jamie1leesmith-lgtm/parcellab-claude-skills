@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a `pl-tools` skill that takes a prospect URL and loads four of that prospect's real products into a Shopify dev store, shaped so both the even and uneven parcelLab exchange demos work.
+**Goal:** Build a `pl-tools` skill that takes a prospect URL and loads four of that prospect's real products — four different types, each with real variants — into a Shopify dev store, priced so a size swap, an even cross-product swap, and an uneven swap that takes payment all demo correctly.
 
-**Architecture:** One `SKILL.md` carries the browser-and-CLI workflow as prose; two `references/` files hold the scrape snippets and the GraphQL templates; one pure-logic Python script (`shape_product_mix.py`) owns the price/size/stock rule and is unit tested. Image validation reuses `demo-request`'s existing `check_images.mjs` rather than reimplementing it. Products reach Shopify through a single aliased `productSet` call via `shopify store execute --allow-mutations`.
+**Architecture:** One `SKILL.md` carries the browser-and-CLI workflow as prose; two `references/` files hold the scrape snippets and the GraphQL templates; one pure-logic Python script (`shape_product_mix.py`) owns the price rule and the variant matrix and is unit tested. Image validation reuses `demo-request`'s existing `check_images.mjs`. Products reach Shopify through a single aliased `productSet` call via `shopify store execute --allow-mutations`.
 
-**Tech Stack:** Claude Code skill (markdown), Python 3 stdlib (`unittest`, `decimal`), Shopify CLI 4.6.0, Shopify Admin GraphQL 2026-07, Claude Code Browser pane (`mcp__Claude_Browser__*`).
+**Tech Stack:** Claude Code skill (markdown), Python 3 stdlib (`unittest`, `decimal`, `itertools`), Shopify CLI 4.6.0, Shopify Admin GraphQL 2026-07, Claude Code Browser pane (`mcp__Claude_Browser__*`).
 
 **Spec:** `docs/superpowers/specs/2026-08-04-shopify-seed-design.md`
 
@@ -19,6 +19,12 @@ Every task's requirements implicitly include this section.
 - **`description:` is trigger text, not a label.** Keep the word **parcelLab** spelled out.
 - **All internal file references use `${CLAUDE_PLUGIN_ROOT}`.** Never `~/.claude/skills/…`, never a path relative to this repo. Installed users run from `~/.claude/plugins/cache/parcellab-skills/pl-tools/<version>/`.
 - **Tests are stdlib `unittest`.** `pytest` is not installed. Never `pip install`. Run with: `cd plugins/pl-tools/scripts && python3 -m unittest discover -s tests -v`
+- **Exactly four products, of four different types.** Not four jumpers. `check_images.mjs` also hard-requires exactly 4.
+- **Every product needs ≥2 variants.** A size swap inside one product is the fastest even-exchange demo and the most common real returns case.
+- **One image per product, none per variant.** Every variant of a product shares the product image. Do not use `ProductVariantSetInput.file`.
+- **Non-zero stock on every variant in the matrix.** A zero-stock variant is invisible as an exchange target, so the demo silently shows fewer options and looks broken.
+- **The uneven demo must be able to go *upward*** — one product priced above the matched pair, so the flow exercises **taking payment**. A merely "different" price is not sufficient; exchanging downward only ever shows a refund.
+- **Never fabricate colour values.** Pull real ones or omit the axis.
 - **Never document `shopify populate`** — it does not exist, dropped after CLI 2.x.
 - **Never document `SHOPIFY_CLI_SKIP_UPDATE_CHECK`** — it is not a real environment variable. The real control is `shopify config autoupgrade off`.
 - **`--allow-mutations` is required** on every `shopify store execute` that writes. Reads must omit it.
@@ -30,24 +36,35 @@ Every task's requirements implicitly include this section.
 - **GitHub: personal account `jamie1leesmith-lgtm` only.** Never the `parcelLab` org. Check `git remote -v` before pushing.
 - **Keep the skill terse.** The audience already knows parcelLab; do not explain what a returns portal is.
 
+## The four demos this must produce
+
+Every design decision below traces to one of these. Stated once here so no task loses sight of the point.
+
+| Demo | What makes it possible |
+|---|---|
+| **Even, inside one product** — swap S for M | ≥2 variants per product |
+| **Even, across products** — swap item, nothing to pay | 2 products at the **same** price |
+| **Uneven upward** — customer **pays** the balance | ≥1 product priced **above** that pair |
+| **Uneven downward** — customer is refunded | a product **below** the pair *(nice to have, never engineered)* |
+
 ## File Structure
 
 | Path | Responsibility | Task |
 |---|---|---|
-| `plugins/pl-tools/scripts/shape_product_mix.py` | Price/size/stock rule. Pure logic, stdin JSON → stdout JSON. | 1 |
+| `plugins/pl-tools/scripts/shape_product_mix.py` | Price rule + variant matrix. Pure logic, stdin JSON → stdout JSON. | 1 |
 | `plugins/pl-tools/scripts/tests/test_shape_product_mix.py` | `unittest` for the above. | 1 |
 | `plugins/pl-tools/skills/shopify-seed/SKILL.md` | The workflow: preflight, store, location, collect, shape, approve, archive, push, verify, report. | 2–5 |
-| `plugins/pl-tools/skills/shopify-seed/references/product-scrape.md` | Browser-pane snippets: name, price, image, sizes. | 3 |
-| `plugins/pl-tools/skills/shopify-seed/references/mutation-template.md` | `productSet` seed shape, archive query/mutation, media verification query. | 4 |
+| `plugins/pl-tools/skills/shopify-seed/references/product-scrape.md` | Browser-pane snippets: name, type, price, image, variant axes. | 3 |
+| `plugins/pl-tools/skills/shopify-seed/references/mutation-template.md` | `productSet` seed shape, archive mutation, media verification query. | 4 |
 | `.claude-plugin/marketplace.json` | Plugin description: five skills → six. | 6 |
 | `plugins/pl-tools/.claude-plugin/plugin.json` | Same. | 6 |
 | `README.md` | Skill table row + detail section. | 6 |
 
 ---
 
-### Task 1: The price/size/stock rule
+### Task 1: The price rule and the variant matrix
 
-The one piece of real logic. Pure function, no I/O beyond stdin/stdout, so it is fully unit testable without Shopify or a browser.
+The only real logic in the skill. Pure functions, no I/O beyond stdin/stdout, so it is fully unit testable without Shopify or a browser.
 
 Lives at **plugin** level (`plugins/pl-tools/scripts/`), not skill level, because that is the only location the repo's documented `unittest discover -s tests` command reaches — a skill-level `scripts/tests/` would be silently skipped.
 
@@ -59,18 +76,22 @@ Lives at **plugin** level (`plugins/pl-tools/scripts/`), not skill level, becaus
 - Consumes: nothing (first task).
 - Produces, all imported by the test module and invoked by `SKILL.md` Step 4:
   - `normalise_price(value: str | float | int) -> Decimal` — 2dp, `ROUND_HALF_UP`. Raises `ValueError` if unparseable.
-  - `shape_prices(prices: list[Decimal]) -> tuple[list[Decimal], list[int]]` — returns `(new_prices, adjusted_indices)`. Raises `ValueError` if fewer than 3 prices.
-  - `resolve_sizes(products: list[dict], default: tuple[str, ...] = ("S", "M", "L")) -> list[str]`
+  - `shape_prices(prices: list[Decimal]) -> tuple[list[Decimal], list[int], dict]` — returns `(new_prices, adjusted_indices, roles)` where `roles` is `{"pair": [i, j], "higher": k, "lower": m | None}`. Raises `ValueError` unless given exactly 4 prices.
+  - `resolve_options(product: dict) -> list[dict]` — returns `[{"name": str, "values": list[str]}]`, always at least one axis with ≥2 values.
+  - `build_variants(options: list[dict], price: Decimal, quantity: int, location_id: str) -> list[dict]`
   - `build_mix(payload: dict) -> dict`
-  - `main() -> None` — reads stdin JSON, writes stdout JSON.
+  - `main() -> None` — reads stdin JSON, writes stdout JSON, exits 1 on `ValueError`/`KeyError`.
 - CLI contract: `python3 shape_product_mix.py < in.json > out.json`
 
-Input payload shape:
+Input payload:
 
 ```json
 {
   "products": [
-    {"name": "Alpine Shell Jacket", "price": "129.00", "image_url": "https://…/a.jpg", "pdp_url": "https://…", "sizes": ["S", "M", "L"]}
+    {"name": "Alpine Shell Jacket", "product_type": "Jacket", "price": "129.00",
+     "image_url": "https://…/a.jpg", "pdp_url": "https://…",
+     "options": [{"name": "Size", "values": ["S", "M", "L"]},
+                 {"name": "Colour", "values": ["Black", "Navy"]}]}
   ],
   "location_id": "gid://shopify/Location/123456",
   "prospect_handle": "acme",
@@ -78,29 +99,38 @@ Input payload shape:
 }
 ```
 
-Output payload shape:
+Output payload:
 
 ```json
 {
   "products": [
-    {"name": "…", "original_price": "129.00", "price": "129.00", "adjusted": false,
-     "image_url": "…", "sizes": ["S","M","L"], "tags": ["pl-demo-seed", "pl-prospect-acme"],
-     "stock_per_variant": 25}
+    {"name": "…", "product_type": "Jacket", "original_price": "129.00", "price": "129.00",
+     "adjusted": false, "image_url": "…", "pdp_url": "…",
+     "options": [{"name": "Size", "values": ["S", "M", "L"]}],
+     "variants": [{"option_values": [{"option_name": "Size", "name": "S"}],
+                   "price": "129.00", "quantity": 25,
+                   "location_id": "gid://shopify/Location/123456"}],
+     "variant_count": 3, "tags": ["pl-demo-seed", "pl-prospect-acme"]}
   ],
   "adjustments": [{"name": "…", "from": "…", "to": "…"}],
-  "even_pair": ["…", "…"],
-  "uneven_pair": ["…", "…"],
-  "uneven_balance": "35.00",
+  "warnings": [],
+  "demos": {
+    "in_product_even": {"product": "…", "option": "Size", "swap": "S → M"},
+    "cross_product_even": ["…", "…"],
+    "uneven_upward": {"from": "…", "to": "…", "balance": "35.00"},
+    "uneven_downward": {"from": "…", "to": "…", "refund": "20.00"}
+  },
   "location_id": "gid://shopify/Location/123456"
 }
 ```
 
-The rule:
+The price rule, and why it is shaped this way:
 
 1. Normalise every price to 2dp.
-2. A matching pair already exists **and** some other price differs → change nothing.
-3. All prices identical → nudge exactly one (the last) up by `10.00`, so the uneven flow has a target.
-4. Otherwise (all distinct) → take the two closest-priced products and lower the higher one to the lower's price. Ties resolve to the lowest-index pair. Never inflate.
+2. Sort ascending. Consider only the two **adjacent pairs among the three cheapest** — `(0,1)` and `(1,2)`. This deliberately excludes the most expensive product from the pair, which is what guarantees something remains above it for the upward demo.
+3. Take whichever pair has the smaller gap; ties go to the cheaper pair. Converge it by lowering the higher price to the lower. **A pair that already matches has a gap of zero, so it wins automatically and nothing is altered.**
+4. The most expensive product must now be strictly above the pair price. If it is not — which only happens when every price was identical — nudge it up by `10.00`.
+5. The remaining product is left alone. If it happens to sit below the pair price, the downward refund demo is available; report that, never engineer it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -118,8 +148,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from shape_product_mix import (
     build_mix,
+    build_variants,
     normalise_price,
-    resolve_sizes,
+    resolve_options,
     shape_prices,
 )
 
@@ -130,13 +161,19 @@ def d(value):
     return Decimal(value)
 
 
+def prices(*values):
+    return [d(v) for v in values]
+
+
 class NormalisePriceTests(unittest.TestCase):
     def test_strips_currency_symbols(self):
         self.assertEqual(normalise_price("£129.99"), d("129.99"))
         self.assertEqual(normalise_price("$28.00"), d("28.00"))
+
+    def test_handles_decimal_comma(self):
         self.assertEqual(normalise_price("€64,50"), d("64.50"))
 
-    def test_strips_thousands_separator(self):
+    def test_handles_thousands_comma(self):
         self.assertEqual(normalise_price("1,299.00"), d("1299.00"))
 
     def test_pads_to_two_decimal_places(self):
@@ -156,147 +193,264 @@ class NormalisePriceTests(unittest.TestCase):
 
 
 class ShapePricesTests(unittest.TestCase):
-    def test_natural_pair_is_left_untouched(self):
-        prices = [d("28.00"), d("28.00"), d("64.00")]
-        new, adjusted = shape_prices(prices)
-        self.assertEqual(new, prices)
+    def test_natural_pair_with_dearer_product_is_untouched(self):
+        original = prices("28.00", "28.00", "64.00", "90.00")
+        new, adjusted, roles = shape_prices(list(original))
+        self.assertEqual(new, original)
         self.assertEqual(adjusted, [])
+        self.assertEqual(sorted(roles["pair"]), [0, 1])
+        self.assertEqual(roles["higher"], 3)
 
-    def test_all_distinct_converges_closest_pair_downward(self):
-        new, adjusted = shape_prices([d("28.00"), d("32.00"), d("64.00")])
-        self.assertEqual(new, [d("28.00"), d("28.00"), d("64.00")])
+    def test_all_distinct_converges_closest_eligible_pair_downward(self):
+        new, adjusted, roles = shape_prices(prices("28.00", "32.00", "64.00", "90.00"))
+        self.assertEqual(new, prices("28.00", "28.00", "64.00", "90.00"))
         self.assertEqual(adjusted, [1])
+        self.assertEqual(sorted(roles["pair"]), [0, 1])
 
-    def test_tie_resolves_to_lowest_index_pair(self):
-        new, adjusted = shape_prices([d("10.00"), d("20.00"), d("30.00")])
-        self.assertEqual(new, [d("10.00"), d("10.00"), d("30.00")])
-        self.assertEqual(adjusted, [1])
-
-    def test_all_identical_nudges_exactly_one(self):
-        new, adjusted = shape_prices([d("28.00"), d("28.00"), d("28.00")])
+    def test_pair_can_be_the_middle_two_when_that_gap_is_smallest(self):
+        new, adjusted, roles = shape_prices(prices("10.00", "100.00", "105.00", "110.00"))
+        self.assertEqual(new, prices("10.00", "100.00", "100.00", "110.00"))
         self.assertEqual(adjusted, [2])
-        self.assertEqual(new[:2], [d("28.00"), d("28.00")])
-        self.assertEqual(new[2], d("38.00"))
+        self.assertEqual(sorted(roles["pair"]), [1, 2])
+        self.assertEqual(roles["lower"], 0)
 
-    def test_result_always_satisfies_both_exchange_flows(self):
-        for prices in (
-            [d("28.00"), d("32.00"), d("64.00")],
-            [d("28.00"), d("28.00"), d("28.00")],
-            [d("28.00"), d("28.00"), d("64.00")],
-            [d("5.00"), d("500.00"), d("501.00"), d("999.00")],
+    def test_all_identical_leaves_pair_and_nudges_the_dearest(self):
+        new, adjusted, roles = shape_prices(prices("50.00", "50.00", "50.00", "50.00"))
+        self.assertEqual(adjusted, [3])
+        self.assertEqual(new[3], d("60.00"))
+        self.assertEqual(new[:3], prices("50.00", "50.00", "50.00"))
+
+    def test_dearest_tied_with_pair_is_nudged_above_it(self):
+        new, _, roles = shape_prices(prices("90.00", "90.00", "90.00", "10.00"))
+        self.assertGreater(new[roles["higher"]], new[roles["pair"][0]])
+        self.assertEqual(roles["lower"], 3)
+
+    def test_pair_never_includes_the_dearest_product(self):
+        for case in (
+            prices("28.00", "32.00", "64.00", "90.00"),
+            prices("10.00", "100.00", "105.00", "110.00"),
+            prices("50.00", "50.00", "50.00", "50.00"),
+            prices("5.00", "5.00", "5.00", "900.00"),
         ):
-            new, _ = shape_prices(list(prices))
-            counts = {p: new.count(p) for p in new}
-            self.assertTrue(any(c >= 2 for c in counts.values()), new)
-            self.assertGreater(len(set(new)), 1, new)
+            new, _, roles = shape_prices(list(case))
+            self.assertNotIn(roles["higher"], roles["pair"], case)
+            self.assertGreater(new[roles["higher"]], new[roles["pair"][0]], case)
 
-    def test_rejects_fewer_than_three(self):
+    def test_result_always_supports_even_and_upward_uneven(self):
+        for case in (
+            prices("28.00", "32.00", "64.00", "90.00"),
+            prices("50.00", "50.00", "50.00", "50.00"),
+            prices("28.00", "28.00", "64.00", "90.00"),
+            prices("5.00", "500.00", "501.00", "999.00"),
+            prices("90.00", "90.00", "90.00", "10.00"),
+        ):
+            new, _, roles = shape_prices(list(case))
+            i, j = roles["pair"]
+            self.assertEqual(new[i], new[j], case)
+            self.assertGreater(new[roles["higher"]], new[i], case)
+
+    def test_lower_is_none_when_nothing_sits_below_the_pair(self):
+        _, _, roles = shape_prices(prices("28.00", "28.00", "64.00", "90.00"))
+        self.assertIsNone(roles["lower"])
+
+    def test_rejects_anything_other_than_four(self):
         with self.assertRaises(ValueError):
-            shape_prices([d("28.00"), d("28.00")])
+            shape_prices(prices("28.00", "28.00", "64.00"))
+        with self.assertRaises(ValueError):
+            shape_prices(prices("28.00", "28.00", "64.00", "90.00", "99.00"))
 
 
-class ResolveSizesTests(unittest.TestCase):
-    def test_consistent_sizes_are_preserved(self):
-        products = [{"sizes": ["S", "M", "L"]}, {"sizes": ["S", "M", "L"]}]
-        self.assertEqual(resolve_sizes(products), ["S", "M", "L"])
+class ResolveOptionsTests(unittest.TestCase):
+    def test_two_axes_are_both_kept(self):
+        product = {"options": [
+            {"name": "Size", "values": ["S", "M", "L"]},
+            {"name": "Colour", "values": ["Black", "Navy"]},
+        ]}
+        axes = resolve_options(product)
+        self.assertEqual([a["name"] for a in axes], ["Size", "Colour"])
 
-    def test_inconsistent_sizes_fall_back_to_default(self):
-        products = [{"sizes": ["S", "M"]}, {"sizes": ["38", "40"]}]
-        self.assertEqual(resolve_sizes(products), ["S", "M", "L"])
+    def test_single_value_axis_is_dropped(self):
+        product = {"options": [
+            {"name": "Size", "values": ["S", "M"]},
+            {"name": "Colour", "values": ["Black"]},
+        ]}
+        self.assertEqual([a["name"] for a in resolve_options(product)], ["Size"])
 
-    def test_missing_sizes_fall_back_to_default(self):
-        self.assertEqual(resolve_sizes([{}, {}]), ["S", "M", "L"])
+    def test_no_usable_axis_falls_back_to_size(self):
+        self.assertEqual(resolve_options({}), [{"name": "Size", "values": ["S", "M", "L"]}])
+        self.assertEqual(
+            resolve_options({"options": [{"name": "Colour", "values": ["Black"]}]}),
+            [{"name": "Size", "values": ["S", "M", "L"]}],
+        )
+
+    def test_values_are_capped_at_three(self):
+        product = {"options": [{"name": "Size", "values": ["XS", "S", "M", "L", "XL"]}]}
+        self.assertEqual(resolve_options(product)[0]["values"], ["XS", "S", "M"])
+
+    def test_duplicate_values_are_removed_in_order(self):
+        product = {"options": [{"name": "Size", "values": ["S", "S", "M"]}]}
+        self.assertEqual(resolve_options(product)[0]["values"], ["S", "M"])
+
+    def test_every_axis_returned_has_at_least_two_values(self):
+        for product in ({}, {"options": []}, {"options": [{"name": "X", "values": ["only"]}]}):
+            for axis in resolve_options(product):
+                self.assertGreaterEqual(len(axis["values"]), 2, product)
+
+
+class BuildVariantsTests(unittest.TestCase):
+    def test_two_axes_produce_the_cartesian_product(self):
+        options = [
+            {"name": "Size", "values": ["S", "M", "L"]},
+            {"name": "Colour", "values": ["Black", "Navy"]},
+        ]
+        variants = build_variants(options, d("28.00"), 25, "gid://shopify/Location/1")
+        self.assertEqual(len(variants), 6)
+        self.assertEqual(
+            variants[0]["option_values"],
+            [{"option_name": "Size", "name": "S"}, {"option_name": "Colour", "name": "Black"}],
+        )
+
+    def test_every_variant_carries_price_stock_and_location(self):
+        options = [{"name": "Size", "values": ["S", "M"]}]
+        variants = build_variants(options, d("28.00"), 25, "gid://shopify/Location/1")
+        for variant in variants:
+            self.assertEqual(variant["price"], "28.00")
+            self.assertEqual(variant["quantity"], 25)
+            self.assertEqual(variant["location_id"], "gid://shopify/Location/1")
 
 
 class BuildMixTests(unittest.TestCase):
-    def payload(self, prices):
+    def payload(self, price_values, types=None, options=None):
+        types = types or ["Jumper", "Jeans", "Shoes", "Jacket"]
         return {
             "products": [
-                {"name": f"Product {i}", "price": p, "image_url": f"https://x/{i}.jpg",
-                 "pdp_url": f"https://x/p/{i}", "sizes": ["S", "M", "L"]}
-                for i, p in enumerate(prices)
+                {"name": f"Product {i}", "product_type": types[i], "price": p,
+                 "image_url": f"https://x/{i}.jpg", "pdp_url": f"https://x/p/{i}",
+                 "options": options if options is not None else [
+                     {"name": "Size", "values": ["S", "M", "L"]},
+                     {"name": "Colour", "values": ["Black", "Navy"]},
+                 ]}
+                for i, p in enumerate(price_values)
             ],
             "location_id": "gid://shopify/Location/1",
             "prospect_handle": "acme",
             "stock_per_variant": 25,
         }
 
-    def test_every_variant_gets_non_zero_stock(self):
-        result = build_mix(self.payload(["28.00", "32.00", "64.00"]))
+    def test_every_variant_of_every_product_has_non_zero_stock(self):
+        result = build_mix(self.payload(["28.00", "32.00", "64.00", "90.00"]))
         for product in result["products"]:
-            self.assertGreater(product["stock_per_variant"], 0)
+            self.assertGreaterEqual(product["variant_count"], 2)
+            for variant in product["variants"]:
+                self.assertGreater(variant["quantity"], 0)
+
+    def test_every_product_has_at_least_two_variants_even_with_no_options(self):
+        result = build_mix(self.payload(["28.00", "32.00", "64.00", "90.00"], options=[]))
+        for product in result["products"]:
+            self.assertGreaterEqual(product["variant_count"], 2)
 
     def test_tags_include_seed_and_prospect(self):
-        result = build_mix(self.payload(["28.00", "28.00", "64.00"]))
+        result = build_mix(self.payload(["28.00", "28.00", "64.00", "90.00"]))
         for product in result["products"]:
             self.assertIn("pl-demo-seed", product["tags"])
             self.assertIn("pl-prospect-acme", product["tags"])
 
-    def test_adjustments_are_reported_with_from_and_to(self):
-        result = build_mix(self.payload(["28.00", "32.00", "64.00"]))
-        self.assertEqual(len(result["adjustments"]), 1)
-        self.assertEqual(result["adjustments"][0]["from"], "32.00")
-        self.assertEqual(result["adjustments"][0]["to"], "28.00")
-
-    def test_no_adjustments_reported_when_pair_is_natural(self):
-        result = build_mix(self.payload(["28.00", "28.00", "64.00"]))
+    def test_natural_pair_produces_no_adjustments(self):
+        result = build_mix(self.payload(["28.00", "28.00", "64.00", "90.00"]))
         self.assertEqual(result["adjustments"], [])
         self.assertTrue(all(not p["adjusted"] for p in result["products"]))
 
-    def test_original_price_is_retained_after_adjustment(self):
-        result = build_mix(self.payload(["28.00", "32.00", "64.00"]))
+    def test_adjustment_reports_from_and_to_and_keeps_original(self):
+        result = build_mix(self.payload(["28.00", "32.00", "64.00", "90.00"]))
+        self.assertEqual(len(result["adjustments"]), 1)
+        self.assertEqual(result["adjustments"][0]["from"], "32.00")
+        self.assertEqual(result["adjustments"][0]["to"], "28.00")
         adjusted = [p for p in result["products"] if p["adjusted"]][0]
         self.assertEqual(adjusted["original_price"], "32.00")
         self.assertEqual(adjusted["price"], "28.00")
 
-    def test_reports_even_and_uneven_pairs_with_balance(self):
-        result = build_mix(self.payload(["28.00", "28.00", "64.00"]))
-        self.assertEqual(len(result["even_pair"]), 2)
-        self.assertEqual(len(result["uneven_pair"]), 2)
-        self.assertEqual(result["uneven_balance"], "36.00")
+    def test_reports_all_four_demos(self):
+        result = build_mix(self.payload(["10.00", "100.00", "105.00", "110.00"]))
+        demos = result["demos"]
+        self.assertIn("→", demos["in_product_even"]["swap"])
+        self.assertEqual(len(demos["cross_product_even"]), 2)
+        self.assertEqual(demos["uneven_upward"]["balance"], "10.00")
+        self.assertEqual(demos["uneven_downward"]["refund"], "90.00")
+
+    def test_downward_demo_is_null_when_unavailable(self):
+        result = build_mix(self.payload(["28.00", "28.00", "64.00", "90.00"]))
+        self.assertIsNone(result["demos"]["uneven_downward"])
+
+    def test_upward_balance_is_always_positive(self):
+        for values in (["28.00", "32.00", "64.00", "90.00"],
+                       ["50.00", "50.00", "50.00", "50.00"],
+                       ["90.00", "90.00", "90.00", "10.00"]):
+            result = build_mix(self.payload(values))
+            self.assertGreater(Decimal(result["demos"]["uneven_upward"]["balance"]), 0, values)
+
+    def test_duplicate_product_types_warn_but_do_not_fail(self):
+        result = build_mix(self.payload(
+            ["28.00", "28.00", "64.00", "90.00"],
+            types=["Jumper", "Jumper", "Shoes", "Jacket"],
+        ))
+        self.assertTrue(any("Jumper" in w for w in result["warnings"]))
+        self.assertEqual(len(result["products"]), 4)
+
+    def test_distinct_types_produce_no_warnings(self):
+        result = build_mix(self.payload(["28.00", "28.00", "64.00", "90.00"]))
+        self.assertEqual(result["warnings"], [])
+
+    def test_rejects_wrong_product_count(self):
+        payload = self.payload(["28.00", "28.00", "64.00", "90.00"])
+        payload["products"] = payload["products"][:3]
+        with self.assertRaises(ValueError):
+            build_mix(payload)
+
+    def test_rejects_zero_stock(self):
+        payload = self.payload(["28.00", "28.00", "64.00", "90.00"])
+        payload["stock_per_variant"] = 0
+        with self.assertRaises(ValueError):
+            build_mix(payload)
 
     def test_prices_are_serialised_as_strings(self):
-        result = build_mix(self.payload(["28.00", "32.00", "64.00"]))
+        result = build_mix(self.payload(["28.00", "32.00", "64.00", "90.00"]))
         for product in result["products"]:
             self.assertIsInstance(product["price"], str)
 
 
 class CliTests(unittest.TestCase):
-    def test_reads_stdin_and_writes_json_to_stdout(self):
-        payload = {
+    def run_script(self, payload):
+        return subprocess.run(
+            [sys.executable, str(SCRIPT)],
+            input=json.dumps(payload), capture_output=True, text=True,
+        )
+
+    def payload(self, price_values):
+        return {
             "products": [
-                {"name": "A", "price": "28.00", "image_url": "https://x/a.jpg",
-                 "pdp_url": "https://x/a", "sizes": ["S", "M", "L"]},
-                {"name": "B", "price": "32.00", "image_url": "https://x/b.jpg",
-                 "pdp_url": "https://x/b", "sizes": ["S", "M", "L"]},
-                {"name": "C", "price": "64.00", "image_url": "https://x/c.jpg",
-                 "pdp_url": "https://x/c", "sizes": ["S", "M", "L"]},
+                {"name": f"P{i}", "product_type": f"T{i}", "price": p,
+                 "image_url": f"https://x/{i}.jpg", "pdp_url": f"https://x/{i}",
+                 "options": [{"name": "Size", "values": ["S", "M"]}]}
+                for i, p in enumerate(price_values)
             ],
             "location_id": "gid://shopify/Location/1",
             "prospect_handle": "acme",
         }
-        proc = subprocess.run(
-            [sys.executable, str(SCRIPT)],
-            input=json.dumps(payload), capture_output=True, text=True,
-        )
+
+    def test_reads_stdin_and_writes_json_to_stdout(self):
+        proc = self.run_script(self.payload(["28.00", "32.00", "64.00", "90.00"]))
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(len(json.loads(proc.stdout)["products"]), 3)
+        self.assertEqual(len(json.loads(proc.stdout)["products"]), 4)
+
+    def test_defaults_stock_when_omitted(self):
+        proc = self.run_script(self.payload(["28.00", "32.00", "64.00", "90.00"]))
+        product = json.loads(proc.stdout)["products"][0]
+        self.assertGreater(product["variants"][0]["quantity"], 0)
 
     def test_exits_non_zero_on_unparseable_price(self):
-        payload = {
-            "products": [
-                {"name": "A", "price": "Price on request", "sizes": []},
-                {"name": "B", "price": "32.00", "sizes": []},
-                {"name": "C", "price": "64.00", "sizes": []},
-            ],
-            "location_id": "gid://shopify/Location/1",
-            "prospect_handle": "acme",
-        }
-        proc = subprocess.run(
-            [sys.executable, str(SCRIPT)],
-            input=json.dumps(payload), capture_output=True, text=True,
-        )
+        proc = self.run_script(self.payload(["Price on request", "32.00", "64.00", "90.00"]))
         self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("shape_product_mix", proc.stderr)
 
 
 if __name__ == "__main__":
@@ -317,11 +471,18 @@ Create `plugins/pl-tools/scripts/shape_product_mix.py`:
 
 ```python
 #!/usr/bin/env python3
-"""Shape scraped prospect products into a mix valid for both parcelLab exchange demos.
+"""Shape scraped prospect products into a mix that supports every exchange demo.
 
-An even exchange needs two products at the same price; an uneven exchange needs a
-third at a different price. Real prospect catalogues rarely provide both, so this
-module adjusts the minimum number of prices and reports every change.
+Four demos have to work afterwards:
+
+  * even inside one product   -- swap S for M          -> needs >=2 variants per product
+  * even across products      -- swap item, pay nothing -> needs 2 products at one price
+  * uneven upward             -- customer PAYS          -> needs a product above that pair
+  * uneven downward           -- customer is refunded   -> a product below the pair, if any
+
+The upward case is the one with a direction requirement: exchanging into something more
+expensive is what exercises taking payment, so the pair is deliberately chosen from the
+three cheapest products, leaving the dearest above it.
 
 Reads a JSON payload on stdin, writes the shaped payload to stdout.
 """
@@ -332,10 +493,12 @@ import sys
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 TWO_PLACES = Decimal("0.01")
-DEFAULT_SIZES = ("S", "M", "L")
+DEFAULT_AXIS = ("S", "M", "L")
 DEFAULT_STOCK = 25
+MAX_VALUES_PER_AXIS = 3
 NUDGE = Decimal("10.00")
 SEED_TAG = "pl-demo-seed"
+PRODUCT_COUNT = 4
 
 
 def normalise_price(value):
@@ -344,7 +507,6 @@ def normalise_price(value):
     if not text:
         raise ValueError("empty price")
 
-    # Drop everything that is not a digit or a separator.
     text = re.sub(r"[^\d.,]", "", text)
     if not text:
         raise ValueError(f"no digits in price: {value!r}")
@@ -353,7 +515,8 @@ def normalise_price(value):
     if "," in text and "." in text:
         text = text.replace(",", "")
     elif "," in text:
-        text = text.replace(",", ".") if len(text.split(",")[-1]) == 2 else text.replace(",", "")
+        tail = text.split(",")[-1]
+        text = text.replace(",", ".") if len(tail) == 2 else text.replace(",", "")
 
     try:
         return Decimal(text).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
@@ -362,76 +525,119 @@ def normalise_price(value):
 
 
 def shape_prices(prices):
-    """Guarantee at least two equal prices and at least one different one.
+    """Guarantee a matched pair with a dearer product above it.
 
-    Returns (new_prices, adjusted_indices). Never inflates an existing price
-    except in the all-identical case, where one must move for the uneven flow.
+    Returns (new_prices, adjusted_indices, roles). Only the two adjacent pairs among the
+    three cheapest products are eligible, which is what keeps the dearest free to sit
+    above the pair and drive the upward (take payment) demo.
     """
-    if len(prices) < 3:
-        raise ValueError("need at least 3 products: two to match, one to differ")
+    if len(prices) != PRODUCT_COUNT:
+        raise ValueError(f"need exactly {PRODUCT_COUNT} products, got {len(prices)}")
 
     prices = list(prices)
-    distinct = set(prices)
+    adjusted = []
+    order = sorted(range(PRODUCT_COUNT), key=lambda i: prices[i])
 
-    # Already valid: a duplicate exists and something else differs.
-    if len(distinct) < len(prices) and len(distinct) > 1:
-        return prices, []
+    candidates = [(order[0], order[1]), (order[1], order[2])]
+    # min() keeps the first on a tie, which is the cheaper pair.
+    low, high = min(candidates, key=lambda pair: abs(prices[pair[0]] - prices[pair[1]]))
 
-    # All identical: nudge the last one up so an uneven exchange has a target.
-    if len(distinct) == 1:
-        prices[-1] = prices[-1] + NUDGE
-        return prices, [len(prices) - 1]
+    if prices[high] != prices[low]:
+        prices[high] = prices[low]
+        adjusted.append(high)
+    pair_price = prices[low]
 
-    # All distinct: converge the closest pair, lowering the higher price.
-    best = None
-    for i in range(len(prices)):
-        for j in range(i + 1, len(prices)):
-            gap = abs(prices[i] - prices[j])
-            if best is None or gap < best[0]:
-                best = (gap, i, j)
+    dearest = order[3]
+    if prices[dearest] <= pair_price:
+        prices[dearest] = pair_price + NUDGE
+        adjusted.append(dearest)
 
-    _, i, j = best
-    higher = i if prices[i] > prices[j] else j
-    lower = j if higher == i else i
-    prices[higher] = prices[lower]
-    return prices, [higher]
+    spare = next(i for i in order[:3] if i not in (low, high))
+    roles = {
+        "pair": [low, high],
+        "higher": dearest,
+        "lower": spare if prices[spare] < pair_price else None,
+    }
+    return prices, sorted(adjusted), roles
 
 
-def resolve_sizes(products, default=DEFAULT_SIZES):
-    """Return one shared size axis, or the default when the site's sizes disagree."""
-    axes = [tuple(p.get("sizes") or ()) for p in products]
-    if axes and all(axis and axis == axes[0] for axis in axes):
-        return list(axes[0])
-    return list(default)
+def resolve_options(product, default_axis=DEFAULT_AXIS):
+    """Return the variant axes to build, always with at least one usable axis.
+
+    A single-value axis cannot demo a swap, so it is dropped. If nothing usable survives,
+    fall back to a Size axis — colour values are never invented.
+    """
+    axes = []
+    for option in product.get("options") or []:
+        name = str(option.get("name") or "").strip()
+        values = []
+        for raw in option.get("values") or []:
+            value = str(raw).strip()
+            if value and value not in values:
+                values.append(value)
+        if name and len(values) >= 2:
+            axes.append({"name": name, "values": values[:MAX_VALUES_PER_AXIS]})
+
+    if not axes:
+        axes = [{"name": "Size", "values": list(default_axis)}]
+    return axes
+
+
+def build_variants(options, price, quantity, location_id):
+    """Cartesian product of the axes, one variant per combination."""
+    combos = [[]]
+    for option in options:
+        combos = [combo + [(option["name"], value)]
+                  for combo in combos for value in option["values"]]
+
+    return [
+        {
+            "option_values": [{"option_name": name, "name": value} for name, value in combo],
+            "price": f"{price}",
+            "quantity": quantity,
+            "location_id": location_id,
+        }
+        for combo in combos
+    ]
 
 
 def build_mix(payload):
     products = payload["products"]
-    handle = payload.get("prospect_handle", "prospect")
-    stock = int(payload.get("stock_per_variant") or DEFAULT_STOCK)
+    if len(products) != PRODUCT_COUNT:
+        raise ValueError(f"need exactly {PRODUCT_COUNT} products, got {len(products)}")
+
+    handle = payload.get("prospect_handle") or "prospect"
+    location_id = payload.get("location_id")
+    # Distinguish "absent" from an explicit 0 -- `or` would silently turn a zero,
+    # which breaks every exchange target, into the default.
+    raw_stock = payload.get("stock_per_variant")
+    stock = DEFAULT_STOCK if raw_stock is None else int(raw_stock)
     if stock <= 0:
         raise ValueError("stock_per_variant must be greater than zero")
 
     originals = [normalise_price(p["price"]) for p in products]
-    shaped, adjusted_indices = shape_prices(originals)
-    sizes = resolve_sizes(products)
+    shaped, adjusted_indices, roles = shape_prices(originals)
     tags = [SEED_TAG, f"pl-prospect-{handle}"]
 
     shaped_products = []
     adjustments = []
     for index, product in enumerate(products):
+        options = resolve_options(product)
         was_adjusted = index in adjusted_indices
         shaped_products.append({
             "name": product["name"],
+            "product_type": str(product.get("product_type") or "").strip(),
             "original_price": f"{originals[index]}",
             "price": f"{shaped[index]}",
             "adjusted": was_adjusted,
             "image_url": product.get("image_url"),
             "pdp_url": product.get("pdp_url"),
-            "sizes": sizes,
+            "options": options,
+            "variants": build_variants(options, shaped[index], stock, location_id),
             "tags": tags,
-            "stock_per_variant": stock,
         })
+        shaped_products[-1]["variant_count"] = len(shaped_products[-1]["variants"])
+
         if was_adjusted:
             adjustments.append({
                 "name": product["name"],
@@ -439,18 +645,48 @@ def build_mix(payload):
                 "to": f"{shaped[index]}",
             })
 
-    # The even pair is the first duplicated price; the uneven partner is any other.
-    matched_price = next(p for p in shaped if shaped.count(p) >= 2)
-    even_indices = [i for i, p in enumerate(shaped) if p == matched_price][:2]
-    other_index = next(i for i, p in enumerate(shaped) if p != matched_price)
+    warnings = []
+    types = [p["product_type"] for p in shaped_products if p["product_type"]]
+    repeated = sorted({t for t in types if types.count(t) > 1})
+    if repeated:
+        warnings.append(
+            "repeated product types, so the cross-product exchange looks like a "
+            f"like-for-like swap: {', '.join(repeated)}"
+        )
+
+    pair_i, pair_j = roles["pair"]
+    dearest, spare = roles["higher"], roles["lower"]
+    pair_price = shaped[pair_i]
+
+    # Demo the size swap on whichever product has the most variants.
+    showcase = max(shaped_products, key=lambda p: p["variant_count"])
+    axis = showcase["options"][0]
+
+    demos = {
+        "in_product_even": {
+            "product": showcase["name"],
+            "option": axis["name"],
+            "swap": f"{axis['values'][0]} → {axis['values'][1]}",
+        },
+        "cross_product_even": [products[pair_i]["name"], products[pair_j]["name"]],
+        "uneven_upward": {
+            "from": products[pair_i]["name"],
+            "to": products[dearest]["name"],
+            "balance": f"{shaped[dearest] - pair_price}",
+        },
+        "uneven_downward": None if spare is None else {
+            "from": products[pair_i]["name"],
+            "to": products[spare]["name"],
+            "refund": f"{pair_price - shaped[spare]}",
+        },
+    }
 
     return {
         "products": shaped_products,
         "adjustments": adjustments,
-        "even_pair": [products[i]["name"] for i in even_indices],
-        "uneven_pair": [products[even_indices[0]]["name"], products[other_index]["name"]],
-        "uneven_balance": f"{abs(shaped[other_index] - matched_price)}",
-        "location_id": payload.get("location_id"),
+        "warnings": warnings,
+        "demos": demos,
+        "location_id": location_id,
     }
 
 
@@ -472,13 +708,15 @@ if __name__ == "__main__":
 cd plugins/pl-tools/scripts && python3 -m unittest discover -s tests -v
 ```
 
-Expected: PASS, all tests. The pre-existing `test_pl_credentials.py` must also still pass — if it fails, confirm it failed before this change and do not fix it here.
+Expected: **40 tests, all passing.** This test module and implementation were run together before this plan was written, so a failure here means a transcription slip rather than a design problem — diff against the plan before debugging the logic.
+
+The pre-existing `test_pl_credentials.py` must also still pass. If it fails, confirm it failed before this change and do not fix it here.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add plugins/pl-tools/scripts/shape_product_mix.py plugins/pl-tools/scripts/tests/test_shape_product_mix.py
-git commit -m "feat(shopify-seed): add tested price/size/stock shaping rule"
+git commit -m "feat(shopify-seed): add tested price rule and variant matrix builder"
 ```
 
 ---
@@ -503,7 +741,7 @@ Frontmatter, exactly:
 ```markdown
 ---
 name: shopify-seed
-description: Seed a prospect's own products into a Shopify dev store so you can demo the parcelLab returns and exchanges flow with products the prospect actually sells. Browses the prospect's site for four real products with prices and images, shapes them into a price mix that supports both even and uneven exchanges, stocks every variant, and pushes them with the Shopify CLI. Trigger on phrases like "seed [prospect]'s products into my Shopify store", "load [brand] products for an exchange demo", "set up the Shopify demo store for [prospect]", or any request to put a prospect's products into a Shopify dev store for a parcelLab returns demo.
+description: Seed a prospect's own products into a Shopify dev store so you can demo the parcelLab returns and exchanges flow with products the prospect actually sells. Browses the prospect's site for four products of different types, keeps their real size and colour variants, prices them so both even and uneven exchanges demo correctly, and pushes them with the Shopify CLI. Trigger on phrases like "seed [prospect]'s products into my Shopify store", "load [brand] products for an exchange demo", "set up the Shopify demo store for [prospect]", or any request to put a prospect's products into a Shopify dev store for a parcelLab returns demo.
 argument-hint: <prospect-url>
 ---
 ```
@@ -515,8 +753,17 @@ Append to `SKILL.md`:
 ````markdown
 # parcelLab — Shopify Prospect Seeding
 
-Load four of a prospect's real products into a Shopify **dev** store, shaped so both the
-even and uneven exchange demos work. Run once per prospect, per demo.
+Load four of a prospect's real products into a Shopify **dev** store, shaped so every
+exchange demo works. Run once per prospect, per demo.
+
+Four demos have to be possible when this finishes:
+
+| Demo | Needs |
+|---|---|
+| Even, inside one product — swap S for M | ≥2 variants per product |
+| Even, across products | 2 products at the same price |
+| Uneven **upward** — customer pays the balance | 1 product priced above that pair |
+| Uneven downward — customer is refunded | a product below the pair *(if the catalogue offers one)* |
 
 Writes to a real store. The destination is confirmed by name before the first write.
 
@@ -661,7 +908,7 @@ git commit -m "feat(shopify-seed): scaffold skill with preflight, store and loca
 
 - [ ] **Step 1: Write the scrape reference**
 
-Create `references/product-scrape.md`. The image-scoring function is lifted verbatim from `demo-request`, which is proven; the price and size extraction is new.
+Create `references/product-scrape.md`. The image-scoring function is lifted verbatim from `demo-request`, which is proven; price, type and variant-axis extraction are new.
 
 ````markdown
 # Prospect product scraping
@@ -674,20 +921,47 @@ Playwright.
 wrapped as an IIFE — `(() => {…})()`. Keep it that way; a bare `() => {…}` returns the
 function instead of calling it.
 
+## What to collect
+
+**Four products of four different types** — a jumper, jeans, shoes, a jacket. Not four
+jumpers: the cross-product exchange should look like a real decision, not a like-for-like
+swap.
+
+**A couple of values from each variant axis the site exposes**, typically Size and Colour,
+or shoe size. Every product needs **at least two variants** so a small→medium swap
+demonstrates an even exchange inside that one product — the most common real returns case
+and the quickest thing to show.
+
+Only **one image per product** is needed. Variants share it, so there is no need to find a
+photo per colour.
+
 ## Find listing pages, then PDP links
 
-Reuse `demo-request` Steps 2 and 3 verbatim for this — the listing-link and PDP-link
-snippets there already work. Aim for at least 8 PDP candidates before choosing 4.
+Reuse `demo-request` Steps 2 and 3 verbatim — the listing-link and PDP-link snippets there
+already work. Aim for at least 8 PDP candidates across **different categories** before
+choosing four.
 
-## Extract name, price, image and sizes from a PDP
+## Extract name, type, price, image and variant axes from a PDP
 
 ```javascript
 (() => {
-  const name = (
+  const clean = (s) => (s || '').trim().replace(/\s+/g, ' ');
+
+  const name = clean(
     document.querySelector('h1')?.innerText ||
     document.querySelector('[class*="product-name"], [class*="product-title"], [itemprop="name"]')?.innerText ||
     document.title
-  )?.trim().replace(/\s+/g, ' ').slice(0, 120);
+  ).slice(0, 120);
+
+  // Product type: breadcrumb tail is the most reliable signal, then meta.
+  const crumbs = Array.from(
+    document.querySelectorAll('[class*="breadcrumb"] a, nav[aria-label*="readcrumb"] a')
+  ).map(a => clean(a.innerText)).filter(Boolean);
+  const productType = clean(
+    crumbs[crumbs.length - 1] ||
+    document.querySelector('meta[property="product:category"]')?.content ||
+    ''
+  ).slice(0, 40);
 
   // Price, most reliable source first. JSON-LD beats reading rendered text.
   let price = null;
@@ -705,23 +979,60 @@ snippets there already work. Aim for at least 8 PDP candidates before choosing 4
     } catch { /* malformed JSON-LD is common; skip it */ }
     if (price) break;
   }
-  if (!price) {
-    price = document.querySelector('meta[property="product:price:amount"]')?.content || null;
-  }
+  if (!price) price = document.querySelector('meta[property="product:price:amount"]')?.content || null;
   if (!price) {
     const text = document.querySelector('[class*="price"], [itemprop="price"]')?.innerText || '';
     price = (text.match(/\d[\d.,]*/) || [null])[0];
   }
 
-  // Sizes, for the shared variant axis.
-  const sizeNodes = document.querySelectorAll(
-    '[class*="size"] option, [class*="size"] label, [class*="size"] button, [data-option-name*="ize"] option'
-  );
-  const sizes = Array.from(sizeNodes)
-    .map(n => (n.value || n.innerText || '').trim())
-    .filter(s => s && s.length <= 6 && !/select|choose|guide/i.test(s))
-    .filter((s, i, arr) => arr.indexOf(s) === i)
-    .slice(0, 6);
+  // Variant axes. Real values only — never invent a colour.
+  const axes = [];
+  const seenAxis = new Set();
+  const pushAxis = (rawName, rawValues) => {
+    const axisName = clean(rawName).replace(/[:*]/g, '').trim();
+    if (!axisName || seenAxis.has(axisName.toLowerCase())) return;
+    const values = [...new Set(
+      rawValues.map(v => clean(String(v)))
+        .filter(v => v && v.length <= 20 && !/select|choose|guide|please/i.test(v))
+    )];
+    if (values.length >= 2) {
+      seenAxis.add(axisName.toLowerCase());
+      axes.push({ name: axisName, values: values.slice(0, 3) });
+    }
+  };
+
+  // Shopify storefronts embed product JSON with the real options.
+  for (const node of document.querySelectorAll('script[type="application/json"]')) {
+    try {
+      const data = JSON.parse(node.textContent);
+      const product = data?.product || data;
+      if (Array.isArray(product?.options)) {
+        product.options.forEach((opt, i) => {
+          const optName = opt?.name || opt;
+          const values = opt?.values
+            || (product.variants || []).map(v => v?.[`option${i + 1}`]).filter(Boolean);
+          pushAxis(String(optName), values || []);
+        });
+      }
+    } catch { /* not product JSON; skip */ }
+  }
+
+  // Fallback: labelled selects and swatch groups in the DOM.
+  if (!axes.length) {
+    for (const group of document.querySelectorAll(
+      'select, fieldset, [data-option-name], [class*="swatch"], [class*="variant-option"]'
+    )) {
+      const label = group.getAttribute('data-option-name')
+        || group.getAttribute('aria-label')
+        || group.querySelector('legend, label')?.innerText
+        || group.getAttribute('name') || '';
+      if (!/size|colour|color/i.test(label)) continue;
+      const values = Array.from(
+        group.querySelectorAll('option, label, button, [role="radio"]')
+      ).map(n => n.value || n.innerText || '');
+      pushAxis(label, values);
+    }
+  }
 
   // Image scoring — verbatim from demo-request, which is proven.
   const score = (img) => {
@@ -749,13 +1060,17 @@ snippets there already work. Aim for at least 8 PDP candidates before choosing 4
 
   return {
     name,
+    product_type: productType,
     price,
-    sizes,
+    options: axes,
     image_url: bestImg ? (bestImg.currentSrc || bestImg.src) : null,
     pdp_url: location.href,
   };
 })()
 ```
+
+Set `product_type` yourself from the product name if the breadcrumb comes back empty — a
+short label like `Jumper`, `Jeans`, `Trainers` is all it needs to be.
 
 ## Edge cases
 
@@ -763,8 +1078,13 @@ snippets there already work. Aim for at least 8 PDP candidates before choosing 4
   then click the dismiss control. **Decline non-essential cookies**, never accept all.
 - **Lazy-loaded images** — scroll before scoring:
   `(() => { window.scrollTo(0, document.body.scrollHeight / 2); return true; })()`
-- **Price still null** — ask the user for that product's price rather than inventing one.
-  A fabricated price in a demo to that prospect is worse than a question.
+- **Variant axes come back empty** — fine. The shaping script falls back to a Size axis of
+  `S`/`M`/`L`, which still gives the in-product size swap. **Do not invent colour values**
+  to fill the gap; a product photographed in red offered as "Navy" looks broken.
+- **A variant picker that needs a click to reveal values** — click it, re-run the snippet.
+  Not worth more than one attempt per product; the Size fallback is acceptable.
+- **Price still null** — ask the user for that product's price rather than inventing one. A
+  fabricated price in a demo to that prospect is worse than a question.
 - **Bot protection / near-empty page text** — say so and stop. Do not work around a block.
 - **Login wall** — out of scope. The pane runs a fresh context with no saved sessions.
 ````
@@ -788,10 +1108,11 @@ before scraping — cheaper and more reliable than a screenshot for spotting a c
 or a bot block.
 
 Then follow `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/product-scrape.md` to
-collect exactly four products as `{ name, price, sizes, image_url, pdp_url }`.
+collect exactly four products as
+`{ name, product_type, price, options, image_url, pdp_url }`.
 
-Prefer four products from the **same category** with a shared size axis — a jacket and a
-mug make a nonsense exchange.
+**Four different product types**, and **a couple of values from each variant axis the site
+exposes**. One image per product — variants share it.
 
 ### Validate the images
 
@@ -813,21 +1134,27 @@ ask the user for a direct image URL.
 
 ## Step 4 — Shape the mix
 
-An even exchange needs two products at the same price; an uneven exchange needs a third at
-a different price; and **every variant needs non-zero stock** — a zero-stock variant is
-invisible as an exchange target, so the demo silently shows fewer options and looks broken.
-
-Feed the collected products through the shaping script:
-
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/shape_product_mix.py < /tmp/seed-products.json > /tmp/seed-shaped.json
 ```
 
-Input keys: `products[]` (`name`, `price`, `sizes`, `image_url`, `pdp_url`),
-`location_id`, `prospect_handle`, optional `stock_per_variant` (defaults to 25).
+Input keys: `products[]` (`name`, `product_type`, `price`, `options`, `image_url`,
+`pdp_url`), `location_id`, `prospect_handle`, optional `stock_per_variant` (defaults to 25).
 
-It keeps real prices whenever the catalogue already contains a matching pair, and
-otherwise adjusts the minimum number — reported in `adjustments` as `from`/`to`. It exits
+What it does, and why:
+
+- Builds the **variant matrix** — the cartesian product of the axes, so Size×Colour gives 6
+  variants — with non-zero stock on every one. A zero-stock variant is invisible as an
+  exchange target, so the demo silently shows fewer options and looks broken.
+- Drops any single-value axis, and falls back to `S`/`M`/`L` if no axis survives, so every
+  product ends with **≥2 variants**.
+- Picks a **matched pair from the three cheapest products**, leaving the dearest above it.
+  That is what makes the uneven demo go *upward* and exercise taking payment — a merely
+  "different" price could be satisfied by exchanging downward and never show that step.
+- **Changes nothing at all** when the catalogue already has a natural pair and a dearer
+  item, which is the common case. At most two prices ever move.
+
+Read `warnings` from the output — repeated product types are surfaced there. It exits
 non-zero on an unparseable price.
 
 ---
@@ -836,12 +1163,18 @@ non-zero on an unparseable price.
 
 Show the destination store **by name**, then:
 
-| # | Product | Real price | Seeded price | Adjusted | Sizes | Image |
-|---|---|---|---|---|---|---|
+| # | Product | Type | Real price | Seeded price | Adjusted | Variants | Image |
+|---|---|---|---|---|---|---|---|
 
-Call out the adjustments explicitly — these are the only places real prospect data was
-altered. Then state which pair gives the even exchange and which gives the uneven one,
-with the balance.
+Then, straight from the script's `demos` output:
+
+- **Even, in-product:** *[product]*, *[option]* *[swap]*
+- **Even, cross-product:** *[A]* ↔ *[B]*
+- **Uneven upward — customer pays:** *[A]* → *[D]*, balance *[balance]*
+- **Uneven downward — refund:** *[A]* → *[C]*, refund *[refund]* — or *not available*
+
+Call out any adjustment as `was → now`; these are the only places real prospect data was
+altered. Surface any `warnings` too, and offer to swap a product out.
 
 Quote figures **without currency symbols**; dev-store currency varies.
 
@@ -869,11 +1202,46 @@ test -f "$CLAUDE_PLUGIN_ROOT/scripts/shape_product_mix.py" && echo "script path 
 
 Expected: `script path correct`. This catches a skill-level vs plugin-level path mistake before a live run.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Verify the documented input contract matches the script**
+
+Feed the script exactly the shape `SKILL.md` promises, and confirm it is accepted:
+
+```bash
+cd /Users/jamie.lee-smith/Documents/Claude/Projects/parcellab-claude-skills
+python3 - <<'EOF' > /tmp/contract-check.json
+import json
+print(json.dumps({
+    "products": [
+        {"name": f"P{i}", "product_type": t, "price": p,
+         "image_url": f"https://x/{i}.jpg", "pdp_url": f"https://x/{i}",
+         "options": [{"name": "Size", "values": ["S", "M", "L"]},
+                     {"name": "Colour", "values": ["Black", "Navy"]}]}
+        for i, (t, p) in enumerate([("Jumper", "28.00"), ("Jeans", "28.00"),
+                                    ("Trainers", "64.00"), ("Jacket", "90.00")])
+    ],
+    "location_id": "gid://shopify/Location/1",
+    "prospect_handle": "acme",
+}))
+EOF
+python3 plugins/pl-tools/scripts/shape_product_mix.py < /tmp/contract-check.json \
+  | python3 -c 'import json,sys; r=json.load(sys.stdin); print("variants:", [p["variant_count"] for p in r["products"]]); print("adjustments:", r["adjustments"]); print("upward:", r["demos"]["uneven_upward"])'
+```
+
+Expected exactly this — these figures were confirmed by running the finished script:
+
+```
+variants: [6, 6, 6, 6]
+adjustments: []
+upward: {'from': 'P0', 'to': 'P3', 'balance': '62.00'}
+```
+
+`adjustments: []` is the important one: the natural pair at 28.00 with a dearer product above it means **no real price was altered**. If the key names differ from what `SKILL.md` documents, fix `SKILL.md` — the script is the contract.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add plugins/pl-tools/skills/shopify-seed/
-git commit -m "feat(shopify-seed): add product collection, image validation and approval gate"
+git commit -m "feat(shopify-seed): add product collection, variant scraping and approval gate"
 ```
 
 ---
@@ -950,17 +1318,20 @@ a single command creates all four.
 
 Confirmed input fields:
 
-- `ProductSetInput` — `title`, `status`, `tags`, `productOptions`, `variants`, `files`
+- `ProductSetInput` — `title`, `productType`, `status`, `tags`, `productOptions`, `variants`, `files`
 - `OptionSetInput` — `name`, `position`, `values`
-- `ProductVariantSetInput` — `price`, `published`, `optionValues`, `inventoryQuantities`, `file`
+- `ProductVariantSetInput` — `price`, `published`, `optionValues`, `inventoryQuantities`
 - `VariantOptionValueInput` — `optionName`, `name`
 - `ProductSetInventoryInput` — `locationId`, `name` (use `"available"`), `quantity`
 - `FileSetInput` — `originalSource`, `alt`, `filename`, `contentType`, `duplicateResolutionMode`
 
 **Images ship in this same mutation** via `files`. `originalSource` explicitly accepts an
 external URL. `contentType` is optional — Shopify sniffs it — but pass `IMAGE` for clarity.
-`ProductVariantSetInput.file` also exists, but any variant file **must also appear in the
-product's `files` array**.
+
+**One image per product, none per variant.** `ProductVariantSetInput.file` exists, and any
+variant file must also appear in the product's `files` array — but this skill does not use
+it. Every variant of a product shares the single product image, which is all the demo
+needs and removes the job of sourcing a photo per colour.
 
 ```graphql
 mutation SeedProspectProducts(
@@ -988,23 +1359,27 @@ mutation SeedProspectProducts(
 }
 ```
 
-Variables, per product — prices are unitless strings, `locationId` is the GID from Step 2:
+Variables, per product. Prices are unitless strings; `locationId` is the GID from Step 2.
+`productOptions` mirrors the axes, and `variants` is the full cartesian product — every
+combination present, every one stocked:
 
 ```json
 {
   "product1": {
     "title": "Alpine Shell Jacket",
+    "productType": "Jacket",
     "status": "ACTIVE",
     "tags": ["pl-demo-seed", "pl-prospect-acme"],
     "files": [
       { "originalSource": "https://cdn.example.com/jacket.jpg", "contentType": "IMAGE", "alt": "Alpine Shell Jacket" }
     ],
     "productOptions": [
-      { "name": "Size", "position": 1, "values": [{ "name": "S" }, { "name": "M" }, { "name": "L" }] }
+      { "name": "Size", "position": 1, "values": [{ "name": "S" }, { "name": "M" }] },
+      { "name": "Colour", "position": 2, "values": [{ "name": "Black" }, { "name": "Navy" }] }
     ],
     "variants": [
       {
-        "optionValues": [{ "optionName": "Size", "name": "S" }],
+        "optionValues": [{ "optionName": "Size", "name": "S" }, { "optionName": "Colour", "name": "Black" }],
         "price": "129.00",
         "published": true,
         "inventoryQuantities": [
@@ -1012,7 +1387,7 @@ Variables, per product — prices are unitless strings, `locationId` is the GID 
         ]
       },
       {
-        "optionValues": [{ "optionName": "Size", "name": "M" }],
+        "optionValues": [{ "optionName": "Size", "name": "S" }, { "optionName": "Colour", "name": "Navy" }],
         "price": "129.00",
         "published": true,
         "inventoryQuantities": [
@@ -1020,7 +1395,15 @@ Variables, per product — prices are unitless strings, `locationId` is the GID 
         ]
       },
       {
-        "optionValues": [{ "optionName": "Size", "name": "L" }],
+        "optionValues": [{ "optionName": "Size", "name": "M" }, { "optionName": "Colour", "name": "Black" }],
+        "price": "129.00",
+        "published": true,
+        "inventoryQuantities": [
+          { "locationId": "gid://shopify/Location/123456", "name": "available", "quantity": 25 }
+        ]
+      },
+      {
+        "optionValues": [{ "optionName": "Size", "name": "M" }, { "optionName": "Colour", "name": "Navy" }],
         "price": "129.00",
         "published": true,
         "inventoryQuantities": [
@@ -1032,7 +1415,11 @@ Variables, per product — prices are unitless strings, `locationId` is the GID 
 }
 ```
 
-One variant per size, every one with non-zero `quantity`.
+Every variant of a product carries the same price — that is what makes the in-product size
+swap an *even* exchange.
+
+`productOptions[].position` is 1-based and must match the order the axes appear in
+`optionValues`.
 
 ## Verify the media actually landed
 
@@ -1090,9 +1477,16 @@ If nothing is tagged, say so and move on — a first run against a clean store i
 ## Step 7 — Push the new products
 
 Generate `/tmp/seed.graphql` and `/tmp/seed.json` from
-`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, filling in the
-shaped products, the location GID, and the tags. These are generated per run, not shipped —
-the products differ every time.
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, mapping the
+shaped output onto the mutation:
+
+- `options[]` → `productOptions[]`, with 1-based `position`
+- `variants[].option_values[]` → `optionValues[]` (`option_name` → `optionName`)
+- `variants[].quantity` and `location_id` → `inventoryQuantities[]` with `name: "available"`
+- `image_url` → a single `files[]` entry with `contentType: IMAGE`
+- `product_type` → `productType`, `tags` → `tags`
+
+These files are generated per run, not shipped — the products differ every time.
 
 ```bash
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
@@ -1107,20 +1501,21 @@ Check `userErrors` on **every alias**, not just the first. Any non-empty `userEr
 report it and stop; do not continue to verification with a partial seed.
 ````
 
-- [ ] **Step 3: Verify the deprecated argument is not used**
+- [ ] **Step 3: Verify the deprecated argument is not used and variant files are absent**
 
 ```bash
 cd /Users/jamie.lee-smith/Documents/Claude/Projects/parcellab-claude-skills/plugins/pl-tools/skills/shopify-seed
 grep -n 'productUpdate(input:' references/mutation-template.md ; echo "deprecated-arg-exit:$?"
 grep -c 'productUpdate(product:' references/mutation-template.md
 grep -c 'userErrors' references/mutation-template.md
+grep -n '"file":' references/mutation-template.md ; echo "variant-file-exit:$?"
 ```
 
-Expected: `deprecated-arg-exit:1` (not found); at least 1 `productUpdate(product:`; at least 4 `userErrors`.
+Expected: `deprecated-arg-exit:1`; at least 1 `productUpdate(product:`; at least 4 `userErrors`; `variant-file-exit:1` — no per-variant image.
 
 - [ ] **Step 4: Verify the mutation validates against the live schema**
 
-Do not skip this — it is the only check that catches a wrong field name before a live run, and every field in the template was taken from docs rather than from the store's own schema.
+Do not skip this — it is the only check that catches a wrong field name before a live run, and every field in the template came from docs rather than from the store's own schema.
 
 The seed files are generated per run and do not exist yet, so build a throwaway sample from the template first. Resolve a real location GID for it:
 
@@ -1132,7 +1527,7 @@ LOC=$(shopify store execute -s "$STORE" \
 echo "$LOC"
 ```
 
-Write a one-product sample using that GID:
+Write a one-product, two-axis sample using that GID — the two-axis case is the one that exercises `productOptions[].position` and multi-entry `optionValues`:
 
 ```bash
 cat > /tmp/schema-check.graphql <<'EOF'
@@ -1145,20 +1540,26 @@ mutation SchemaCheck($product1: ProductSetInput!) {
 EOF
 
 python3 - "$LOC" > /tmp/schema-check.json <<'EOF'
-import json, sys
+import itertools, json, sys
+loc = sys.argv[1]
+sizes, colours = ["S", "M"], ["Black", "Navy"]
 print(json.dumps({"product1": {
     "title": "Schema Check Product",
+    "productType": "Jacket",
     "status": "ACTIVE",
     "tags": ["pl-demo-seed", "pl-prospect-schemacheck"],
     "files": [{"originalSource": "https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder.jpg",
                "contentType": "IMAGE", "alt": "Schema Check Product"}],
-    "productOptions": [{"name": "Size", "position": 1,
-                        "values": [{"name": "S"}, {"name": "M"}, {"name": "L"}]}],
+    "productOptions": [
+        {"name": "Size", "position": 1, "values": [{"name": s} for s in sizes]},
+        {"name": "Colour", "position": 2, "values": [{"name": c} for c in colours]},
+    ],
     "variants": [
-        {"optionValues": [{"optionName": "Size", "name": size}],
+        {"optionValues": [{"optionName": "Size", "name": s},
+                          {"optionName": "Colour", "name": c}],
          "price": "28.00", "published": True,
-         "inventoryQuantities": [{"locationId": sys.argv[1], "name": "available", "quantity": 25}]}
-        for size in ("S", "M", "L")
+         "inventoryQuantities": [{"locationId": loc, "name": "available", "quantity": 25}]}
+        for s, c in itertools.product(sizes, colours)
     ],
 }}, indent=2))
 EOF
@@ -1194,7 +1595,7 @@ The step that stops a demo failing silently.
 - Modify: `plugins/pl-tools/skills/shopify-seed/SKILL.md` (append Steps 8–9)
 
 **Interfaces:**
-- Consumes: the product IDs created in Task 4; the `even_pair`, `uneven_pair` and `uneven_balance` fields produced by `build_mix` in Task 1.
+- Consumes: the product IDs created in Task 4; the `demos`, `adjustments` and `warnings` fields produced by `build_mix` in Task 1.
 - Produces: the final user-facing report. Nothing downstream.
 
 - [ ] **Step 1: Append Steps 8–9 to SKILL.md**
@@ -1225,41 +1626,54 @@ Read-only — no `--allow-mutations`.
   no image. Name it, quote the `mediaErrors.details`, and offer to re-push that product
   with a different image URL. Do not report success.
 
-This is the failure mode most likely to embarrass someone mid-demo, and it is invisible
-without this step.
+Also confirm the variants actually exist with stock, since a silently dropped variant
+removes an exchange target:
+
+```bash
+shopify store execute -s "$SHOPIFY_DEMO_STORE" \
+  --query '{ products(first: 4, query: "tag:pl-demo-seed status:active") { nodes { title variants(first: 20) { nodes { inventoryQuantity selectedOptions { name value } } } } } }'
+```
+
+Every product needs **≥2 variants**, and every variant needs `inventoryQuantity` above
+zero. A zero-stock variant is invisible as an exchange target — the demo would show fewer
+options than expected and look broken.
 
 ---
 
 ## Step 9 — Report
 
-| # | Product | Seeded price | Sizes | Stock | Image | Admin |
-|---|---|---|---|---|---|---|
+| # | Product | Type | Seeded price | Variants | Stock | Image | Admin |
+|---|---|---|---|---|---|---|---|
 
 Admin links are `https://admin.shopify.com/store/<subdomain>/products/<numeric-id>` — the
 numeric part of the product GID.
 
-Then state the demos now available, taking `even_pair`, `uneven_pair` and
-`uneven_balance` straight from the shaping script's output:
+Then the demos now available, taken **straight from the shaping script's `demos` output**
+rather than recomputed:
 
-- **Even exchange:** *[product A]* ↔ *[product B]*, same price, no balance.
-- **Uneven exchange:** *[product A]* → *[product C]*, balance of *[uneven_balance]*.
+- **Even, in-product:** *[product]* — swap *[swap]*, nothing to pay.
+- **Even, across products:** *[A]* ↔ *[B]*, same price, nothing to pay.
+- **Uneven upward:** *[A]* → *[D]*, customer **pays** *[balance]*.
+- **Uneven downward:** *[A]* → *[C]*, customer is refunded *[refund]* — or say it is not
+  available for this product set.
 
-Repeat any price adjustments here, so whoever runs the demo knows which figures are not
-the prospect's real prices.
+Repeat any price adjustments as `was → now`, so whoever runs the demo knows which figures
+are not the prospect's real prices. Surface any `warnings` from the script.
 
 **No currency symbols** in any figure — a dev store set to a non-GBP or non-USD currency
 displays different symbols, so a demo script must not hard-code one.
 ````
 
-- [ ] **Step 2: Verify the async-media gap is documented**
+- [ ] **Step 2: Verify the async-media gap and demo reporting are documented**
 
 ```bash
 cd /Users/jamie.lee-smith/Documents/Claude/Projects/parcellab-claude-skills/plugins/pl-tools/skills/shopify-seed
 grep -c 'asynchronous\|PROCESSING\|FAILED' SKILL.md
-grep -c 'uneven_balance' SKILL.md
+grep -c 'pays' SKILL.md
+grep -c 'inventoryQuantity' SKILL.md
 ```
 
-Expected: at least 3 matches for the first; at least 1 for the second — the report must consume the script's own output rather than recomputing the balance.
+Expected: at least 3 for the first; at least 2 for `pays` — the upward demo must be named as taking payment; at least 1 for `inventoryQuantity`.
 
 - [ ] **Step 3: Verify the full step sequence is present and ordered**
 
@@ -1316,7 +1730,7 @@ Add `"shopify"` to the `keywords` array.
 In the skill table (around `README.md:58`), after the `order-lifecycle` row:
 
 ```markdown
-| `pl-tools:shopify-seed` | Loads four of a prospect's real products into a Shopify dev store, priced so both the even and uneven exchange demos work, with stock on every variant | *"Seed [prospect]'s products into my Shopify store"* |
+| `pl-tools:shopify-seed` | Loads four of a prospect's real products — with their size and colour variants — into a Shopify dev store, priced so a size swap, an even cross-product swap, and an uneven swap that takes payment all demo correctly | *"Seed [prospect]'s products into my Shopify store"* |
 ```
 
 - [ ] **Step 4: Add the README detail section**
@@ -1333,17 +1747,25 @@ products they actually sell.
 seed acme.com's products into my Shopify store
 ```
 
-Browses the prospect's site for four products, validates the images resolve, then shapes
-the prices so both exchange flows have a valid target: two products at one price for an
-even exchange, one at another for an uneven one. Real prices are kept whenever the
-catalogue already contains a matching pair; any adjustment is reported.
+Browses the prospect's site for four products of different types, keeps a couple of values
+from each variant axis the site exposes, and validates the images resolve. Then it prices
+them so every exchange demo works:
 
-Requires the Shopify CLI. First run confirms which of your authenticated dev stores to
-use and remembers it in `~/.claude/parcellab-shopify-seed.env`.
+- **a size swap inside one product** — the quickest even exchange, and the most common real
+  returns case
+- **an even swap across a matched pair** — different item, nothing to pay
+- **an uneven swap upward** — into something dearer, so the flow takes payment
+- **an uneven swap downward** where the catalogue allows one, for the refund case
+
+Real prices are kept whenever the catalogue already has a matching pair and a dearer item,
+which is the common case. Any adjustment is reported as `was → now`.
+
+Requires the Shopify CLI. First run confirms which of your authenticated dev stores to use
+and remembers it in `~/.claude/parcellab-shopify-seed.env`.
 
 Re-runs **archive** the previous prospect's products — tagged `pl-demo-seed` — rather than
-deleting them, so nothing is lost and the store does not accumulate the wrong brand's
-items as exchange targets.
+deleting them, so nothing is lost and the store does not accumulate the wrong brand's items
+as exchange targets.
 ````
 
 - [ ] **Step 5: Verify the JSON is still valid and no stale count remains**
@@ -1395,33 +1817,49 @@ Expected: `shopify-seed` listed; the `"No version specified"` warning present an
 
 - [ ] **Step 2: Run the skill against a real prospect site**
 
-Ask the user for a prospect URL, then invoke `pl-tools:shopify-seed` with it. Destination store: `parcellab-demo-jls.myshopify.com` (Jamie's authenticated dev store, connected Jul 27 2026 — confirm by name at the Step 1 gate).
+Ask the user for a prospect URL — ideally a fashion retailer, since real Size and Colour axes are what this exercises. Destination store: `parcellab-demo-jls.myshopify.com` (Jamie's authenticated dev store, connected Jul 27 2026 — confirm by name at the Step 1 gate).
 
 Confirm each of these actually happened:
 
 - Store confirmed **by name** before any write, and persisted to `~/.claude/parcellab-shopify-seed.env`.
 - Location GID resolved automatically — the user was never asked to paste one.
-- Four products collected with real names, prices and images.
+- Four products of **four different types**, with real names, prices and images.
+- Real variant axes were picked up where the site exposes them, and no colour was invented.
 - `check_images.mjs` ran and passed on all four.
-- The approval table appeared, and **nothing was written before a yes**.
+- The approval table appeared with all four demos named, and **nothing was written before a yes**.
 - Any price adjustment was disclosed as `from` → `to`.
 
 - [ ] **Step 3: Verify the result in Shopify**
 
 ```bash
 shopify store execute -s parcellab-demo-jls.myshopify.com \
-  --query '{ products(first: 10, query: "tag:pl-demo-seed") { nodes { id title status tags totalInventory media(first: 1) { nodes { status ... on MediaImage { image { url } } } } variants(first: 5) { nodes { price inventoryQuantity selectedOptions { name value } } } } } }'
+  --query '{ products(first: 10, query: "tag:pl-demo-seed") { nodes { id title status productType tags totalInventory options { name values } media(first: 1) { nodes { status ... on MediaImage { image { url } } } } variants(first: 20) { nodes { price inventoryQuantity selectedOptions { name value } } } } } }'
 ```
 
 Confirm, for each product:
 
 - `status: ACTIVE`, tags include `pl-demo-seed` and `pl-prospect-<handle>`.
-- Every variant has `inventoryQuantity` **greater than zero** — this is the check that catches the invisible-exchange-target bug.
-- Every variant shares the `Size` option name.
+- **≥2 variants**, and every variant's `inventoryQuantity` **greater than zero** — this is the check that catches the invisible-exchange-target bug.
+- Every variant of a product shares the **same price** — that is what makes the in-product size swap an even exchange.
+- `options` matches the axes scraped, and the variant count equals the product of the axis lengths (nothing silently dropped).
 - Media `status: READY` with a real `image { url }`.
-- Prices satisfy both flows: two equal, at least one different.
+- Four distinct `productType` values.
 
-- [ ] **Step 4: Verify the re-run archives rather than accumulates**
+Then confirm the price shape across the four products:
+
+- exactly two share a price (the matched pair);
+- at least one is priced **above** that pair — without this the upward payment demo does not exist.
+
+- [ ] **Step 4: Walk one exchange in the returns portal**
+
+The Shopify data being right does not prove the demo works. In the parcelLab returns portal against this store, start a return on a seeded product and confirm:
+
+- the same product's other size appears as an exchange target, with no balance to pay;
+- the dearer product appears as a target and shows a **balance to pay**.
+
+If exchange targets are missing, check variant stock first — that is the usual cause.
+
+- [ ] **Step 5: Verify the re-run archives rather than accumulates**
 
 Run the skill a second time with a **different** prospect URL, then:
 
@@ -1432,11 +1870,11 @@ shopify store execute -s parcellab-demo-jls.myshopify.com \
 
 Expected: the first prospect's products are `ARCHIVED`, the second prospect's are `ACTIVE`, and only the second prospect's items would appear as exchange targets. Nothing deleted.
 
-- [ ] **Step 5: Fix any defect found, then re-verify**
+- [ ] **Step 6: Fix any defect found, then re-verify**
 
-If any check above fails, fix the skill and repeat the failing step. Do not proceed to Step 6 with a known failure. Do not expand scope to pre-existing unrelated failures — if `test_pl_credentials.py` was already failing, note it plainly and leave it.
+If any check above fails, fix the skill and repeat the failing step. Do not proceed to Step 7 with a known failure. Do not expand scope to pre-existing unrelated failures — if `test_pl_credentials.py` was already failing, note it plainly and leave it.
 
-- [ ] **Step 6: Commit any fixes and report**
+- [ ] **Step 7: Commit any fixes and report**
 
 ```bash
 git add -A
