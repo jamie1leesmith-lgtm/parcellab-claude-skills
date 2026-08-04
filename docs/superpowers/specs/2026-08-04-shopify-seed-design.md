@@ -165,11 +165,28 @@ Uses Claude Code's built-in **Browser pane** (`mcp__Claude_Browser__*`), matchin
 snippet lives in this skill's `references/product-scrape.md`. **`demo-request` is not
 modified.**
 
-Price extraction, in priority order:
+Extraction, in priority order — **revised after the live run, which proved the original order
+insufficient**:
 
-1. JSON-LD `application/ld+json` → `offers.price` (most reliable)
-2. `meta[property="product:price:amount"]`
-3. DOM price text as a last resort
+1. **Shopify's own product JSON**, fetched same-origin from inside the page:
+   `fetch(location.pathname + '.js')`. Gives `type`, `price`, `featured_image`, and crucially
+   `options[]` with the option **name** and exact values. `curl` cannot substitute — some
+   storefronts return bot-protection noise to it. Prices are in **minor units** (divide by 100)
+   and `featured_image` is protocol-relative (prepend `https:`).
+2. JSON-LD `application/ld+json` → `offers.price`
+3. `meta[property="product:price:amount"]`
+4. DOM price text as a last resort
+
+On Allbirds — a Shopify storefront — paths 2–4 found a price but **no variant axes at all**: the
+page exposes no product JSON script and no matching option UI, so the skill would have silently
+fabricated an `S`/`M`/`L` axis for shoes. Path 1 returned the real sizes. Deriving values by
+splitting a variant's `public_title` on `" / "` is also unsafe: a real value was
+`"M (W8-10 / M8)"`, which the split corrupts.
+
+**A candidate PDP must be confirmed before its data is used.** A collection page can link to
+URLs that redirect back to the listing or 404 — Allbirds' own men's collection did both. Scraping
+the redirected page yields a product-shaped `name` with a null price and no axes, which looks like
+a sparse product rather than the wrong page.
 
 **Four products of four different types** — a jumper, jeans, shoes, a jacket. Not four
 jumpers. The variety is what makes the cross-product exchange look like a real decision.
@@ -271,8 +288,16 @@ per alias; anything non-empty → report it and stop.
 server-side and media processing is asynchronous even under `synchronous: true`.
 
 So re-query the seeded products' `media { nodes { status, mediaErrors { details } } }`. Retry
-once after a short wait on `PROCESSING`. Name any product left without an image and suggest
-supplying a direct image URL.
+once after a short wait on `PROCESSING`; if it is still processing after that, report it
+unresolved rather than retrying again or claiming success. Name any product left without an image
+and suggest supplying a direct image URL.
+
+**Verify by the product IDs the push returned, not by a tag query.** `products(query: "tag:…")`
+is served by a search index that lags writes: in the live run, a tag query immediately after a
+clean 4-product push returned only the *previous* run's products, then the full set seconds
+later. Verifying by tag right after a write can therefore report a healthy seed as broken.
+`nodes(ids: […])` is authoritative and index-independent. The tag query stays correct for the
+archive lookup in Step 6, where the previous run is old and lag is harmless.
 
 This step is what catches hotlink- or referer-protected prospect CDNs — the failure mode most
 likely to embarrass someone mid-demo, and invisible without it.

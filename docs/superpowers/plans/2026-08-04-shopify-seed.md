@@ -1980,3 +1980,49 @@ git push origin main
 ```
 
 Then tell the team to run `/pl-update`. Nothing updates itself — no notification, no background pull. `pl-tools` stays unversioned; its version resolves to the commit SHA, so the push itself is the release.
+
+---
+
+## Task 7 outcome — live run against `parcellab-demo-jls`, 2026-08-04
+
+Prospect: **allbirds.com**. Four products of four distinct types, seeded and verified end to end.
+
+| Product | Type | Real | Seeded | Variants | Stock | Media |
+|---|---|---|---|---|---|---|
+| Men's Tree Glider - Medium Grey | Sneakers | 140.00 | 140.00 | 3 × Size | 25 each | READY |
+| Men's Wool Runner NZ Mid Waterproof | Boots | 160.00 | 160.00 | 3 × Size | 25 each | READY |
+| Anytime Crew Sock - Blizzard | Socks | 18.00 | 18.00 | 3 × Size | 25 each | READY |
+| Men's Allbirds Flip Flop - Mushroom | Flip Flops | 25.00 | **18.00** | 3 × Size | 25 each | READY |
+
+Exactly **one** price moved — the minimum the rule allows. Demos produced: in-product size swap
+(Tree Glider, Size 8 → 8.5); cross-product even (Sock ↔ Flip Flop at 18.00); **uneven upward,
+customer pays 142.00** (Sock → Wool Runner). Downward refund unavailable, correctly reported as
+such — nothing sat below the pair.
+
+Real option values survived intact, including `"M (W8-10 / M8)"`. Re-run archived the first set
+and left only the current prospect ACTIVE. Nothing was deleted.
+
+### Three defects found and fixed (`eb82567`)
+
+1. **A redirected or dead PDP link was scraped as a product.** Allbirds' own men's collection
+   links to URLs that 302 back to the listing (`mens-tree-runner-nz`, `mens-dasher-nz`,
+   `mens-varsity`), 404 (`allbirds-slipper`), or land on a *different* product
+   (`mens-cruiser-canvas`). The redirected page yielded `name: "Men's Shoes"`, `price: null`,
+   `options: []` — garbage that looks like a sparse product. A landing guard is now mandatory
+   before any scraped field is used.
+2. **Both extraction paths returned no variant axes on a Shopify storefront.** No product JSON
+   script and no matching option UI existed; the only `<select>` was a country picker. The skill
+   would have fabricated `S`/`M`/`L` for shoes. Fixed by making same-origin
+   `fetch(location.pathname + '.js')` the first-choice path — it yields option names and exact
+   values. Splitting `public_title` on `" / "` was also rejected: a real value contains `" / "`.
+3. **Step 8 verified through a lagging search index.** `products(query: "tag:…")` returned only
+   the previous run's products immediately after a clean push, then the full set seconds later —
+   so the check could report a healthy seed as broken. Step 8 now verifies by the product IDs the
+   push returned, via `nodes(ids: […])`. The tag query remains correct for Step 6's archive lookup.
+
+### Not verified
+
+**The returns-portal exchange walk (Step 4).** It needs a real *order* in the store — a different
+class of write than seeding products, and not authorised — plus confirmation of which of the three
+Shopify Order APIs on account `1626718` is wired to `parcellab-demo-jls`. The Shopify-side
+preconditions an exchange depends on are all confirmed above; the parcelLab side is untested.
