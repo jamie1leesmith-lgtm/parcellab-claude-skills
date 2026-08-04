@@ -1,4 +1,4 @@
-# parcellab-create-order — Skill README
+# create-order — Skill README
 
 This is a personal Claude Code skill that creates orders in a ParcelLab account via the production Order API (`PUT /v4/track/orders/`). This README explains **why** the skill is shaped the way it is — the design decisions, the gotchas we hit while building it, and the constraints that shaped each choice — so the team can read, reuse, or adapt it without re-deriving the same conclusions.
 

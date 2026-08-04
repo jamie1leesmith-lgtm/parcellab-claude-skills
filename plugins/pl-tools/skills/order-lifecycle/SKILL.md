@@ -1,5 +1,5 @@
 ---
-name: parcellab-order-lifecycle
+name: order-lifecycle
 description: Simulate a full parcelLab post-purchase journey — source a real product from a brand site, create an untracked order, then push a timed sequence of tracking checkpoints (warehouse → carrier → delivery) so parcelLab fires the comms for each stage. Use for phrases like "simulate the full journey for [brand]", "run a lifecycle order", "push an order and walk it through delivery", "simulate post-purchase events".
 ---
 
@@ -104,7 +104,7 @@ Never print the token back to the user or repeat it anywhere in your reply.
 Two `PUT https://api.parcellab.com/v4/track/orders/` calls, done directly (not by
 the driver):
 
-1. **Untracked order** — build a payload following the `parcellab-create-order`
+1. **Untracked order** — build a payload following the `create-order`
    shape: `account` (the resolved account id, `${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`), `order_number` (`<XXX>-<ts>`),
    destination country ISO3, recipient, shipping address, `articles_order`,
    currency/timezone from the country. Save as `create.json` with **no
@@ -197,7 +197,7 @@ payload-building pattern:
    (and/or the attach payload — either is fine, it's an order-level field).
 2. **Article split:** divide `articles_order`'s `line_item_id`s across the
    shipments — each shipment's `add_tracking.tracking.articles` gets only the
-   items in that parcel (same rule as the base `parcellab-create-order` skill).
+   items in that parcel (same rule as the base `create-order` skill).
 3. **Attach both trackings in one PUT:** put two `add_tracking` mutations in
    the same `mutations` array, one per shipment, each with its own randomised
    `tracking_number`, its own `courier` (may differ per shipment), a

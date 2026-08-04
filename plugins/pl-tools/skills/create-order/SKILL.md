@@ -1,5 +1,5 @@
 ---
-name: parcellab-create-order
+name: create-order
 description: Create a real order in the user's ParcelLab account via the production Order API. Use whenever the user wants to create, push, send, or POST an order to ParcelLab — including phrases like "create a parcellab order", "push a test order to PL", "send an order to parcellab for [country/scenario]", "create a PL shipment", or any request to generate a tracked or untracked order in their parcelLab account. The skill fills in realistic dummy data when the user only provides partial context, so trigger it even when the user has not specified every field.
 ---
 

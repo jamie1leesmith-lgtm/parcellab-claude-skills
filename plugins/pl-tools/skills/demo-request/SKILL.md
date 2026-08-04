@@ -1,5 +1,5 @@
 ---
-name: parcellab-demo-request
+name: demo-request
 description: Use this skill when the user wants to create a custom demo request from a prospect website URL. It guides Claude to research the prospect site, collect four representative products from real product detail pages, verify image URLs, ask the user to approve the selected articles and images, then submit the request through the Custom Demo Creator automation API.
 allowed-tools: mcp__playwright__browser_navigate, mcp__playwright__browser_evaluate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_click, Bash(curl:*), Bash(node:*)
 argument-hint: <prospect-url>
@@ -234,7 +234,7 @@ Write the payload to `/tmp/cdc-payload.json`:
 Submit:
 
 ```bash
-node ~/.claude/skills/parcellab-demo-request/scripts/submit_demo_request.mjs /tmp/cdc-payload.json
+node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/submit_demo_request.mjs /tmp/cdc-payload.json
 ```
 
 ---

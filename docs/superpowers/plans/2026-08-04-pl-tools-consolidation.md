@@ -33,6 +33,7 @@ A blind `parcellab-` → `pl-` replacement breaks all of these. They stay exactl
 | `parcellab-product-api` (2×) | `bug-investigation/SKILL.md:81,103` | The **org's** plugin, from `parcelLab/parcellab-cli` |
 | `parcellab-product-configuration` (1×) | `bug-investigation/SKILL.md:81` | Skill inside the org's plugin |
 | `~/.claude/parcellab-demo-request.env` (3×) | `demo-request/SKILL.md:16,213,249` | User config file that exists on disk (verified). Renaming breaks working setups. |
+| `parcellab-demo-request-scripts` (3×) | `demo-request/scripts/package.json:2`, `package-lock.json:2,8` | npm package name, internal to that scripts project. Not a Claude identifier and never typed by a user. Renaming it means hand-editing the lockfile's root name for no benefit. |
 
 ### RENAME list (the only 8 tokens that change)
 
