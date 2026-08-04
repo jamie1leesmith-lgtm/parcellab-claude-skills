@@ -1,7 +1,6 @@
 ---
 name: demo-request
 description: Use this skill when the user wants to create a custom demo request from a prospect website URL. It guides Claude to research the prospect site, collect four representative products from real product detail pages, verify image URLs, ask the user to approve the selected articles and images, then submit the request through the Custom Demo Creator automation API.
-allowed-tools: mcp__playwright__browser_navigate, mcp__playwright__browser_evaluate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_click, Bash(curl:*), Bash(node:*)
 argument-hint: <prospect-url>
 ---
 
@@ -9,7 +8,13 @@ argument-hint: <prospect-url>
 
 ## Overview
 
-Create demo requests from a prospect URL. Research the site using the Playwright MCP browser, collect four representative products from real PDPs, validate image URLs, ask the user to approve the product set, then submit through the Custom Demo Creator automation API.
+Create demo requests from a prospect URL. Research the site using Claude Code's **built-in browser** (the Browser pane, `mcp__Claude_Browser__*`), collect four representative products from real PDPs, validate image URLs, ask the user to approve the product set, then submit through the Custom Demo Creator automation API.
+
+> **Browser pane, not Playwright MCP.** This skill previously required
+> `mcp__playwright__*`, which is not installed and is not part of this plugin —
+> the skill was unrunnable as a result. It now uses the same built-in Browser pane
+> as `branded-template` and `order-lifecycle`. No Chrome extension, no MCP server,
+> nothing to install.
 
 ## Required Environment
 
@@ -24,26 +29,36 @@ Never print the token value.
 
 ---
 
-## Step 1 — Check Playwright is connected
+## Step 1 — Open the Browser pane
 
-Verify `mcp__playwright__browser_navigate` is available. If not, stop and tell the user:
+`mcp__Claude_Browser__preview_start` with `{ url: "<prospect URL>" }`.
 
-> "Playwright MCP isn't connected. Run `claude mcp list` to confirm it's listed, or restart Claude Code and try again."
+That opens the pane and navigates in one call. Use `preview_start` for the *first*
+page and `mcp__Claude_Browser__navigate` for every page after — calling `navigate`
+before a pane exists fails with *"No preview is open"*.
+
+The Browser pane is loaded by default in Claude Code, so there is nothing to check
+and nothing to install. If `preview_start` itself is unavailable, say so and stop;
+do not fall back to Claude-in-Chrome, which needs a logged-in Chrome and is not
+what this skill is built for.
 
 ---
 
 ## Step 2 — Research the homepage
 
-Navigate to the prospect URL:
+The pane is already on the prospect URL from Step 1.
 
-```
-mcp__playwright__browser_navigate → prospect URL
-```
+Confirm the page loaded with `mcp__Claude_Browser__get_page_text`
+(`{ max_chars: 2000 }`) — cheaper and more reliable than a screenshot for checking
+you didn't land on a consent wall or bot block. Then extract brand metadata and
+listing links with `mcp__Claude_Browser__javascript_tool`:
 
-Take a screenshot to confirm the page loaded. Then run this JS to extract brand metadata and find product listing links:
+**Wrap the snippet as an IIFE.** `javascript_tool` evaluates an *expression*, so a
+bare `() => {…}` returns the function rather than calling it. Every snippet below is
+already wrapped as `(() => {…})()` — keep it that way.
 
 ```javascript
-() => {
+(() => {
   const title = document.title;
   const metaDesc = document.querySelector('meta[name="description"]')?.content || '';
   const ogSiteName = document.querySelector('meta[property="og:site_name"]')?.content || '';
@@ -68,7 +83,7 @@ Take a screenshot to confirm the page loaded. Then run this JS to extract brand 
     .slice(0, 10);
 
   return { title, metaDesc, ogSiteName, lang, listingLinks };
-}
+})()
 ```
 
 From this, infer:
@@ -83,13 +98,13 @@ From this, infer:
 Navigate to one of the listing links found in Step 2:
 
 ```
-mcp__playwright__browser_navigate → listing URL
+mcp__Claude_Browser__navigate → { url: "<listing URL>" }
 ```
 
-Then scrape PDP links:
+Then scrape PDP links with `mcp__Claude_Browser__javascript_tool`:
 
 ```javascript
-() => {
+(() => {
   // Find product links — look for URL patterns common to PDPs
   const pdpLinks = Array.from(document.querySelectorAll('a[href]'))
     .map(a => ({ href: a.href, text: a.innerText?.trim().slice(0, 80) }))
@@ -107,7 +122,7 @@ Then scrape PDP links:
     .slice(0, 20);
 
   return { pdpLinks };
-}
+})()
 ```
 
 If fewer than 4 PDP links are found, navigate to another listing page and repeat. Aim to collect at least 8 candidate PDP URLs before selecting.
@@ -116,10 +131,11 @@ If fewer than 4 PDP links are found, navigate to another listing page and repeat
 
 ## Step 4 — Extract product data from PDPs
 
-For each of the 4 chosen PDPs, navigate to the page and run:
+For each of the 4 chosen PDPs, navigate with `mcp__Claude_Browser__navigate` and run
+this via `mcp__Claude_Browser__javascript_tool`:
 
 ```javascript
-() => {
+(() => {
   // Product name
   const name = (
     document.querySelector('h1')?.innerText ||
@@ -156,7 +172,7 @@ For each of the 4 chosen PDPs, navigate to the page and run:
   const imageUrl = bestImg ? (bestImg.currentSrc || bestImg.src) : null;
 
   return { name, imageUrl, pdpUrl: location.href };
-}
+})()
 ```
 
 Run this for each of the 4 PDPs and collect `{ name, imageUrl, pdpUrl }` for each.
@@ -254,7 +270,23 @@ On error:
 
 ## Edge cases
 
-- **Cookie / consent modal blocking the page** — use `mcp__playwright__browser_snapshot` to find the dismiss button reference, then `mcp__playwright__browser_click` to close it before scraping.
+- **Cookie / consent modal blocking the page** — `mcp__Claude_Browser__read_page`
+  with `{ filter: "interactive" }` to get `ref_N` handles, then
+  `mcp__Claude_Browser__computer` with `{ action: "left_click", ref: "ref_N" }` on
+  the dismiss button. **Choose the most privacy-preserving option** — decline
+  non-essential cookies rather than accepting all.
 - **Login wall or geofence** — note what's blocked, collect what's accessible, ask the user to supply missing product details manually.
-- **Lazy-loaded images** — scroll the page before running the image scoring snippet: `window.scrollTo(0, document.body.scrollHeight / 2)` in a `mcp__playwright__browser_evaluate` call.
+- **Lazy-loaded images** — scroll before running the image scoring snippet:
+  `mcp__Claude_Browser__computer` with
+  `{ action: "scroll", coordinate: [640, 400], scroll_direction: "down", scroll_amount: 5 }`,
+  or `mcp__Claude_Browser__javascript_tool` running
+  `(() => { window.scrollTo(0, document.body.scrollHeight / 2); return true; })()`.
 - **Fewer than 4 products on one listing page** — navigate to additional listing pages and collect more candidates before finalising the four.
+- **Bot protection / empty page text** — `get_page_text` returning a challenge page
+  or near-nothing means the site blocked the fresh browser context. Say so and ask
+  the user for another site or for product details directly. Do not try to work
+  around the block.
+- **Site needs a login to browse** — the Browser pane runs a fresh context with no
+  saved sessions, which is fine for public storefronts and hopeless behind a login.
+  That case is out of scope for this skill; don't switch to Claude-in-Chrome to get
+  round it.
