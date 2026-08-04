@@ -303,39 +303,95 @@ payload-building pattern:
    tracking number, and how far its scenario goes — so the user can see both
    outcomes clearly before and during the run.
 
-## Journey pre-check (optional, Tier 1)
+## Custom path — journey introspection
 
-Before running a sequence — especially a **custom one that diverges from the
-proven default** — you can sanity-check that the account actually has a
-published Journey trigger for each stage, so a failure to fire a comm isn't a
-surprise after the fact.
+Builds a sequence from the account's **actual** Journey config, rather than
+assuming the user remembers which journeys are live.
 
-**This is informational only, not a blocking gate, and requires tooling not
-every session has:**
+**Requires the Product-API MCP journey tools.** If they aren't available in this
+session, say so in one line and fall back to asking the user to describe the
+sequence in prose, mapping it against *references/status-codes.md*. **Never block a
+run on tool availability.**
 
-1. Try `journey_list_journey_configurations` (account Product-API MCP tools)
-   with `account=[${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}]`, `release_status="published"`. **If
-   this tool isn't available in the current session, skip this step
-   entirely** — say so briefly and move on to Gate B. Never block the run on
-   its absence.
-2. If available, for each Journey's triggers, fetch
-   `journey_get_journey_trigger_configuration` and note each trigger's
-   `events[].eventTypes` and `slotTypes`.
-3. Present a short table to the user: Journey name → trigger name →
-   eventTypes/slotTypes, filtered to the slots relevant to lifecycle
-   simulation (`onDeliveryStatus`, `onDispatch`, `onDelivered`, `onDelay`,
-   `onOrderCreated`, `onTrackingCreated`). Flag which stages in the chosen
-   sequence look covered.
-4. **Matching is not always a literal string match** — some triggers key on a
-   `slotType` with a wildcard (`eventTypes: ["*"]`), and parcelLab sometimes
-   resolves an `event_status` to a different internal label before matching
-   (e.g. `Delivered` resolved to `Unknown` in `delivery_location_type` when
-   matching an `onDelivered` trigger). Only the four proven stages
-   (`WarehouseDelay`, `InTransit`, `OutForDelivery`, `Delivered`) plus the
-   automatic order-confirmation trigger have been empirically confirmed to
-   match. For any other `event_status`, treat the table as "looks plausible"
-   rather than a guarantee — the only real proof is running it and checking
-   `contacted_with_messages` afterward.
+### 1. List every journey
+
+`journey_list_journey_configurations(account=[<id>])`
+
+**Do not filter by `release_status`** — show drafts too, so the user sees
+everything. For each journey give name, `releaseStatus`, and a plain-English
+eligibility line derived from `filterExpression`.
+
+### 2. The user picks one by name
+
+### 3. Check the order is actually eligible — do not skip this
+
+Picking a journey by name is **not** sufficient. The order must match that
+journey's `filterExpression` or the journey never processes it: no error, just
+silence. Three ways a chosen journey fires nothing:
+
+| Condition | Detect | Tell the user |
+|---|---|---|
+| Draft | `releaseStatus != "published"` | It won't fire until published. Ask whether to continue anyway or pick another. |
+| Returns-only | filter requires `isReturnsPortal: true` | A forward shipment is never a returns-portal record. Name the journey that *would* catch this order. |
+| Order ineligible | filter needs fields the planned order lacks, e.g. `delivery_info.client: {$in: [...]}` | Name the field and offer to set it at Gate C. |
+
+Where the mismatch is fixable, offer the fix. Where it isn't, say which journey
+would catch this order instead. **Never proceed silently past an ineligible pick** —
+the whole run would produce checkpoints and no comms, looking like a bug.
+
+### 4. Fetch only that journey's triggers
+
+`journey_get_journey_trigger_configuration(id)` for each trigger on the chosen
+journey — roughly 5-12 calls. **Do not introspect every journey**: on a populated
+account that is 40+ calls for information the user didn't ask for.
+
+### 5. Present the mapping with a confidence label per row
+
+`eventTypes` in Journey config is a **different vocabulary** from the `event_status`
+values the events endpoint accepts. Every proposed mapping is therefore one of:
+
+| Confidence | Meaning | Example |
+|---|---|---|
+| **exact** | `eventTypes` contains the `event_status` verbatim | `OutForDelivery` -> `OutForDelivery`; `WarehouseDelay` -> `WarehouseDelay` |
+| **inferred** | Clear correspondence, different spelling | `ParcelLocker` -> `Delivered-ParcelLocker`; `FailedAttemptFirst` -> `FailedAttempt-NewAttemptNextDay` |
+| **unverified** | Config genuinely cannot tell us | `eventTypes: ["*"]` on `onDispatch` — a wildcard matches anything on that slot. `InTransit` is known to reach it only because a live run proved it. |
+
+Show **two independent axes**, because they answer different questions:
+
+- **Trigger confidence** — will this event match this trigger? (the table above)
+- **Status confidence** — will this `event_status` attach at all? Only
+  `WarehouseDelay`, `InTransit`, `OutForDelivery` and `Delivered` are proven; the
+  other ~42 enum values are untested.
+
+A mapping can be *exact* on a status that has never been tested, and *unverified*
+on a status proven to work. Don't collapse them into one number.
+
+### 6. The user selects which triggers to demonstrate, in order
+
+That selection **is** the sequence. Build `NN-<status>.json` files from it exactly
+as *Event sequence* describes — same identifier rule (`courier` +
+`tracking_number`), same no-`event_timestamp` rule.
+
+### 7. After the run, report what actually fired
+
+Verify against `contacted_with_messages` and say which *inferred* and *unverified*
+mappings actually produced a comm. Offer to record newly confirmed ones in
+`references/status-codes.md`, so each custom run shrinks the untested surface
+instead of the finding evaporating.
+
+### Known limitation: recipient roles are a second gate
+
+Filter eligibility is necessary but not sufficient. On account 1626718 the
+*Gifter Journey* has an empty `filterExpression` — so it matches every order — and
+an *Out for Delivery* trigger, yet a live run produced only one
+`out_for_delivery_*` comm. It almost certainly requires `additional_recipients`
+carrying a role listed in the Journey's `advancedRecipients`, the mechanism
+`create-order` documents under *Additional recipients*.
+
+So a journey can be published, eligible, and still mail nobody. State this as a
+limitation. Do not try to resolve it from config, and **never promise mail on the
+strength of an eligibility check.**
+
 
 ## Timing & background execution
 
