@@ -150,10 +150,16 @@ writes there stays invisible until a full ⌘Q restart. This follows the existin
 shopify store execute -s <store> --query '{ locations(first: 5) { nodes { id name isActive } } }'
 ```
 
-Read-only, so no `--allow-mutations`. Take the first active location. This returns the
-`gid://shopify/Location/…` form, which is exactly what `ProductSetInventoryInput.locationId`
-expects — the user never hunts a numeric ID out of an Admin URL. That manual find-and-replace
-was the clumsiest part of the original generic seed.
+Read-only, so no `--allow-mutations`. This returns the `gid://shopify/Location/…` form, which is
+exactly what `ProductSetInventoryInput.locationId` expects — the user never hunts a numeric ID out
+of an Admin URL. That manual find-and-replace was the clumsiest part of the original generic seed.
+
+**Choose the location the online store actually sells from**, not simply the first active one:
+`isActive` + `fulfillsOnlineOrders` + `shipsInventory`, falling back to `fulfillsOnlineOrders`
+alone, then to any active location with that stated. A store can have several — `parcellab-demo-jls`
+has *Shop location* and *UK Warehouse* — and stock placed at one the online store does not fulfil
+from leaves every variant stocked but **unsellable**. That failure presents identically to the
+zero-stock case while every number looks correct, so Step 8 also asserts `availableForSale`.
 
 ### Step 3 — Collect the prospect's products
 

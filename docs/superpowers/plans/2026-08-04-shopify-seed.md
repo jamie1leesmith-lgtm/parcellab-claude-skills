@@ -855,14 +855,20 @@ dig it out of an Admin URL:
 
 ```bash
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
-  --query '{ locations(first: 5) { nodes { id name isActive } } }'
+  --query '{ locations(first: 20) { nodes { id name isActive fulfillsOnlineOrders shipsInventory } } }'
 ```
 
 Read-only, so **no `--allow-mutations`** — that flag is only for writes.
 
-Take the first node with `isActive: true`. The `id` comes back as
-`gid://shopify/Location/123456`, which is exactly what `ProductSetInventoryInput.locationId`
-expects. No numeric-ID conversion needed.
+**Pick the location the online store actually sells from**, in order: `isActive` +
+`fulfillsOnlineOrders` + `shipsInventory`; then `isActive` + `fulfillsOnlineOrders`; then any
+`isActive`, saying so. Not simply the first active one — stock at a location the online store
+does not fulfil from leaves every variant stocked but unsellable, which looks exactly like the
+zero-stock failure while every number reads correctly. Step 8 asserts `availableForSale` to
+catch it.
+
+The `id` comes back as `gid://shopify/Location/123456`, which is exactly what
+`ProductSetInventoryInput.locationId` expects. No numeric-ID conversion needed.
 
 If no active location exists, stop and tell the user — stock cannot be set without one.
 ````
