@@ -406,7 +406,7 @@ if __name__ == "__main__":
 cd ~/parcellab-claude-skills/plugins/pl-tools/scripts && python3 -m unittest discover -s tests -v
 ```
 
-Expected: PASS, 24 tests, `OK`.
+Expected: PASS, 22 tests, `OK`.
 
 - [ ] **Step 6: Verify the CLI refuses to take a secret as a value**
 
@@ -1010,7 +1010,7 @@ Expected: `jamie1leesmith-lgtm/parcellab-claude-skills`. If it shows the
 cd ~/parcellab-claude-skills/plugins/pl-tools/scripts && python3 -m unittest discover -s tests -v
 ```
 
-Expected: `OK`, 24 tests.
+Expected: `OK`, 22 tests.
 
 - [ ] **Step 3: Push**
 
