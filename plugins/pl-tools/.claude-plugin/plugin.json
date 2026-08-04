@@ -1,9 +1,9 @@
 {
   "name": "pl-tools",
-  "description": "parcelLab internal tooling: create orders, simulate post-purchase journeys, build branded email layouts, raise demo requests, and investigate bugs. Run /pl-setup once after installing.",
+  "description": "parcelLab internal tooling: create orders, simulate post-purchase journeys, build branded email layouts, raise demo requests, investigate bugs, and seed prospect products into Shopify. Run /pl-setup once after installing.",
   "author": {
     "name": "parcelLab",
     "email": "jamie.lee-smith@parcellab.com"
   },
-  "keywords": ["parcellab", "pl", "orders", "returns", "email", "demo", "debugging"]
+  "keywords": ["parcellab", "pl", "orders", "returns", "email", "demo", "debugging", "shopify"]
 }
