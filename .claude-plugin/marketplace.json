@@ -16,5 +16,12 @@
       "source": "./plugins/pl-tools",
       "description": "parcelLab internal tooling: create orders, simulate post-purchase journeys, build branded email layouts, raise demo requests, and investigate bugs. Five skills plus /pl-setup, which configures your account and credentials in one pass."
     }
-  ]
+  ],
+  "renames": {
+    "parcellab-brand-layout": "pl-tools",
+    "parcellab-bug-investigation": "pl-tools",
+    "parcellab-create-order": "pl-tools",
+    "parcellab-demo-request": "pl-tools",
+    "parcellab-order-lifecycle": "pl-tools"
+  }
 }
