@@ -1,7 +1,7 @@
 # parcelLab Claude skills
 
 A private Claude Code plugin marketplace for parcelLab team skills. One plugin,
-**`pl-tools`**, carries all five parcelLab skills plus its setup command. Onyx
+**`pl-tools`**, carries all six parcelLab skills plus its setup command. Onyx
 ships separately.
 
 > 🔒 **This repo is private.** You need to be invited as a collaborator before you can add it as a marketplace or install anything. Ask Jamie (`jamie1leesmith-lgtm`) for access.
@@ -56,7 +56,7 @@ they deliberately don't share the `parcellab-` prefix used by the org's
 |-------|--------------|-----------------|
 | `pl-tools:create-order` | Creates a real order in your parcelLab account via the production Order API, filling in realistic dummy data | *"Push a test order to parcelLab for a UK delivery"* |
 | `pl-tools:order-lifecycle` | Simulates a full post-purchase journey: creates an untracked order, then pushes timed checkpoints (warehouse → carrier → delivery) so parcelLab fires the comms for each stage | *"Simulate the full journey for [brand]"* |
-| `pl-tools:shopify-seed` | Loads four of a prospect's real products — with their size and colour variants — into a Shopify dev store, priced so a size swap, an even cross-product swap, and an uneven swap that takes payment all demo correctly | *"Seed [prospect]'s products into my Shopify store"* |
+| `pl-tools:shopify-seed` | Loads four of a prospect's real products — with their size and colour variants — into a Shopify dev store, priced so a size swap, an even cross-product swap, an uneven swap upward that takes payment, and an uneven swap downward all demo correctly | *"Seed [prospect]'s products into my Shopify store"* |
 | `pl-tools:branded-template` | Builds a branded transactional email layout in your parcelLab account from a brand URL, with live preview in the desktop app | *"Create a parcelLab layout for www.nike.com"* |
 | `pl-tools:demo-request` | Creates a custom demo request from a prospect website URL — collects products, verifies images, submits to the Custom Demo Creator | *"Create a demo request for www.example.com"* |
 | `pl-tools:bug-investigation` | Investigates a product bug end to end: checks live config via the `parcellab` CLI, reproduces it in Claude-in-Chrome with real screenshot/recording capture, isolates root cause against sibling portals, and publishes a shareable bug report as an artifact, HTML file, and PDF — always *before* any mitigation, which needs express account-number-specific sign-off | *"Investigate this bug on [portal]"* |
@@ -241,8 +241,9 @@ seed acme.com's products into my Shopify store
 ```
 
 Browses the prospect's site for four products of different types, keeps a couple of values
-from each variant axis the site exposes, and validates the images resolve. Then it prices
-them so every exchange demo works:
+from each variant axis the site exposes, and validates the images resolve. It puts stock on
+every variant — a zero-stock variant is invisible as an exchange target — then prices them
+so every exchange demo works:
 
 - **a size swap inside one product** — the quickest even exchange, and the most common real
   returns case
