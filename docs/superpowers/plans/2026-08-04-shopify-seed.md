@@ -874,10 +874,17 @@ Expected: the `name:` value and the directory name are both `shopify-seed`. A mi
 
 ```bash
 grep -c 'parcelLab' SKILL.md
-grep -rn 'shopify populate\|SHOPIFY_CLI_SKIP_UPDATE_CHECK' . ; echo "forbidden-strings-exit:$?"
 ```
 
-Expected: at least one `parcelLab` hit in the description; `forbidden-strings-exit:1` (grep found nothing).
+Expected: at least one `parcelLab` hit in the description — that is what makes the skill trigger.
+
+The two non-existent things (`shopify populate`, `SHOPIFY_CLI_SKIP_UPDATE_CHECK`) **are named deliberately** in Step 2's blockquote, which tells the reader they are not real. So testing for their absence would fail by design. Test instead that they never appear as an *instruction* — every mention must sit inside the blockquote:
+
+```bash
+grep -nE 'shopify populate|SHOPIFY_CLI_SKIP_UPDATE_CHECK' SKILL.md | grep -vE '^[0-9]+:>' ; echo "instruction-use-exit:$?"
+```
+
+Expected: `instruction-use-exit:1` — no mention outside a `>` blockquote line.
 
 - [ ] **Step 4: Verify the skill is actually discoverable**
 
