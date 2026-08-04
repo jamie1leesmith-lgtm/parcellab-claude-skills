@@ -305,32 +305,49 @@ hand and silently drifting apart.
 
 Fixes pushed to this repo reach installed users via plugin update (Manage plugins → update, or `/plugin marketplace update parcellab-skills` in the CLI).
 
-> ⚠️ **You must bump `version` in the plugin's `plugin.json`, or the release
-> reaches nobody.** Updates are gated on that version string, *not* on git
-> commits. Push without bumping and `plugin update` reports
-> *"already at the latest version"* and does nothing — no error, no warning.
-> Meanwhile a *fresh* install pulls current `main` and does get your change, so
-> you end up with two groups on silently different versions of the same skill:
-> exactly what this repo exists to prevent. This has already happened once
-> (commit `fe9efe6`, fixed in `d0b766c`).
-
-**Releasing a change, in order:**
+**Releasing a change to `pl-tools`:**
 
 1. Make the change.
-2. Bump `version` in the affected plugin's `.claude-plugin/plugin.json`. One
-   plugin changed means one bump — the repo-root `README.md` is the exception,
-   as it sits outside every plugin and is read on GitHub.
-3. Commit and push.
-4. Verify it actually shipped: `claude plugin marketplace update parcellab-skills`
-   then `claude plugin update <plugin>@parcellab-skills`. You want to see
-   *"updated from X to Y"*. If you see *"already at the latest version"*, you
-   forgot step 2.
-5. Tell the team to update and restart the app (⌘Q) — plugins load at startup.
+2. Commit and push to `main`.
+3. Tell the team to run `/pl-update`.
 
-Because everyone installs from the same source, an update is a push from the
-maintainer and a *Manage plugins → update* from each person — no re-sharing
-files, and no way for two people to end up on quietly different versions of the
-same skill.
+That's it — **there is no version number to bump.** `pl-tools` deliberately omits
+`version` from its `plugin.json`, so its version resolves to the git commit SHA and
+every push is automatically a new version.
+
+> **Why it's done this way.** Setting `version` *pins* the plugin: push new commits
+> without changing that string and `plugin update` reports *"already at the latest
+> version"* and does nothing — no error, no warning — while a *fresh* install pulls
+> current `main` and does get the change. Two groups, silently different code,
+> which is the exact problem this repo exists to prevent. It happened once
+> (`fe9efe6`, fixed in `d0b766c`) before the version field was removed. The docs
+> recommend omitting it for internal, actively-developed plugins for this reason.
+>
+> The cost is that `claude plugin list` shows a commit SHA rather than a friendly
+> number. Worth it: a forgotten bump fails invisibly, whereas an extra update
+> ships a typo fix.
+>
+> **If you ever reintroduce `version`, you own the bump on every single release.**
+> Don't set it in both `plugin.json` and the marketplace entry —
+> `plugin.json` silently wins.
+
+`onyx` still pins a version, because it changes rarely and its MCP server benefits
+from a legible number. Bump it when you change it.
+
+**Receiving a change** — for your team, and for you on another machine:
+
+```
+/pl-update
+```
+
+It refreshes the marketplace, updates `pl-tools` (and `onyx` if installed), says
+whether anything actually changed, and tells you whether a restart is needed.
+Equivalent to running `claude plugin marketplace update parcellab-skills` then
+`claude plugin update pl-tools@parcellab-skills` by hand.
+
+**Nothing updates by itself.** No notification, no background pull. Your team keeps
+running old code until they run `/pl-update` — so "tell the team" is a permanent
+part of releasing, not an optional courtesy.
 
 ## For maintainers — adding a new skill
 
@@ -343,12 +360,11 @@ New parcelLab skills go inside `pl-tools`. No new plugin, no new marketplace ent
    against to decide whether to trigger the skill; the directory name is only the
    typed handle. Don't use `pl-` in the identifier either — the `pl-tools:` prefix
    already namespaces it, and repeating it just stutters.
-3. Bump `version` in `plugins/pl-tools/.claude-plugin/plugin.json`.
-4. `git add . && git commit -m "feat(pl-tools): add <name> skill" && git push`
-5. Verify it shipped and appears:
-   `claude plugin marketplace update parcellab-skills`,
-   `claude plugin update pl-tools@parcellab-skills`, then
-   `claude plugin details pl-tools@parcellab-skills` to confirm it's listed.
+3. `git add . && git commit -m "feat(pl-tools): add <name> skill" && git push`
+   — no version bump, see [Updating](#updating).
+4. Verify it shipped and appears: run `/pl-update`, then
+   `claude plugin details pl-tools@parcellab-skills` to confirm the new skill is
+   listed. If it's missing, step 2 is almost always the reason.
 
 Never commit `node_modules` — it's covered by `.gitignore`.
 
