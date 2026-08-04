@@ -74,8 +74,15 @@ Two skills additionally need an Order API token (`PARCELLAB_TOKEN`):
 
 ### One-time setup
 
-You need the parcelLab CLI installed — internal users have this already. Then, in
-the Claude Code desktop app:
+You need two things on your machine first:
+
+- **The `parcellab` CLI**, installed. Internal users have this already. The binary
+  is `parcellab`; `parcellab-cli` is the repo it ships from, not a command.
+- **Python 3** — `/pl-setup` writes your credentials with a stdlib-only Python
+  script. macOS ships it, so `python3 --version` should just answer. If it
+  doesn't, `xcode-select --install`.
+
+Then, in the Claude Code desktop app:
 
 1. **Install:** **+** → **Plugins** → **Add plugin** → marketplace source
    `jamie1leesmith-lgtm/parcellab-claude-skills` → install `pl-tools`.
@@ -180,9 +187,19 @@ Researches a prospect's website, collects four representative products from real
 
 **Prerequisites:**
 
-1. **Node.js** — the skill runs helper scripts in `plugins/pl-tools/skills/demo-request/scripts/`
-2. **Install script dependencies once** — `node_modules` is intentionally *not* committed, so run `npm install` inside that `scripts/` folder before first use (installs Playwright)
-3. Custom Demo Creator API access
+1. **Node.js** — the skill submits through `submit_demo_request.mjs`, which uses
+   only Node's built-ins (`node:fs`, `node:os`, `node:path`). Nothing to install.
+2. Custom Demo Creator API access
+
+> **No `npm install` needed.** An earlier version of this README told you to run
+> one to fetch Playwright. That was only ever required by `fetch_page.mjs`, which
+> this skill does not invoke — it browses through the Playwright *MCP* instead.
+> Running it would download several hundred MB of browsers for nothing.
+>
+> `check_images.mjs` and `fetch_page.mjs` ship in `scripts/` but are not wired
+> into `SKILL.md`. Known loose end: either dead code to remove or a gap in the
+> skill's instructions. Being looked at separately — it doesn't affect using the
+> skill.
 
 ### pl-tools:order-lifecycle
 
@@ -208,7 +225,23 @@ Investigates and documents a live product bug: confirms the exact account up fro
 1. **Your default account** — see [Your default account](#your-default-account). An investigation can target any account, but the default is what it offers first
 2. **Claude-in-Chrome connected** — this skill uses it specifically (not the built-in Browser pane) because only its `computer`/`gif_creator` tools can save a screenshot or export a GIF to disk
 3. **The `parcellab` CLI**, authenticated (`parcellab auth login`). Note the binary is `parcellab`; `parcellab-cli` is the name of the repo it ships from, not a command
-4. The relevant **`parcellab-product-api`** skill(s) for whatever surface you're debugging (returns, OSP, Journey, filters, carrier connections, product feed, etc. — this skill routes to `parcellab-product-configuration` as the entry point, it doesn't duplicate their config knowledge)
+4. **The org's `parcellab-product-api` plugin** — a hard requirement, and it comes
+   from a *different* marketplace, so installing `pl-tools` does not bring it.
+   This skill routes to its `parcellab-product-configuration` entry point rather
+   than duplicating that config knowledge (returns, OSP, Journey, filters, carrier
+   connections, product feed…), so without it the investigation stalls at the
+   config-inspection step.
+
+   In the desktop app: **+** → **Plugins** → **Add plugin** → source
+   `parcelLab/parcellab-cli` → install `parcellab-product-api`. Or in the CLI:
+
+   ```bash
+   claude plugin marketplace add parcelLab/parcellab-cli
+   claude plugin install parcellab-product-api@parcellab
+   ```
+
+   Adding a marketplace only *reads* that repo — no push, no fork, nothing written
+   to the org.
 5. **A headless Chrome/Chromium install** for the PDF export (the HTML/artifact deliverables don't need it — only the PDF render does)
 
 **Note:** the whole investigation (Steps 1-4) is read-only, and the bug report is written and published before any config change. Applying a mitigation is a separate, later decision that requires restating and confirming the exact account number/resource code — not implied by an earlier general approval — especially when the change alters real customer-facing behaviour rather than just the bug's trigger condition. If a mitigation is applied after the report already went out, the HTML/PDF get regenerated and redelivered — they don't auto-update the way the artifact's URL does.
@@ -219,12 +252,19 @@ Some of the team are running earlier versions of these skills that were shared
 by hand — a `SKILL.md` copied straight into `~/.claude/skills/`. **Delete those
 before installing from this marketplace.**
 
-Why: a hand-copied skill and a plugin skill can carry the same (or a very
-similar) name. When two skills match the same request, you have no control over
-which one Claude picks, and the hand-copied one is frozen at whatever day it was
-copied — it won't have the account-confirmation guard, the CLI edit-mode guard,
-or any later fix. You'd get intermittent old behaviour with no obvious cause,
-which is a miserable thing to debug.
+Why — and note the reason is **not** that the names clash. Since the rename they
+don't: your hand-copied copy is `parcellab-create-order`, the plugin's is
+`create-order`. Different handles.
+
+The problem is that Claude decides which skill to run by matching your request
+against each skill's **description**, not its name. Two copies of the same skill
+carry near-identical descriptions, so both match, and you have no control over
+which one wins. The hand-copied one is frozen at whatever day it was copied — no
+account-confirmation guard, no CLI edit-mode guard, none of the later fixes. You'd
+get intermittent old behaviour with no visible cause, which is a miserable thing
+to debug.
+
+So a different name does **not** make it safe to keep the old copy.
 
 To find them:
 
@@ -232,9 +272,9 @@ To find them:
 ls ~/.claude/skills/
 ```
 
-Anything parcelLab- or onyx-related in that listing is a hand-copied copy —
-plugin skills do not live there. Move them somewhere else rather than deleting,
-so you can get them back if something's missing:
+Anything parcelLab- or onyx-related in that listing is a hand-copied copy — plugin
+skills never live there. Move them aside rather than deleting, so you can get them
+back if something turns out to be missing:
 
 ```bash
 mkdir -p ~/claude-skills-archive && mv ~/.claude/skills/<name> ~/claude-skills-archive/
