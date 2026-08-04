@@ -21,7 +21,7 @@ fresh order number, no carryover — unless the user explicitly says reuse/resen
    ```bash
    test -n "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" && test -n "$PARCELLAB_TOKEN" && echo ok
    ```
-2. **Gather inputs:** brand site URL + a rough product idea (e.g. "coffee machine"), destination country, and any overrides (scenario, gap, extra items, **split shipment** — see *Split shipments*).
+2. **Gather inputs:** brand site URL + a rough product idea (e.g. "coffee machine"), destination country, and any overrides (scenario, gap, extra items, **split shipment** — see *Split shipments*). **Ask for the destination country if the user hasn't named one — never assume it.** It silently sets the language, currency, timezone, courier and address, so a wrong guess yields an entirely wrong-looking journey. `create-order`'s *Defaults & dummy data* table lists the countries with ready-made defaults.
 3. **Source the product** (see *Product sourcing*).
 4. **Gate A — product approval.** Show product(s); wait for approval.
 5. **Confirm the carrier(s).** State the country default courier; let the user confirm/override. For a split shipment, confirm a courier per shipment (they may differ).

@@ -19,7 +19,7 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
 
    If either is missing, follow *If credentials are missing* below — don't guess values and don't proceed.
 
-2. **Gather context from the user's message.** Look for: destination country, courier, scenario (e.g. "delivered", "in transit", "return"), number of items, tracking vs untracked, language. Anything they don't mention, you make up — see *Defaults & dummy data* below.
+2. **Gather context from the user's message.** Look for: destination country, courier, scenario (e.g. "delivered", "in transit", "return"), number of items, tracking vs untracked, language. Anything they don't mention, you make up — see *Defaults & dummy data* below — **except the destination country, which you always ask for if they haven't named one.**
 
 2a. **Always confirm the carrier before building a tracked order.** Even if the user's message implies a country (and therefore a sensible default courier), explicitly ask which courier they want — state the default you'd otherwise use and let them confirm or override. Skip this only for untracked orders (no `mutations`). Never silently pick a courier for a tracked order.
 
@@ -233,7 +233,21 @@ If the order has no `mutations` (untracked), the order-level field is the only p
 
 ## Defaults & dummy data
 
-When the user gives partial context, infer the rest from the destination country. If they give nothing at all, default to a German order.
+**Never pick the destination country yourself — always ask.** If the user hasn't
+named a country, stop and ask which destination they want before building anything,
+offering the ones below as the ready-made options:
+
+> Which destination country? I have defaults ready for **DEU**, **GBR**, **USA**,
+> **FRA**, **NLD** and **AUT** — or name any other and I'll pick a plausible
+> address and courier for it.
+
+Destination is the one field never invented, because it silently determines the
+language, currency, timezone, courier and address of the whole order — so a wrong
+guess produces an entirely wrong-looking order rather than an obviously wrong
+field. Everything *else* the user doesn't mention, you still make up from the table
+below.
+
+Once the country is known, infer the rest from it.
 
 | Country | Language | Currency | Timezone        | Courier         | Example postcode/city |
 |---------|----------|----------|-----------------|-----------------|------------------------|
