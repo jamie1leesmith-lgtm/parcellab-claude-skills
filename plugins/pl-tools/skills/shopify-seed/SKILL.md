@@ -140,7 +140,10 @@ or a bot block.
 
 Then follow `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/product-scrape.md` to
 collect exactly four products as
-`{ name, product_type, price, options, image_url, pdp_url }`.
+`{ name, product_type, price, options, image_url, pdp_url }`. That reference's landing
+guard is required before a candidate counts as one of the four — a collection page can
+link to a product URL that redirects back to the listing or 404s, which is why more than
+four PDP candidates are worth gathering up front.
 
 **Four different product types**, and **a couple of values from each variant axis the site
 exposes**. One image per product — variants share it.
@@ -295,8 +298,18 @@ server-side, and media processing is asynchronous **even under `synchronous: tru
 hotlink- or referer-protected prospect CDN fails at that point, well after the mutation
 returned success.
 
-Write `/tmp/verify-media.graphql` from the media verification query in
-`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, then re-query:
+**Verify by the product IDs Step 7's mutation returned** (`p1.product.id` …
+`p4.product.id`), not by a fresh tag search. `products(query: "tag:pl-demo-seed")` is
+served by a search index that lags writes — verified live, run immediately after a
+successful push it returned only the previous run's products and none of the new ones,
+then returned all of them correctly a few seconds later. **A tag query returning fewer
+products than expected right after a push means index lag, not a failed push** — the IDs
+from the mutation response sidestep that entirely, since they are authoritative the
+instant the mutation returns.
+
+Write `/tmp/verify-media.graphql` from the ID-based verification query in
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, substituting
+the four captured IDs, then re-query:
 
 ```bash
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
@@ -313,17 +326,11 @@ Read-only — no `--allow-mutations`.
   no image. Name it, quote the `mediaErrors.details`, and offer to re-push that product
   with a different image URL. Do not report success.
 
-Also confirm the variants actually exist with stock, since a silently dropped variant
-removes an exchange target:
-
-```bash
-shopify store execute -s "$SHOPIFY_DEMO_STORE" \
-  --query '{ products(first: 4, query: "tag:pl-demo-seed status:active") { nodes { title variants(first: 20) { nodes { inventoryQuantity selectedOptions { name value } } } } } }'
-```
-
-Every product needs **≥2 variants**, and every variant needs `inventoryQuantity` above
-zero. A zero-stock variant is invisible as an exchange target — the demo would show fewer
-options than expected and look broken.
+The same by-ID query returns `variants` too, so confirm stock from that one response
+rather than a second tag-based call — a silently dropped variant removes an exchange
+target. Every product needs **≥2 variants**, and every variant needs `inventoryQuantity`
+above zero. A zero-stock variant is invisible as an exchange target — the demo would show
+fewer options than expected and look broken.
 
 ---
 

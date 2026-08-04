@@ -28,7 +28,63 @@ Reuse `demo-request` Steps 2 and 3 verbatim — the listing-link and PDP-link sn
 already work. Aim for at least 8 PDP candidates across **different categories** before
 choosing four.
 
-## Extract name, type, price, image and variant axes from a PDP
+## Confirm the PDP actually loaded — required before trusting anything
+
+A collection page can link to a product URL that redirects back to the listing or 404s.
+After navigating to a candidate PDP and before using any field from the extraction
+snippet below, check its returned `pdp_url` against the handle you navigated to. If they
+don't match — or the URL now ends in the collection path, not a product path — discard
+the candidate and try the next one. Don't shape or price data scraped off the wrong page.
+
+Symptom to watch for even when the navigation looked fine: a plausible product-shaped
+`name` paired with `price: null` and `options: []`. That combination is the signature of
+still being on a listing page, not a PDP — treat it as a failed candidate, not an empty
+result to fall back from.
+
+## Extract from a Shopify storefront — try this first
+
+Shopify's own JSON endpoint for the current PDP is the most reliable source when it's
+available, verified live against Allbirds. Run it same-origin, from inside the page —
+`curl` gets bot-protection noise back on some storefronts, not JSON:
+
+```javascript
+(async () => {
+  const r = await fetch(location.pathname.split('?')[0] + '.js', { headers: { Accept: 'application/json' } });
+  if (!r.ok) return { ok: false, status: r.status };
+  const d = await r.json();
+  return {
+    ok: true,
+    name: d.title,
+    product_type: d.type,
+    price: (d.price / 100).toFixed(2),
+    options: (d.options || []).map(o => ({ name: o.name, values: o.values })),
+    variantCount: (d.variants || []).length,
+    image_url: d.featured_image ? 'https:' + d.featured_image : null,
+    pdp_url: location.href,
+  };
+})()
+```
+
+Three things this snippet gets right that are easy to get wrong by hand:
+
+- **`price` is in minor units (cents).** Divide by 100 — skipping this inflates every
+  price 100×.
+- **`featured_image` is protocol-relative** (`//cdn.shopify.com/...`). Prepend `https:`
+  or the URL is unusable.
+- **Never derive an option value by splitting a variant's `public_title` on `" / "`.**
+  Verified failure case: a real value of `"M (W8-10 / M8)"` itself contains `" / "`, so
+  splitting truncates it to `"M (W8-10"`. Use `options[].values` as returned — it is
+  already correct per-axis and needs no splitting.
+
+Shopify's `type` is coarse — Allbirds returns `"Shoes"` for both a sneaker and a flip
+flop. Keep setting a specific `product_type` label yourself regardless of what `.js`
+returns (see below): a coarse shared type makes genuinely different products look like
+duplicates and trips the duplicate-type warning in Step 4's shaping output.
+
+If `r.ok` is false (non-Shopify site, or the endpoint is blocked), fall back to the
+generic extraction snippet below.
+
+## Extract name, type, price, image and variant axes from a PDP (non-Shopify fallback)
 
 ```javascript
 (() => {
@@ -161,6 +217,11 @@ short label like `Jumper`, `Jeans`, `Trainers` is all it needs to be.
 
 ## Edge cases
 
+- **A collection page can link to products that redirect elsewhere or 404** — verified on
+  Allbirds' own `/collections/mens`, where several listed links landed back on the
+  collection page or 404'd. Expect to discard candidates after the landing-guard check
+  above, so start with more than four PDP links (the 8-candidate aim above already
+  accounts for this).
 - **Consent modal** — `read_page` with `{ filter: "interactive" }` for `ref_N` handles,
   then click the dismiss control. **Decline non-essential cookies**, never accept all.
 - **Lazy-loaded images** — scroll before scoring:

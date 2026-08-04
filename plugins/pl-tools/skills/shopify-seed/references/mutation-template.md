@@ -15,6 +15,13 @@ Read-only, so **no `--allow-mutations`**:
 }
 ```
 
+This tag query is served by a search index that lags writes — verified live, immediately
+after a successful 4-product push it returned only products from an older run, then
+returned everything correctly a few seconds later. That lag is harmless here, because
+what this query is looking for is the *previous* run, which is old enough that the index
+has long since caught up. Do not reuse this query to verify the run that was just
+pushed — see the ID-based verification below instead.
+
 ## Archive it
 
 `productUpdate` takes **`product: ProductUpdateInput`**. The older `input: ProductInput`
@@ -158,12 +165,21 @@ swap an *even* exchange.
 `productOptions[].position` is 1-based and must match the order the axes appear in
 `optionValues`.
 
-## Verify the media actually landed
+## Verify the media actually landed — by ID, not tag
+
+Verify against the exact product IDs the push mutation just returned (`p1.product.id`
+… `p4.product.id`), not a fresh tag search. The tag query above is index-backed and
+lags writes — verified live, a tag query run immediately after a successful push (0
+`userErrors`) returned only the previous run's products and none of the new ones,
+then returned all 8 correctly a few seconds later. A tag query returning fewer
+products than expected right after a push means index lag, not a failed push — but
+the safer fix is to skip the index entirely and verify by ID, which is authoritative
+the instant the mutation returns:
 
 ```graphql
 {
-  products(first: 4, query: "tag:pl-demo-seed status:active") {
-    nodes {
+  nodes(ids: ["gid://shopify/Product/111", "gid://shopify/Product/222", "gid://shopify/Product/333", "gid://shopify/Product/444"]) {
+    ... on Product {
       id
       title
       media(first: 1) {
@@ -173,7 +189,13 @@ swap an *even* exchange.
           ... on MediaImage { image { url } }
         }
       }
+      variants(first: 20) {
+        nodes { inventoryQuantity selectedOptions { name value } }
+      }
     }
   }
 }
 ```
+
+Same fields as the tag-based query, plus `variants` folded in so one query covers both
+checks Step 8 needs (media status and stocked variants).
