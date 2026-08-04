@@ -100,6 +100,14 @@ silently point every later run at a nonexistent store.
 A config file rather than an env var: env vars are read only at app startup, so a value
 written here would stay invisible until a full quit (⌘Q).
 
+Every later command that references `$SHOPIFY_DEMO_STORE` sources this file first — each
+Bash invocation is its own shell, so nothing set in one command block survives into the
+next. Prefix each such block with:
+
+```bash
+source ~/.claude/parcellab-shopify-seed.env
+```
+
 **Dev stores only.** Never a production merchant store. Say the store name out loud at
 the confirmation so a wrong target is caught before any write.
 
@@ -111,6 +119,7 @@ Stock needs a location ID, and it is per-store. Fetch it rather than asking the 
 dig it out of an Admin URL:
 
 ```bash
+source ~/.claude/parcellab-shopify-seed.env
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
   --query '{ locations(first: 5) { nodes { id name isActive } } }'
 ```
@@ -145,8 +154,9 @@ guard is required before a candidate counts as one of the four — a collection 
 link to a product URL that redirects back to the listing or 404s, which is why more than
 four PDP candidates are worth gathering up front.
 
-**Four different product types**, and **a couple of values from each variant axis the site
-exposes**. One image per product — variants share it.
+**Four different product types**, and **up to three values from each variant axis the site
+exposes** (`shape_product_mix.py` caps both axes and values-per-axis at 3). One image per
+product — variants share it.
 
 ### Assemble the payload
 
@@ -242,14 +252,20 @@ Every product this skill creates carries the tags `pl-demo-seed` and
 `pl-prospect-<handle>`, which is what makes cleanup possible. Find the previous run:
 
 ```bash
+source ~/.claude/parcellab-shopify-seed.env
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
   --query '{ products(first: 50, query: "tag:pl-demo-seed status:active") { nodes { id title } } }'
 ```
 
-If any come back, archive them using the aliased `productUpdate` shape in
-`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`:
+`first: 50` truncates silently — more than 50 tagged products means archiving in two
+passes (page with the query's cursor, or run this step twice).
+
+If any come back, generate `/tmp/archive.graphql` and `/tmp/archive.json` from the
+aliased `productUpdate` shape in
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, then run:
 
 ```bash
+source ~/.claude/parcellab-shopify-seed.env
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
   --query-file /tmp/archive.graphql --variable-file /tmp/archive.json --allow-mutations
 ```
@@ -259,25 +275,33 @@ un-archive in the Admin to recover them. Report what was archived, by name.
 
 If nothing is tagged, say so and move on — a first run against a clean store is normal.
 
+**If Step 7's push then fails**, these archived products are the recovery path — see
+Step 7's failure branch below.
+
 ---
 
 ## Step 7 — Push the new products
 
 Generate `/tmp/seed.graphql` and `/tmp/seed.json` from
-`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, mapping the
-shaped output onto the mutation:
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, mapping
+`/tmp/seed-shaped.json` (Step 4's output) onto the mutation:
 
 - `name` → `title`
 - `options[]` → `productOptions[]`, with 1-based `position`; each `values[]` string becomes
   `{ "name": "<value>" }`
 - `variants[].option_values[]` → `optionValues[]` (`option_name` → `optionName`)
+- `variants[].price` → `price`
 - `variants[].quantity` and `location_id` → `inventoryQuantities[]` with `name: "available"`
 - `image_url` → a single `files[]` entry with `contentType: IMAGE`
 - `product_type` → `productType`, `tags` → `tags`
+- `status: "ACTIVE"` — the script never emits this field; set it explicitly rather than
+  relying on `productSet`'s default, since Step 6's next-run lookup searches
+  `status:active`
 
 These files are generated per run, not shipped — the products differ every time.
 
 ```bash
+source ~/.claude/parcellab-shopify-seed.env
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
   --query-file /tmp/seed.graphql --variable-file /tmp/seed.json --allow-mutations
 ```
@@ -288,6 +312,17 @@ exclusive, as are `--variable-file` and `--variables`.
 
 Check `userErrors` on **every alias**, not just the first. Any non-empty `userErrors` →
 report it and stop; do not continue to verification with a partial seed.
+
+**If this fails**, Step 6 already archived the previous seed — the store now has no
+active seed at all. That is recoverable, not fatal: name the products archived in Step
+6, tell the user they can be restored, and give the re-activation route per product:
+
+```graphql
+mutation { productUpdate(product: { id: "<gid>", status: ACTIVE }) { product { id status } userErrors { field message } } }
+```
+
+Only after either a clean push or a restored previous seed should you report the
+outcome to the user.
 
 ---
 
@@ -312,6 +347,7 @@ Write `/tmp/verify-media.graphql` from the ID-based verification query in
 the four captured IDs, then re-query:
 
 ```bash
+source ~/.claude/parcellab-shopify-seed.env
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
   --query-file /tmp/verify-media.graphql
 ```
@@ -322,15 +358,20 @@ Read-only — no `--allow-mutations`.
 - `status: PROCESSING` → wait a few seconds and re-run **once**; if it is still
   `PROCESSING` after that retry, treat it the same as a failure for reporting — name the
   product, say its image is unresolved rather than broken, and do not report success.
-- `status: FAILED`, or `mediaErrors` populated, or no media node at all → that product has
-  no image. Name it, quote the `mediaErrors.details`, and offer to re-push that product
-  with a different image URL. Do not report success.
+- `status: FAILED`, `mediaErrors` populated, no media node at all, or a `null` entry in the
+  `nodes(ids: …)` result (an ID that resolved to nothing) — any of these means that product
+  has no image. Name it, quote `mediaErrors.details` where present, and offer to re-push
+  that product with a different image URL. Do not report success.
 
 The same by-ID query returns `variants` too, so confirm stock from that one response
 rather than a second tag-based call — a silently dropped variant removes an exchange
 target. Every product needs **≥2 variants**, and every variant needs `inventoryQuantity`
 above zero. A zero-stock variant is invisible as an exchange target — the demo would show
 fewer options than expected and look broken.
+
+**If either check fails** — fewer than 2 variants, or any variant at zero stock — name the
+product and the offending variant, say it will be invisible as an exchange target, and do
+not report success.
 
 ---
 

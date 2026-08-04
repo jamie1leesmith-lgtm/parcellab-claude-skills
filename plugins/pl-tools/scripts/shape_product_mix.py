@@ -24,6 +24,7 @@ TWO_PLACES = Decimal("0.01")
 DEFAULT_AXIS = ("S", "M", "L")
 DEFAULT_STOCK = 25
 MAX_VALUES_PER_AXIS = 3
+MAX_AXES = 3
 NUDGE = Decimal("10.00")
 SEED_TAG = "pl-demo-seed"
 PRODUCT_COUNT = 4
@@ -93,7 +94,9 @@ def resolve_options(product, default_axis=DEFAULT_AXIS):
     """Return the variant axes to build, always with at least one usable axis.
 
     A single-value axis cannot demo a swap, so it is dropped. If nothing usable survives,
-    fall back to a Size axis — colour values are never invented.
+    fall back to a Size axis — colour values are never invented. Axes are capped at
+    MAX_AXES (Shopify's own hard limit is 3 options per product), keeping the first three
+    in order — exceeding it is not a soft truncation, the push mutation is refused outright.
     """
     axes = []
     for option in product.get("options") or []:
@@ -105,6 +108,8 @@ def resolve_options(product, default_axis=DEFAULT_AXIS):
                 values.append(value)
         if name and len(values) >= 2:
             axes.append({"name": name, "values": values[:MAX_VALUES_PER_AXIS]})
+
+    axes = axes[:MAX_AXES]
 
     if not axes:
         axes = [{"name": "Size", "values": list(default_axis)}]
@@ -149,7 +154,6 @@ def build_mix(payload):
 
     originals = [normalise_price(p["price"]) for p in products]
     shaped, adjusted_indices, roles = shape_prices(originals)
-    tags = [SEED_TAG, f"pl-prospect-{handle}"]
 
     shaped_products = []
     adjustments = []
@@ -166,7 +170,9 @@ def build_mix(payload):
             "pdp_url": product.get("pdp_url"),
             "options": options,
             "variants": build_variants(options, shaped[index], stock, location_id),
-            "tags": tags,
+            # Each product gets its own list — sharing one object across all four would
+            # let an in-place tag mutation on one product leak into the others.
+            "tags": [SEED_TAG, f"pl-prospect-{handle}"],
         })
         shaped_products[-1]["variant_count"] = len(shaped_products[-1]["variants"])
 

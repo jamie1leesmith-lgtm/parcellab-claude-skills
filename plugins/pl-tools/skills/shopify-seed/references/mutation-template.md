@@ -189,7 +189,7 @@ the instant the mutation returns:
           ... on MediaImage { image { url } }
         }
       }
-      variants(first: 20) {
+      variants(first: 50) {
         nodes { inventoryQuantity selectedOptions { name value } }
       }
     }

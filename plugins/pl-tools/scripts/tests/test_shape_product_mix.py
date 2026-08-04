@@ -157,6 +157,25 @@ class ResolveOptionsTests(unittest.TestCase):
             for axis in resolve_options(product):
                 self.assertGreaterEqual(len(axis["values"]), 2, product)
 
+    def test_four_axes_are_truncated_to_three(self):
+        product = {"options": [
+            {"name": "Size", "values": ["S", "M"]},
+            {"name": "Colour", "values": ["Black", "Navy"]},
+            {"name": "Material", "values": ["Cotton", "Wool"]},
+            {"name": "Fit", "values": ["Regular", "Slim"]},
+        ]}
+        axes = resolve_options(product)
+        self.assertEqual([a["name"] for a in axes], ["Size", "Colour", "Material"])
+
+    def test_exactly_three_axes_are_kept_unchanged(self):
+        product = {"options": [
+            {"name": "Size", "values": ["S", "M"]},
+            {"name": "Colour", "values": ["Black", "Navy"]},
+            {"name": "Material", "values": ["Cotton", "Wool"]},
+        ]}
+        axes = resolve_options(product)
+        self.assertEqual([a["name"] for a in axes], ["Size", "Colour", "Material"])
+
 
 class BuildVariantsTests(unittest.TestCase):
     def test_two_axes_produce_the_cartesian_product(self):
@@ -295,6 +314,23 @@ class BuildMixTests(unittest.TestCase):
         payload["location_id"] = "   "
         with self.assertRaises(ValueError):
             build_mix(payload)
+
+    def test_variant_count_cannot_exceed_27(self):
+        # 4 axes x 3 values each would be 81 variants and >3 options per product,
+        # which Shopify itself refuses -- resolve_options caps axes at 3, so the
+        # worst case is 3 axes x 3 values = 27.
+        options = [
+            {"name": "Size", "values": ["S", "M", "L"]},
+            {"name": "Colour", "values": ["Black", "Navy", "Red"]},
+            {"name": "Material", "values": ["Cotton", "Wool", "Linen"]},
+            {"name": "Fit", "values": ["Regular", "Slim", "Loose"]},
+        ]
+        result = build_mix(self.payload(
+            ["28.00", "28.00", "64.00", "90.00"], options=options
+        ))
+        for product in result["products"]:
+            self.assertLessEqual(product["variant_count"], 27)
+            self.assertEqual(product["variant_count"], 27)
 
 
 class CliTests(unittest.TestCase):

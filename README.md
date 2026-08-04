@@ -240,8 +240,8 @@ products they actually sell.
 seed acme.com's products into my Shopify store
 ```
 
-Browses the prospect's site for four products of different types, keeps a couple of values
-from each variant axis the site exposes, and validates the images resolve. It puts stock on
+Browses the prospect's site for four products of different types, keeps up to three
+values from each variant axis the site exposes, and validates the images resolve. It puts stock on
 every variant — a zero-stock variant is invisible as an exchange target — then prices them
 so every exchange demo works:
 
