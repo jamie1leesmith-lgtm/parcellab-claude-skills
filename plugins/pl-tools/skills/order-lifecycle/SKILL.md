@@ -21,15 +21,15 @@ fresh order number, no carryover — unless the user explicitly says reuse/resen
    ```bash
    test -n "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" && test -n "$PARCELLAB_TOKEN" && echo ok
    ```
-2. **Gather inputs:** brand site URL + a rough product idea (e.g. "coffee machine"), destination country, and any overrides (scenario, gap, extra items, **split shipment** — see *Split shipments*). **Ask for the destination country if the user hasn't named one — never assume it.** It silently sets the language, currency, timezone, courier and address, so a wrong guess yields an entirely wrong-looking journey. `create-order`'s *Defaults & dummy data* table lists the countries with ready-made defaults.
+2. **Gather inputs:** brand site URL + a rough product idea (e.g. "coffee machine"), destination country, and any overrides (gap, extra items). **Ask for the destination country if the user hasn't named one — never assume it.** It silently sets the language, currency, timezone, courier and address, so a wrong guess yields an entirely wrong-looking journey. `create-order`'s *Defaults & dummy data* table lists the countries with ready-made defaults.
 3. **Source the product** (see *Product sourcing*).
 4. **Gate A — product approval.** Show product(s); wait for approval.
-5. **Confirm the carrier(s).** State the country default courier; let the user confirm/override. For a split shipment, confirm a courier per shipment (they may differ).
-6. **Build payloads** (see *Order creation* and *Event sequence*). Write the untracked order as `create.json` (no `NN-` prefix so the driver skips it), and each event as `NN-<status>.json` in the same run directory. For split shipments, interleave both shipments' events into one numbered sequence — see *Split shipments*.
-6a. **Journey pre-check (optional — see *Journey pre-check*).** Offer it whenever the sequence isn't the proven default, or whenever the user asks. Skip silently if the required tool isn't available.
-7. **Gate B — plan approval.** Show order summary + carrier + scenario + gap. Wait for approval.
-8. **Launch the driver in the background** (see *Timing & background execution*).
-9. **Report** progress from the log (see *Reporting*).
+5. **Gate B — journey and scenario selection.** Ask one shipment or a split, then which scenario each shipment runs: happy, unhappy, or custom. Show the events and the comm each is expected to fire. See *Gate B — scenario selection*. **Never skip this and never assume a default.**
+6. **Confirm the carrier(s).** State the country default courier; let the user confirm/override. For a split shipment, confirm a courier per shipment (they may differ).
+7. **Build payloads** (see *Order + tracking setup* and *Event sequence*). Write the untracked order as `create.json` (no `NN-` prefix so the driver skips it), and each event as `NN-<status>.json` in the same run directory. For split shipments, interleave both shipments' events into one numbered sequence — see *Split shipments*.
+8. **Gate C — order enrichment and send approval.** Offer the optional extras, apply anything Gate B marked required, then show the final plan and wait for approval. See *Gate C — order enrichment*.
+9. **Launch the driver in the background** (see *Timing & background execution*).
+10. **Report** progress from the log (see *Reporting*).
 
 ## Account resolution and confirmation
 
@@ -225,7 +225,7 @@ payload-building pattern:
 5. **To leave a shipment "stuck" in a scenario**, simply stop emitting files
    for it — its last sent event stands as its live status indefinitely. No
    special "end" marker needed.
-6. **Gate B and Reporting** should summarise **per shipment** — courier,
+6. **Gate C and Reporting** should summarise **per shipment** — courier,
    tracking number, and how far its scenario goes — so the user can see both
    outcomes clearly before and during the run.
 
@@ -285,9 +285,16 @@ each event would be stamped with).
 
 ## Confirmation gates
 
-- **Gate A:** product(s) approved before building payloads.
-- **Gate B:** full plan approved before `00-create.json` is sent.
-After Gate B the sequence runs unattended.
+Three gates. All three are blocking — a run with no user response at any gate
+stops and waits. Never infer an answer from earlier context.
+
+- **Gate A:** product(s) approved before anything else.
+- **Gate B:** journey and scenario chosen — one shipment or split, and which
+  scenario each runs. Asked **every run**; there is no default.
+- **Gate C:** optional extras offered, then the final plan approved before
+  `create.json` is sent.
+
+After Gate C the sequence runs unattended.
 
 ## Reporting
 
