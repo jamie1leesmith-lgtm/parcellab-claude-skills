@@ -1,5 +1,5 @@
 ---
-name: parcellab-brand-layout-desktop
+name: branded-template
 description: Create a branded transactional email layout in the user's ParcelLab account from a brand website URL — built-in-browser version. Browses and previews with Claude Code's built-in browser (the Browser pane, `mcp__Claude_Browser__*`) and pushes via the ParcelLab MCP connector. Trigger on phrases like "create a ParcelLab layout for [brand]", "add a layout for [brand] to ParcelLab", "build a [brand] email layout", "push a [brand] layout to parcellab", or any request to generate a journey layout in ParcelLab from a brand website. Requires Claude Code's built-in browser and the ParcelLab MCP connector.
 ---
 
@@ -377,6 +377,9 @@ On failure:
 - Update a layout: tool ending `__journey_write_layout` → `{ "account": {ACCOUNT_ID}, "id": <layout id>, "data": { ...changed fields... } }`
 
 ---
+
+<!-- Do not rename `parcellab-brand-layout` below: it names the separate
+     Cowork/CLI variant in another repo, not this skill. -->
 
 ## Differences from `parcellab-brand-layout` (CLI/Playwright version)
 

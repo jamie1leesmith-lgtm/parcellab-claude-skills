@@ -1,5 +1,5 @@
 ---
-name: parcellab-bug-investigation
+name: bug-investigation
 description: Investigate and document a parcelLab product bug — inspect live config via the parcellab CLI, reproduce interactively in Claude-in-Chrome (captures real screenshots/recordings), isolate root cause by comparing against sibling portals/configs, and publish a shareable bug-report artifact before any mitigation is applied. Trigger on phrases like "troubleshoot this portal", "investigate this bug", "reproduce this issue", "something weird is happening on [portal/page]", "document this bug for the team", or any request to debug and write up unexpected behaviour in a live parcelLab account/portal/page.
 ---
 
@@ -78,6 +78,8 @@ Rules:
 **Bugs here are not just returns.** Anything built on the Product API is fair game — returns v1/v2 (Shopify or not), Order Status Page themes, Engage/Journey triggers and placeholders, filters, client/shop setup, carrier connections and checkpoint matching, webhook/OAuth integrations, product feed. Don't default to a returns-shaped investigation just because that's the first one this skill was written from.
 
 1. Get the specific portal/page/journey/theme code or id, and whatever repro details the user already has (order number, email, exact steps, what they expected vs. saw) — account is already confirmed from Step 0.
+<!-- Do not rename `parcellab-product-api` / `parcellab-product-configuration`:
+     they belong to the org's plugin (parcelLab/parcellab-cli), not to pl-tools. -->
 2. Load `parcellab-product-api:parcellab-product-configuration` first — it's the entry point across this whole area and will route you to the specific skill(s) that actually apply, for example:
    - Returns → `returns-v2-entrypoint` (which itself routes to Shopify/non-Shopify/headless/theme variants), or `returns-v1-remediation` for legacy portals
    - Order Status Page → the `track_*` OSP theme/translation tools, or `account-tracking-settings` for account-level tracking visibility
