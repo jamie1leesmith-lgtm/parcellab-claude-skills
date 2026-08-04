@@ -285,3 +285,65 @@ exclusive, as are `--variable-file` and `--variables`.
 
 Check `userErrors` on **every alias**, not just the first. Any non-empty `userErrors` →
 report it and stop; do not continue to verification with a partial seed.
+
+---
+
+## Step 8 — Verify the images actually landed
+
+**Empty `userErrors` does not mean the images arrived.** Shopify fetches `originalSource`
+server-side, and media processing is asynchronous **even under `synchronous: true`**. A
+hotlink- or referer-protected prospect CDN fails at that point, well after the mutation
+returned success.
+
+So re-query, using the media verification shape in
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`:
+
+```bash
+shopify store execute -s "$SHOPIFY_DEMO_STORE" \
+  --query-file /tmp/verify-media.graphql
+```
+
+Read-only — no `--allow-mutations`.
+
+- `status: READY` and an `image { url }` → good.
+- `status: PROCESSING` → wait a few seconds and re-run **once**.
+- `status: FAILED`, or `mediaErrors` populated, or no media node at all → that product has
+  no image. Name it, quote the `mediaErrors.details`, and offer to re-push that product
+  with a different image URL. Do not report success.
+
+Also confirm the variants actually exist with stock, since a silently dropped variant
+removes an exchange target:
+
+```bash
+shopify store execute -s "$SHOPIFY_DEMO_STORE" \
+  --query '{ products(first: 4, query: "tag:pl-demo-seed status:active") { nodes { title variants(first: 20) { nodes { inventoryQuantity selectedOptions { name value } } } } } }'
+```
+
+Every product needs **≥2 variants**, and every variant needs `inventoryQuantity` above
+zero. A zero-stock variant is invisible as an exchange target — the demo would show fewer
+options than expected and look broken.
+
+---
+
+## Step 9 — Report
+
+| # | Product | Type | Seeded price | Variants | Stock | Image | Admin |
+|---|---|---|---|---|---|---|---|
+
+Admin links are `https://admin.shopify.com/store/<subdomain>/products/<numeric-id>` — the
+numeric part of the product GID.
+
+Then the demos now available, taken **straight from the shaping script's `demos` output**
+rather than recomputed:
+
+- **Even, in-product:** *[product]* — swap *[swap]*, nothing to pay.
+- **Even, across products:** *[A]* ↔ *[B]*, same price, nothing to pay.
+- **Uneven upward:** *[A]* → *[D]*, customer **pays** *[balance]*.
+- **Uneven downward:** *[A]* → *[C]*, customer is refunded *[refund]* — or say it is not
+  available for this product set.
+
+Repeat any price adjustments as `was → now`, so whoever runs the demo knows which figures
+are not the prospect's real prices. Surface any `warnings` from the script.
+
+**No currency symbols** in any figure — a dev store set to a non-GBP or non-USD currency
+displays different symbols, so a demo script must not hard-code one.
