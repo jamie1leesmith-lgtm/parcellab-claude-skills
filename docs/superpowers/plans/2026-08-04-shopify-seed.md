@@ -1889,10 +1889,20 @@ If any check above fails, fix the skill and repeat the failing step. Do not proc
 
 - [ ] **Step 7: Commit any fixes and report**
 
+Stage explicit paths — **never `git add -A` in this repo.** `__pycache__/` is not gitignored and two `.pyc` files are already tracked, so a blanket add sweeps compiled bytecode into the commit:
+
 ```bash
-git add -A
+git add plugins/pl-tools/skills/shopify-seed/ plugins/pl-tools/scripts/shape_product_mix.py plugins/pl-tools/scripts/tests/test_shape_product_mix.py
 git commit -m "fix(shopify-seed): corrections from live verification"
 ```
+
+Confirm nothing unwanted is staged before committing:
+
+```bash
+git diff --cached --name-only | grep -E '__pycache__|\.pyc$' ; echo "bytecode-staged-exit:$?"
+```
+
+Expected `bytecode-staged-exit:1`.
 
 Then report to the user what was verified, with the actual command output — not a claim of success. **Do not push and do not tell the team to run `/pl-update` until the user says they are happy.**
 
