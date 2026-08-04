@@ -11,6 +11,7 @@ a single plugin.
 | `pl-tools:demo-request` | Raise a custom demo request from a prospect URL |
 | `pl-tools:bug-investigation` | Investigate and document a live product bug |
 | `pl-tools:pl-setup` | One-time setup (below) |
+| `pl-tools:pl-update` | Pull the latest skills and fixes, then tell you if a restart is needed |
 
 ## Setup
 
@@ -45,6 +46,17 @@ history.
 - `demo-request` needs Node and a one-time `npm install` in
   `skills/demo-request/scripts/`
 - `branded-template` needs the ParcelLab MCP connector and the built-in Browser pane
+
+## Staying up to date
+
+Run `/pl-update`, then fully quit and reopen the app (⌘Q) if it says anything
+changed. Nothing updates by itself — there's no notification and no background
+pull, so you keep running the version you installed until you run it.
+
+This plugin has **no pinned version**: its version is the marketplace repo's commit
+SHA, so every push by the maintainer is automatically a new version. That's why
+`claude plugin list` shows something like `43de6eb94ef0` rather than `2.0.1`, and
+why `claude plugin validate` warns about a missing `version` — both intentional.
 
 ## Tests
 
