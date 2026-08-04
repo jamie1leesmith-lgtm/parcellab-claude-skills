@@ -122,3 +122,91 @@ Take the first node with `isActive: true`. The `id` comes back as
 expects. No numeric-ID conversion needed.
 
 If no active location exists, stop and tell the user — stock cannot be set without one.
+
+---
+
+## Step 3 — Collect four of the prospect's products
+
+Open the pane on the prospect URL:
+
+`mcp__Claude_Browser__preview_start` with `{ url: "<prospect URL>" }`.
+
+Use `preview_start` for the *first* page and `mcp__Claude_Browser__navigate` for every page
+after — calling `navigate` before a pane exists fails with *"No preview is open"*.
+
+Confirm the page loaded with `mcp__Claude_Browser__get_page_text` (`{ max_chars: 2000 }`)
+before scraping — cheaper and more reliable than a screenshot for spotting a consent wall
+or a bot block.
+
+Then follow `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/product-scrape.md` to
+collect exactly four products as
+`{ name, product_type, price, options, image_url, pdp_url }`.
+
+**Four different product types**, and **a couple of values from each variant axis the site
+exposes**. One image per product — variants share it.
+
+### Validate the images
+
+Write the four products to a scratchpad file, then reuse `demo-request`'s checker:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/check_images.mjs /tmp/seed-products.json
+```
+
+It expects exactly 4 products, prints a JSON result per image, and **exits non-zero if any
+fails**. It retries HEAD as a ranged GET on 403/405, which is the hotlink-protected CDN
+case — and that same protection will later defeat Shopify's own server-side fetch, so an
+image failing here will not work in Step 8 either. Replace it now.
+
+If an image fails, go back to that PDP and pick the next-best-scoring image. If none work,
+ask the user for a direct image URL.
+
+---
+
+## Step 4 — Shape the mix
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/shape_product_mix.py < /tmp/seed-products.json > /tmp/seed-shaped.json
+```
+
+Input keys: `products[]` (`name`, `product_type`, `price`, `options`, `image_url`,
+`pdp_url`), `location_id`, `prospect_handle`, optional `stock_per_variant` (defaults to 25).
+
+What it does, and why:
+
+- Builds the **variant matrix** — the cartesian product of the axes, so Size×Colour gives 6
+  variants — with non-zero stock on every one. A zero-stock variant is invisible as an
+  exchange target, so the demo silently shows fewer options and looks broken.
+- Drops any single-value axis, and falls back to `S`/`M`/`L` if no axis survives, so every
+  product ends with **≥2 variants**.
+- Picks a **matched pair from the three cheapest products**, leaving the dearest above it.
+  That is what makes the uneven demo go *upward* and exercise taking payment — a merely
+  "different" price could be satisfied by exchanging downward and never show that step.
+- **Changes nothing at all** when the catalogue already has a natural pair and a dearer
+  item, which is the common case. At most two prices ever move.
+
+Read `warnings` from the output — repeated product types are surfaced there. It exits
+non-zero on an unparseable price.
+
+---
+
+## Step 5 — Approval gate
+
+Show the destination store **by name**, then:
+
+| # | Product | Type | Real price | Seeded price | Adjusted | Variants | Image |
+|---|---|---|---|---|---|---|---|
+
+Then, straight from the script's `demos` output:
+
+- **Even, in-product:** *[product]*, *[option]* *[swap]*
+- **Even, cross-product:** *[A]* ↔ *[B]*
+- **Uneven upward — customer pays:** *[A]* → *[D]*, balance *[balance]*
+- **Uneven downward — refund:** *[A]* → *[C]*, refund *[refund]* — or *not available*
+
+Call out any adjustment as `was → now`; these are the only places real prospect data was
+altered. Surface any `warnings` too, and offer to swap a product out.
+
+Quote figures **without currency symbols**; dev-store currency varies.
+
+**No writes before an explicit yes.**
