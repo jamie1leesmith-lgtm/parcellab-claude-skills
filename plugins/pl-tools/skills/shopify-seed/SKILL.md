@@ -37,10 +37,9 @@ brew trust shopify/shopify
 brew install shopify-cli
 ```
 
-> **`brew trust` is a real command** — added in Homebrew 6 for non-official taps, and
-> confirmed on Homebrew 6.0.12. Do not delete this step as a typo. Skipping it fails with
-> *"Refusing to load formula shopify/shopify/shopify-cli from untrusted tap"*, and Homebrew's
-> own error text tells you to run exactly this. Check with `brew help trust`.
+> **`brew trust` is real**, not a typo — added in Homebrew 6 for non-official taps. Verify
+> with `brew help trust`. Without it, installing fails with *"Refusing to load formula … from
+> untrusted tap"*, and Homebrew's own error text tells you to run it.
 
 Then, **before anything else**:
 
