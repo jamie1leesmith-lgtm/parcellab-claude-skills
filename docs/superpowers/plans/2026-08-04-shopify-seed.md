@@ -1546,68 +1546,98 @@ Expected: `deprecated-arg-exit:1`; at least 1 `productUpdate(product:`; at least
 
 - [ ] **Step 4: Verify the mutation validates against the live schema**
 
-Do not skip this — it is the only check that catches a wrong field name before a live run, and every field in the template came from docs rather than from the store's own schema.
+Every field in the template came from docs rather than from the store's own schema, so it needs verifying against the real thing.
 
-The seed files are generated per run and do not exist yet, so build a throwaway sample from the template first. Resolve a real location GID for it:
+> **Do not try to validate by running the mutation without `--allow-mutations`.** An earlier
+> version of this plan did that, on the assumption that the CLI would refuse the write but still
+> check the document. It does not. The refusal is **client-side and pre-network**: a mutation
+> with `totallyBogusFieldXYZ` in it produces the *identical* "Mutations are disabled by default"
+> message as a perfectly valid one, so the check passes no matter how wrong the template is.
+> Verified on CLI 4.6.0. Reads *are* server-validated; mutations without the flag never reach
+> Shopify at all.
+
+Use **introspection** instead. It is a read, so it runs without `--allow-mutations` and is genuinely validated:
 
 ```bash
 STORE=parcellab-demo-jls.myshopify.com
-LOC=$(shopify store execute -s "$STORE" \
-  --query '{ locations(first: 1) { nodes { id } } }' \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["locations"]["nodes"][0]["id"])')
-echo "$LOC"
+shopify store execute -s "$STORE" --json --query '{
+  ProductSetInput: __type(name: "ProductSetInput") { inputFields { name } }
+  ProductVariantSetInput: __type(name: "ProductVariantSetInput") { inputFields { name } }
+  OptionSetInput: __type(name: "OptionSetInput") { inputFields { name } }
+  VariantOptionValueInput: __type(name: "VariantOptionValueInput") { inputFields { name } }
+  ProductSetInventoryInput: __type(name: "ProductSetInventoryInput") { inputFields { name } }
+  FileSetInput: __type(name: "FileSetInput") { inputFields { name } }
+  ProductUpdateInput: __type(name: "ProductUpdateInput") { inputFields { name } }
+  ProductStatus: __type(name: "ProductStatus") { enumValues { name } }
+  FileContentType: __type(name: "FileContentType") { enumValues { name } }
+}' > /tmp/introspect.json
 ```
 
-Write a one-product, two-axis sample using that GID — the two-axis case is the one that exercises `productOptions[].position` and multi-entry `optionValues`:
+Then assert every field the template uses actually exists:
 
 ```bash
-cat > /tmp/schema-check.graphql <<'EOF'
-mutation SchemaCheck($product1: ProductSetInput!) {
-  p1: productSet(synchronous: true, input: $product1) {
-    product { id title handle }
-    userErrors { field message }
-  }
+python3 - <<'EOF'
+import json
+data = json.load(open('/tmp/introspect.json'))
+data = data.get('data', data)
+expected = {
+ 'ProductSetInput': ['title','productType','status','tags','productOptions','variants','files'],
+ 'ProductVariantSetInput': ['price','published','optionValues','inventoryQuantities'],
+ 'OptionSetInput': ['name','position','values'],
+ 'VariantOptionValueInput': ['optionName','name'],
+ 'ProductSetInventoryInput': ['locationId','name','quantity'],
+ 'FileSetInput': ['originalSource','alt','contentType'],
+ 'ProductUpdateInput': ['id','status'],
 }
-EOF
-
-python3 - "$LOC" > /tmp/schema-check.json <<'EOF'
-import itertools, json, sys
-loc = sys.argv[1]
-sizes, colours = ["S", "M"], ["Black", "Navy"]
-print(json.dumps({"product1": {
-    "title": "Schema Check Product",
-    "productType": "Jacket",
-    "status": "ACTIVE",
-    "tags": ["pl-demo-seed", "pl-prospect-schemacheck"],
-    "files": [{"originalSource": "https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder.jpg",
-               "contentType": "IMAGE", "alt": "Schema Check Product"}],
-    "productOptions": [
-        {"name": "Size", "position": 1, "values": [{"name": s} for s in sizes]},
-        {"name": "Colour", "position": 2, "values": [{"name": c} for c in colours]},
-    ],
-    "variants": [
-        {"optionValues": [{"optionName": "Size", "name": s},
-                          {"optionName": "Colour", "name": c}],
-         "price": "28.00", "published": True,
-         "inventoryQuantities": [{"locationId": loc, "name": "available", "quantity": 25}]}
-        for s, c in itertools.product(sizes, colours)
-    ],
-}}, indent=2))
+ok = True
+for t, want in expected.items():
+    node = data.get(t)
+    if not node:
+        print(f"{t}: TYPE NOT FOUND"); ok = False; continue
+    have = {f['name'] for f in node['inputFields']}
+    missing = [f for f in want if f not in have]
+    print(f"{t}: {'OK' if not missing else 'MISSING ' + str(missing)}")
+    ok &= not missing
+for t, want in (('ProductStatus', ['ACTIVE','ARCHIVED']), ('FileContentType', ['IMAGE'])):
+    have = {e['name'] for e in (data.get(t) or {}).get('enumValues', [])}
+    missing = [v for v in want if v not in have]
+    print(f"{t}: {'OK' if not missing else 'MISSING ' + str(missing)}")
+    ok &= not missing
+print("ALL FIELDS VERIFIED" if ok else "TEMPLATE HAS WRONG FIELD NAMES")
 EOF
 ```
 
-Now run it **without `--allow-mutations`**. That makes the CLI refuse the *mutation* while still validating the document against the schema:
+And confirm the two mutation argument names, which is where `productUpdate` is easy to get wrong:
 
 ```bash
-shopify store execute -s "$STORE" \
-  --query-file /tmp/schema-check.graphql --variable-file /tmp/schema-check.json 2>&1 | head -20
+shopify store execute -s "$STORE" --json \
+  --query '{ __type(name: "Mutation") { fields { name args { name type { kind name ofType { name } } } } } }' \
+  > /tmp/mut.json
+python3 - <<'EOF'
+import json
+fields = json.load(open('/tmp/mut.json'))['data']['__type']['fields']
+for target in ('productSet', 'productUpdate'):
+    f = next((x for x in fields if x['name'] == target), None)
+    args = [f"{a['name']}: {a['type'].get('name') or (a['type'].get('ofType') or {}).get('name')}" for a in f['args']]
+    print(f"{target}({', '.join(args)})")
+EOF
 ```
 
-Expected: a refusal about mutations not being allowed. That is **success** — it means every field, argument and input type resolved.
+**Expected — this was run on 2026-08-04 against `parcellab-demo-jls` and every line came back OK:**
 
-A failure mentioning an **unknown field, unknown argument, or unknown input type** means the template is wrong. Fix `references/mutation-template.md` before Task 5, and re-run this check.
+```
+ProductSetInput: OK          ProductVariantSetInput: OK    OptionSetInput: OK
+VariantOptionValueInput: OK  ProductSetInventoryInput: OK  FileSetInput: OK
+ProductUpdateInput: OK       ProductStatus: OK             FileContentType: OK
+ALL FIELDS VERIFIED
 
-No product is created by this step. Run the same check on the archive document during Task 7, once a live run has produced a real product ID to reference.
+productSet(input: ProductSetInput, synchronous: Boolean, identifier: ProductSetIdentifiers)
+productUpdate(product: ProductUpdateInput, media: ..., identifier: ProductUpdateIdentifiers)
+```
+
+Note `productUpdate` exposes **`product:`** and not `input:` — the deprecated argument does not even appear in introspection. `ProductStatus` also carries `UNLISTED` (added 2025-10) beyond the three values this skill uses.
+
+If any line reports `MISSING`, fix `references/mutation-template.md` before Task 5 and re-run. Nothing is written by any of this — introspection is read-only.
 
 - [ ] **Step 5: Commit**
 
