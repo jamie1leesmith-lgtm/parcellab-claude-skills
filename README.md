@@ -276,7 +276,29 @@ hand and silently drifting apart.
 
 ## Updating
 
-Fixes pushed to this repo reach installed users via plugin update (Manage plugins → update, or `/plugin marketplace update parcellab-skills` in the CLI). Bump `version` in the plugin's `plugin.json` when releasing changes.
+Fixes pushed to this repo reach installed users via plugin update (Manage plugins → update, or `/plugin marketplace update parcellab-skills` in the CLI).
+
+> ⚠️ **You must bump `version` in the plugin's `plugin.json`, or the release
+> reaches nobody.** Updates are gated on that version string, *not* on git
+> commits. Push without bumping and `plugin update` reports
+> *"already at the latest version"* and does nothing — no error, no warning.
+> Meanwhile a *fresh* install pulls current `main` and does get your change, so
+> you end up with two groups on silently different versions of the same skill:
+> exactly what this repo exists to prevent. This has already happened once
+> (commit `fe9efe6`, fixed in `d0b766c`).
+
+**Releasing a change, in order:**
+
+1. Make the change.
+2. Bump `version` in the affected plugin's `.claude-plugin/plugin.json`. One
+   plugin changed means one bump — the repo-root `README.md` is the exception,
+   as it sits outside every plugin and is read on GitHub.
+3. Commit and push.
+4. Verify it actually shipped: `claude plugin marketplace update parcellab-skills`
+   then `claude plugin update <plugin>@parcellab-skills`. You want to see
+   *"updated from X to Y"*. If you see *"already at the latest version"*, you
+   forgot step 2.
+5. Tell the team to update and restart the app (⌘Q) — plugins load at startup.
 
 Because everyone installs from the same source, an update is a push from the
 maintainer and a *Manage plugins → update* from each person — no re-sharing
