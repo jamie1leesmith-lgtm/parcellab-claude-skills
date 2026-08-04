@@ -351,22 +351,90 @@ part of releasing, not an optional courtesy.
 
 ## For maintainers — adding a new skill
 
-New parcelLab skills go inside `pl-tools`. No new plugin, no new marketplace entry.
+> **Use `/anthropic-skills:skill-creator` to write it.** That skill knows how to
+> structure a `SKILL.md`, write a description that triggers reliably, and test the
+> result. Don't hand-roll a new skill from scratch or copy an existing one and
+> edit — that's how conventions drift. Everything below is the *repo-specific*
+> context skill-creator doesn't know: where files go here and which house rules
+> apply.
+>
+> The rules with **silent** failure modes are also in [CLAUDE.md](CLAUDE.md), which
+> Claude loads automatically when working in this repo — so they apply even if
+> nobody thinks to open this file. Keep the two in step: this README is the full
+> reference for people, `CLAUDE.md` is the short list of things that break quietly.
 
-1. Create `plugins/pl-tools/skills/<name>/SKILL.md`, with frontmatter `name:`
-   **matching the directory name exactly** — a mismatch makes the skill vanish
-   silently from the plugin's inventory.
-2. Keep "parcelLab" in the `description:`. That text is what Claude matches
-   against to decide whether to trigger the skill; the directory name is only the
-   typed handle. Don't use `pl-` in the identifier either — the `pl-tools:` prefix
-   already namespaces it, and repeating it just stutters.
-3. `git add . && git commit -m "feat(pl-tools): add <name> skill" && git push`
-   — no version bump, see [Updating](#updating).
-4. Verify it shipped and appears: run `/pl-update`, then
+New parcelLab skills go **inside `pl-tools`**. No new plugin, no new marketplace
+entry.
+
+### The steps
+
+1. Run `/anthropic-skills:skill-creator` and describe the skill you want.
+2. Place the result at `plugins/pl-tools/skills/<name>/SKILL.md`.
+3. Apply the house rules below.
+4. `git add . && git commit -m "feat(pl-tools): add <name> skill" && git push` —
+   **no version bump**, see [Updating](#updating).
+5. Run `/pl-update`, restart (⌘Q), then
    `claude plugin details pl-tools@parcellab-skills` to confirm the new skill is
-   listed. If it's missing, step 2 is almost always the reason.
+   listed. If it's missing, the frontmatter `name:` almost certainly doesn't match
+   the directory name.
 
-Never commit `node_modules` — it's covered by `.gitignore`.
+### House rules
+
+**Frontmatter `name:` must match the directory name exactly.** A mismatch makes
+the skill vanish from the plugin's inventory with no error at all — it simply
+isn't there. This is the single most likely reason a new skill "didn't install".
+
+**`description:` is the trigger text, not a label.** Claude decides whether to run
+a skill by matching the request against this string. Two consequences:
+
+- **Keep "parcelLab" in it**, spelled out. That's what makes *"push a parcelLab
+  order"* work. Add "pL" alongside if you like; don't replace.
+- Include the phrasings a real person would use. Look at `create-order`'s
+  description for the pattern — it lists several concrete trigger phrases.
+
+**Don't prefix the directory name with `pl-`.** The `pl-tools:` plugin prefix
+already namespaces it, so `pl-create-order` would read as
+`pl-tools:pl-create-order`. The one exception is the two commands (`pl-setup`,
+`pl-update`), which keep the prefix because their bare forms (`/setup`, `/update`)
+are generic enough to collide with any other plugin.
+
+**Optional frontmatter, used where it earns its place:** `allowed-tools` to
+restrict what the skill may call, and `argument-hint` for skills taking an argument
+(`demo-request` uses both). Everything else uses just `name` and `description`.
+
+**Reference scripts and files via `${CLAUDE_PLUGIN_ROOT}`** — never `~/.claude/skills/…`
+and never a path relative to this repo. Installed users run from
+`~/.claude/plugins/cache/parcellab-skills/pl-tools/<version>/`, not from a clone.
+`demo-request` shipped a broken submit step for weeks because it pointed at
+`~/.claude/skills/parcellab-demo-request/scripts/`, a location that stopped
+existing when skills became plugins. Supporting files live alongside `SKILL.md` in
+`references/`, `scripts/`, or `assets/`.
+
+**Any skill that writes to a parcelLab account must confirm the account first.**
+Resolve it from `$PARCELLAB_ACCOUNT_ID` (accept `$PARCELLAB_USER_ID` as a legacy
+alias; never write it), look up the human name with
+`parcellab account account show <id>`, and confirm **by name** before the first
+write of a conversation — a wrong number looks fine, a wrong name is obvious. Copy
+the pattern from `create-order`, `order-lifecycle`, or `bug-investigation`, which
+all carry it. Read-only inspection needs no confirmation.
+
+**Never accept a credential in chat.** Chat messages are stored in the transcript.
+If a skill needs a secret, route it through
+`${CLAUDE_PLUGIN_ROOT}/scripts/pl_credentials.py --token`, which prompts with
+hidden input, and tell the user to run it in the app's built-in terminal. Never
+pass a secret as a command-line argument either — it lands in the process table
+and shell history.
+
+**Tests are stdlib `unittest`.** `pytest` is not installed and no step should
+`pip install` anything. See `plugins/pl-tools/scripts/tests/` for the pattern:
+pure functions, tested against a temp file, run with
+`python3 -m unittest discover -s tests -v`.
+
+**Never commit `node_modules`** — covered by `.gitignore`.
+
+**Follow the planning workflow for anything non-trivial**: `superpowers:brainstorming`
+to shape it, `superpowers:writing-plans` to break it down, then execute. A new skill
+is exactly the case that workflow exists for.
 
 ### Renaming things — read this first
 
