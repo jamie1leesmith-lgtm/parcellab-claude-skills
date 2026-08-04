@@ -295,8 +295,8 @@ server-side, and media processing is asynchronous **even under `synchronous: tru
 hotlink- or referer-protected prospect CDN fails at that point, well after the mutation
 returned success.
 
-So re-query, using the media verification shape in
-`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`:
+Write `/tmp/verify-media.graphql` from the media verification query in
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, then re-query:
 
 ```bash
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
@@ -306,7 +306,9 @@ shopify store execute -s "$SHOPIFY_DEMO_STORE" \
 Read-only — no `--allow-mutations`.
 
 - `status: READY` and an `image { url }` → good.
-- `status: PROCESSING` → wait a few seconds and re-run **once**.
+- `status: PROCESSING` → wait a few seconds and re-run **once**; if it is still
+  `PROCESSING` after that retry, treat it the same as a failure for reporting — name the
+  product, say its image is unresolved rather than broken, and do not report success.
 - `status: FAILED`, or `mediaErrors` populated, or no media node at all → that product has
   no image. Name it, quote the `mediaErrors.details`, and offer to re-push that product
   with a different image URL. Do not report success.
@@ -336,7 +338,7 @@ numeric part of the product GID.
 Then the demos now available, taken **straight from the shaping script's `demos` output**
 rather than recomputed:
 
-- **Even, in-product:** *[product]* — swap *[swap]*, nothing to pay.
+- **Even, in-product:** *[product]* — *[option]*: *[swap]*, nothing to pay.
 - **Even, across products:** *[A]* ↔ *[B]*, same price, nothing to pay.
 - **Uneven upward:** *[A]* → *[D]*, customer **pays** *[balance]*.
 - **Uneven downward:** *[A]* → *[C]*, customer is refunded *[refund]* — or say it is not
