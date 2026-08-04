@@ -1511,7 +1511,10 @@ Generate `/tmp/seed.graphql` and `/tmp/seed.json` from
 `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`, mapping the
 shaped output onto the mutation:
 
-- `options[]` → `productOptions[]`, with 1-based `position`
+- `name` → `title`
+- `options[]` → `productOptions[]`, with 1-based `position`. **Each value string becomes an
+  object:** `["S","M"]` → `[{ "name": "S" }, { "name": "M" }]`, because `OptionSetInput.values`
+  takes objects, not strings.
 - `variants[].option_values[]` → `optionValues[]` (`option_name` → `optionName`)
 - `variants[].quantity` and `location_id` → `inventoryQuantities[]` with `name: "available"`
 - `image_url` → a single `files[]` entry with `contentType: IMAGE`
