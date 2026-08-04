@@ -1765,12 +1765,16 @@ git commit -m "feat(shopify-seed): add async media verification and final report
 
 ### Task 6: Update the plugin inventory and docs
 
-Three strings currently say **"Five skills"**. A sixth skill makes them wrong. This is documentation-only but it is how teammates discover the skill exists.
+**Five** strings say the plugin has five skills. A sixth skill makes them all wrong. Documentation-only, but it is how teammates discover the skill exists.
+
+**Grep for them with `-iE '\bfive\b.{0,30}skills?'`, not the literal `five skills`.** Two of the five phrase it with words in between — `README.md:4` says "all five *parcelLab* skills" — so a literal search returns a false negative and silently leaves the repo contradicting itself.
 
 **Files:**
 - Modify: `.claude-plugin/marketplace.json`
 - Modify: `plugins/pl-tools/.claude-plugin/plugin.json`
-- Modify: `README.md`
+- Modify: `README.md` — the skill table, the detail section, **and the count at line 4**
+- Modify: `CLAUDE.md` — the count at line 4
+- Modify: `plugins/pl-tools/README.md` — the count at line 3
 
 **Interfaces:**
 - Consumes: the finished skill from Tasks 2–5.
@@ -1845,7 +1849,7 @@ as exchange targets.
 cd /Users/jamie.lee-smith/Documents/Claude/Projects/parcellab-claude-skills
 python3 -m json.tool .claude-plugin/marketplace.json > /dev/null && echo "marketplace.json valid"
 python3 -m json.tool plugins/pl-tools/.claude-plugin/plugin.json > /dev/null && echo "plugin.json valid"
-grep -rn 'Five skills\|five skills' . --include=*.json --include=*.md ; echo "stale-count-exit:$?"
+grep -rniE '\bfive\b.{0,30}skills?' --include='*.md' --include='*.json' . | grep -v '.superpowers' ; echo "stale-count-exit:$?"
 grep -c 'version' plugins/pl-tools/.claude-plugin/plugin.json
 ```
 
