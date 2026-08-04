@@ -80,7 +80,7 @@ Lives at **plugin** level (`plugins/pl-tools/scripts/`), not skill level, becaus
   - `shape_prices(prices: list[Decimal]) -> tuple[list[Decimal], list[int], dict]` — returns `(new_prices, adjusted_indices, roles)` where `roles` is `{"pair": [i, j], "higher": k, "lower": m | None}`. Raises `ValueError` unless given exactly 4 prices.
   - `resolve_options(product: dict) -> list[dict]` — returns `[{"name": str, "values": list[str]}]`, always at least one axis with ≥2 values.
   - `build_variants(options: list[dict], price: Decimal, quantity: int, location_id: str) -> list[dict]`
-  - `build_mix(payload: dict) -> dict`
+  - `build_mix(payload: dict) -> dict` — raises `ValueError` on anything other than exactly 4 products, on `stock_per_variant <= 0`, and on a missing/empty `location_id`. All three are silent-failure classes: a `None` location flows into every variant and only surfaces as bad data at push time, so it fails loudly here instead.
   - `main() -> None` — reads stdin JSON, writes stdout JSON, exits 1 on `ValueError`/`KeyError`.
 - CLI contract: `python3 shape_product_mix.py < in.json > out.json`
 
@@ -1127,9 +1127,27 @@ collect exactly four products as
 **Four different product types**, and **a couple of values from each variant axis the site
 exposes**. One image per product — variants share it.
 
+### Assemble the payload
+
+Write `/tmp/seed-products.json` with **all three** top-level keys, not just the products — the
+shaping script needs the other two and silently degrades without them:
+
+```json
+{
+  "products": [ "… the four scraped products …" ],
+  "location_id": "<the gid:// value from Step 2>",
+  "prospect_handle": "<derived from the prospect URL, see below>"
+}
+```
+
+`prospect_handle`: take the prospect URL's host, drop a leading `www.`, drop the TLD (and any
+`.co.uk`-style second-level suffix), lowercase, and collapse runs of non-alphanumerics to single
+hyphens. `https://www.acme-store.co.uk/collections/new` → `acme-store`, giving the tag
+`pl-prospect-acme-store`.
+
 ### Validate the images
 
-Write the four products to a scratchpad file, then reuse `demo-request`'s checker:
+Then reuse `demo-request`'s checker:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/check_images.mjs /tmp/seed-products.json
