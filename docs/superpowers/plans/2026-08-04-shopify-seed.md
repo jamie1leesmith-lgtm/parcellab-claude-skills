@@ -1674,8 +1674,9 @@ server-side, and media processing is asynchronous **even under `synchronous: tru
 hotlink- or referer-protected prospect CDN fails at that point, well after the mutation
 returned success.
 
-So re-query, using the media verification shape in
-`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md`:
+So re-query. Write the media verification query from
+`${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/mutation-template.md` to
+`/tmp/verify-media.graphql`, then run it:
 
 ```bash
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
@@ -1685,10 +1686,15 @@ shopify store execute -s "$SHOPIFY_DEMO_STORE" \
 Read-only — no `--allow-mutations`.
 
 - `status: READY` and an `image { url }` → good.
-- `status: PROCESSING` → wait a few seconds and re-run **once**.
+- `status: PROCESSING` → wait a few seconds and re-run **once**. If it is *still* `PROCESSING`
+  after that one retry, treat it as unresolved: name the product, say its image has not
+  finished processing, and **do not report success**. Do not keep retrying.
 - `status: FAILED`, or `mediaErrors` populated, or no media node at all → that product has
   no image. Name it, quote the `mediaErrors.details`, and offer to re-push that product
   with a different image URL. Do not report success.
+
+Every branch ends in a definite outcome on purpose. A status check that quietly falls through
+on the slow path is the same silent failure this step exists to catch.
 
 Also confirm the variants actually exist with stock, since a silently dropped variant
 removes an exchange target:
@@ -1715,7 +1721,8 @@ numeric part of the product GID.
 Then the demos now available, taken **straight from the shaping script's `demos` output**
 rather than recomputed:
 
-- **Even, in-product:** *[product]* — swap *[swap]*, nothing to pay.
+- **Even, in-product:** *[product]* — *[option]* *[swap]*, nothing to pay. Include the option
+  name; a bare swap value does not say which axis it swaps.
 - **Even, across products:** *[A]* ↔ *[B]*, same price, nothing to pay.
 - **Uneven upward:** *[A]* → *[D]*, customer **pays** *[balance]*.
 - **Uneven downward:** *[A]* → *[C]*, customer is refunded *[refund]* — or say it is not
