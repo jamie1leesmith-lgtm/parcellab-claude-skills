@@ -84,6 +84,39 @@ class TestExistingAccount(unittest.TestCase):
         self.assertIsNone(plc.existing_account({}))
 
 
+class TestRunCdcToken(unittest.TestCase):
+    def test_writes_token_and_default_base_url(self):
+        updated, message = plc.run_cdc_token({}, prompt=lambda _: "secrettoken")
+        self.assertEqual(updated["env"]["CDC_DEMO_API_TOKEN"], "secrettoken")
+        self.assertEqual(updated["env"]["CDC_DEMO_API_BASE_URL"], plc.CDC_DEFAULT_BASE_URL)
+
+    def test_unrelated_env_keys_preserved(self):
+        before = {"env": {"PARCELLAB_ACCOUNT_ID": "1626718"}}
+        updated, _ = plc.run_cdc_token(before, prompt=lambda _: "secrettoken")
+        self.assertEqual(updated["env"]["PARCELLAB_ACCOUNT_ID"], "1626718")
+
+    def test_empty_input_raises_without_changes(self):
+        with self.assertRaises(ValueError):
+            plc.run_cdc_token({}, prompt=lambda _: "")
+
+    def test_whitespace_only_input_raises(self):
+        with self.assertRaises(ValueError):
+            plc.run_cdc_token({}, prompt=lambda _: "   ")
+
+    def test_surrounding_whitespace_stripped(self):
+        updated, _ = plc.run_cdc_token({}, prompt=lambda _: "  secrettoken  ")
+        self.assertEqual(updated["env"]["CDC_DEMO_API_TOKEN"], "secrettoken")
+
+    def test_idempotent(self):
+        once, _ = plc.run_cdc_token({}, prompt=lambda _: "secrettoken")
+        twice, _ = plc.run_cdc_token(once, prompt=lambda _: "secrettoken")
+        self.assertEqual(once, twice)
+
+    def test_message_never_contains_the_raw_token(self):
+        _, message = plc.run_cdc_token({}, prompt=lambda _: "supersecretvalue")
+        self.assertNotIn("supersecretvalue", message)
+
+
 class TestReadWriteSettings(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Write parcelLab credentials into the global Claude Code settings env block.
 
-Two modes:
+Three modes:
 
     pl_credentials.py --account 1626718   # account ID only, no secret, no prompt
     pl_credentials.py --token             # hidden prompt for the Order API credential
+    pl_credentials.py --cdc-token         # hidden prompt for the Custom Demo Creator token
 
-The token is NEVER accepted as a command-line value — that would expose a live
-credential to the process table and shell history. `--token` is a bare flag that
-triggers a hidden getpass prompt.
+No secret is EVER accepted as a command-line value — that would expose a live
+credential to the process table and shell history. `--token` and `--cdc-token` are
+bare flags that trigger a hidden getpass prompt.
 
 Merges into the `env` block of ~/.claude/settings.json without touching any other
-key. Safe to re-run: updates in place rather than duplicating. Never prints the
+key. Safe to re-run: updates in place rather than duplicating. Never prints a
 secret.
 """
 import argparse
@@ -23,6 +24,7 @@ import pathlib
 import sys
 
 SETTINGS_PATH = pathlib.Path.home() / ".claude" / "settings.json"
+CDC_DEFAULT_BASE_URL = "https://experience.parcellab.com"
 
 
 def decode(value):
@@ -124,6 +126,27 @@ def run_token(settings, prompt=getpass.getpass, confirm=input):
     )
 
 
+def run_cdc_token(settings, prompt=getpass.getpass):
+    """Return (updated_settings, message) for --cdc-token mode. Prompts for the secret."""
+    print("Paste the Custom Demo Creator API token.")
+    print("Input is hidden — nothing is echoed as you paste. That is expected.\n")
+    token = prompt("CDC API token: ").strip()
+    if not token:
+        raise ValueError("Nothing entered; no changes made.")
+
+    updated = merge_env(
+        settings,
+        {
+            "CDC_DEMO_API_TOKEN": token,
+            "CDC_DEMO_API_BASE_URL": CDC_DEFAULT_BASE_URL,
+        },
+    )
+    return updated, (
+        f"  CDC_DEMO_API_BASE_URL = {CDC_DEFAULT_BASE_URL}\n"
+        f"  CDC_DEMO_API_TOKEN    = (set, {len(token)} characters)"
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Write parcelLab credentials into ~/.claude/settings.json"
@@ -133,6 +156,8 @@ def main(argv=None):
                        help="write PARCELLAB_ACCOUNT_ID only (no secret)")
     group.add_argument("--token", action="store_true",
                        help="prompt (hidden) for the Order API credential")
+    group.add_argument("--cdc-token", action="store_true",
+                       help="prompt (hidden) for the Custom Demo Creator API token")
     args = parser.parse_args(argv)
 
     try:
@@ -141,6 +166,8 @@ def main(argv=None):
             if not args.account.strip().isdigit():
                 raise ValueError(f"Account ID must be numeric, got: {args.account!r}")
             settings, message = run_account(settings, args.account.strip())
+        elif args.cdc_token:
+            settings, message = run_cdc_token(settings)
         else:
             settings, message = run_token(settings)
     except ValueError as err:

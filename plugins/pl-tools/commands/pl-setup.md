@@ -89,6 +89,25 @@ unexplained `401`.
 give you.** Chat messages are stored in the transcript. The terminal is the only
 correct route.
 
+## 6a. Custom Demo Creator token — check first, then ask
+
+Only `demo-request` needs this.
+
+**First check whether I already have one:** if `$CDC_DEMO_API_TOKEN` is set, say so
+and skip the rest of this step.
+
+If it is not set: ask whether I will use `demo-request`. If not, skip this step
+and tell me it was skipped.
+
+If I will, print this command and ask me to run it myself, the same way as the
+Order API token above — terminal icon top right, paste, press Enter, nothing
+appears on screen and that is correct:
+
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/pl_credentials.py --cdc-token
+
+This one is simpler than the Order API token: it's a single value, not a base64
+pair, so there is nothing to decode. The base URL is filled in automatically.
+
 ## 7. Tell me to restart
 
 I must fully quit Claude Code (**Cmd-Q**, not just closing the window) and reopen

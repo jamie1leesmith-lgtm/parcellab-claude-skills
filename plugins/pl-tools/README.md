@@ -37,6 +37,16 @@ The token is never accepted in chat and never passed as a command-line argument,
 so it stays out of the conversation transcript, the process table, and your shell
 history.
 
+### Custom Demo Creator token
+
+Only `demo-request` needs one. `/pl-setup` asks, and if you say yes it hands you
+this to run in the app's built-in terminal:
+
+    python3 <plugin>/scripts/pl_credentials.py --cdc-token
+
+Simpler than the Order API token — it's a single value, so there's nothing to
+decode. The base URL is filled in for you.
+
 ## Prerequisites
 
 - The `parcellab` CLI, authenticated
@@ -44,8 +54,8 @@ history.
 - `bug-investigation` additionally needs the org's `parcellab-product-api` plugin
   (from `parcelLab/parcellab-cli`) for Product API config knowledge, and
   Claude-in-Chrome for screenshot/recording capture
-- `demo-request` needs Node and a one-time `npm install` in
-  `skills/demo-request/scripts/`
+- `demo-request` uses only Node's built-ins (`node:fs`, `node:os`, `node:path`) —
+  nothing to install
 - `branded-template` needs the ParcelLab MCP connector and the built-in Browser pane
 
 ## Staying up to date

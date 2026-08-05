@@ -18,12 +18,9 @@ Create demo requests from a prospect URL. Research the site using Claude Code's 
 
 ## Required Environment
 
-Config file at `~/.claude/parcellab-demo-request.env`:
-
-```bash
-CDC_DEMO_API_BASE_URL=https://your-cdc-api-url
-CDC_DEMO_API_TOKEN=cdc_live_...
-```
+Needs `CDC_DEMO_API_TOKEN` and `CDC_DEMO_API_BASE_URL`, set up via `/pl-setup`. If
+they're missing, tell the user to run `/pl-setup` rather than asking for the token
+yourself; never accept it in chat.
 
 Never print the token value.
 
@@ -223,11 +220,8 @@ Then the four products:
 
 ## Step 7 — Submit
 
-Load config:
-
-```bash
-source ~/.claude/parcellab-demo-request.env
-```
+`submit_demo_request.mjs` reads `CDC_DEMO_API_TOKEN` and `CDC_DEMO_API_BASE_URL`
+straight from the environment — nothing to load or source first.
 
 Write the payload to `/tmp/cdc-payload.json`:
 
