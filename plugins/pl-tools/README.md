@@ -18,10 +18,14 @@ a single plugin.
 
 Run `/pl-setup` once after installing, then fully quit and reopen the app.
 
-It checks the `parcellab` CLI, logs you in if needed, resolves your demo account
-and writes it to the `env` block of your global `~/.claude/settings.json` as
-`PARCELLAB_ACCOUNT_ID`, and points the CLI's write guard at that same account so a
-skill cannot write into a colleague's demo account.
+It first checks `~/.claude/skills/` for a hand-copied version of any of these
+skills from before this marketplace existed, and tells you by name if it finds
+one — those are frozen at whatever day they were copied and never receive the
+fixes this plugin ships. Then it checks the `parcellab` CLI, logs you in if
+needed, resolves your demo account and writes it to the `env` block of your
+global `~/.claude/settings.json` as `PARCELLAB_ACCOUNT_ID`, and points the CLI's
+write guard at that same account so a skill cannot write into a colleague's demo
+account.
 
 ### Order API token
 

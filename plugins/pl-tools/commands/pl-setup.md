@@ -5,6 +5,44 @@ description: Configure your parcelLab account and credentials for every pl-tools
 Set up my parcelLab tooling. Work through these steps in order. Stop at the first
 failure and tell me what went wrong — never guess a value, and never skip ahead.
 
+## 0. Check for hand-copied skills — do this first, every run
+
+Some people have an earlier version of one or more of these skills as a
+`SKILL.md` copied straight into `~/.claude/skills/`, from before this
+marketplace existed. Run:
+
+    ls ~/.claude/skills/ 2>/dev/null
+
+If that directory doesn't exist or is empty, say nothing and move on — this is
+the common case and doesn't need mentioning.
+
+If it lists anything matching a `pl-tools` skill name — `create-order`,
+`order-lifecycle`, `branded-template`, `demo-request`, `bug-investigation`,
+`shopify-seed` — **or** an old pre-rename name (`parcellab-create-order`,
+`parcellab-order-lifecycle`, `parcellab-brand-layout-desktop`,
+`parcellab-demo-request`, `parcellab-bug-investigation`), stop and tell me
+plainly, by name, which ones:
+
+> You have a hand-copied `<name>` in `~/.claude/skills/`. Claude picks which
+> skill to run by matching your request against each skill's *description*, not
+> its name — so this old copy and the plugin's copy can both match the same
+> request, and you have no control over which one wins. The hand-copied one is
+> frozen at whatever day it was copied: none of this plugin's fixes reach it.
+> Today alone that would have meant missing the destination-country fix to
+> `create-order`, the fix that made `demo-request` runnable at all, and the
+> account write-guard this setup just configured.
+
+Then offer to move it aside rather than delete it:
+
+    mkdir -p ~/claude-skills-archive && mv ~/.claude/skills/<name> ~/claude-skills-archive/
+
+Only move files I confirm — don't do this without asking. Once moved, tell me
+to quit and reopen the app so the stale skill stops loading.
+
+This check runs every time `/pl-setup` runs, including re-runs, since a
+straggler could be added to `~/.claude/skills/` at any point after the first
+setup.
+
 ## 1. Check the CLI is installed
 
 Run `command -v parcellab`. If it prints nothing (non-zero exit), stop and tell me
