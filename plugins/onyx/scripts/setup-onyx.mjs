@@ -12,8 +12,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+// Default persona is 5, "pauL (your go to Agent)" — parcelLab's general-purpose
+// Onyx assistant. Override only if the user explicitly names a different persona id.
 export function parseArgs(argv) {
-  const args = { persona: '0' };
+  const args = { persona: '5' };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--url') args.url = argv[++i];
