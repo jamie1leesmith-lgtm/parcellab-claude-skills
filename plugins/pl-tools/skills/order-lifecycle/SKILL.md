@@ -398,7 +398,7 @@ strength of an eligibility check.**
 Launch the driver detached so it survives the session moving on:
 
 ```bash
-EVENTS_DIR="<run dir>" GAP_SECONDS="<gap, default 120; 180 recommended>" \
+EVENTS_DIR="<run dir>" GAP_SECONDS="<gap, default 180>" \
   bash <skill dir>/references/run-lifecycle.sh
 ```
 

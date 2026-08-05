@@ -8,14 +8,14 @@
 # regardless of what event_timestamp says. Any pre-baked timestamp (future
 # OR past) makes the checkpoint and its comm disagree on ordering. Success
 # is HTTP 204.
-# Env: EVENTS_DIR (required), GAP_SECONDS (default 120), LOG_FILE
+# Env: EVENTS_DIR (required), GAP_SECONDS (default 180), LOG_FILE
 #      (default $EVENTS_DIR/run.log), DRYRUN (default 0).
 # Live mode also needs PARCELLAB_ACCOUNT_ID (or the legacy PARCELLAB_USER_ID)
 # and PARCELLAB_TOKEN.
 set -euo pipefail
 
 EVENTS_DIR="${EVENTS_DIR:?EVENTS_DIR required}"
-GAP_SECONDS="${GAP_SECONDS:-120}"
+GAP_SECONDS="${GAP_SECONDS:-180}"
 LOG_FILE="${LOG_FILE:-$EVENTS_DIR/run.log}"
 DRYRUN="${DRYRUN:-0}"
 # Trailing slash is required; without it the API 301-redirects and drops the body.
