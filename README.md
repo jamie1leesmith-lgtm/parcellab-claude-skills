@@ -293,6 +293,12 @@ Investigates and documents a live product bug: confirms the exact account up fro
 
 ## Already have these skills the old way? Remove them first
 
+> **Send this section to a teammate?** Share this instead:
+> **https://claude.ai/claude-code/onboard/wDZwx1b_rrH6** — they open it directly
+> in Claude Code and get these steps as a conversation, with no need to have
+> found this repo first. Anyone with the link can open it, so treat it like any
+> other shareable URL rather than something access-controlled.
+
 Some of the team are running earlier versions of these skills that were shared
 by hand — a `SKILL.md` copied straight into `~/.claude/skills/`. **Delete those
 before installing from this marketplace.**
