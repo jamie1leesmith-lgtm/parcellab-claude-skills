@@ -1,7 +1,7 @@
 {
   "name": "parcellab-deck-builder",
-  "description": "Build a customer-facing, on-brand deck from a Gong call (or direct input if none exists) plus Onyx research, assembled from the Deck Builder design system and pushed to a per-customer Claude Design project.",
-  "version": "0.1.0",
+  "description": "Build a customer-facing, on-brand deck from a Gong call (or direct input if none exists) plus Onyx research, assembled from the Deck Builder design system and pushed into a shared Claude Design project under a per-customer folder.",
+  "version": "0.2.0",
   "author": {
     "name": "Jamie Lee-Smith",
     "email": "jamie.lee-smith@parcellab.com"

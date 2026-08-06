@@ -1,6 +1,6 @@
 ---
 name: parcellab-deck-builder
-description: Build a customer-facing, on-brand deck from a Gong call (or direct input if none exists) plus Onyx research, assembled from the Deck Builder design system and pushed to a per-customer Claude Design project. Use for phrases like "build a deck for [customer]", "put together a business case for [customer]", "make me a demo deck for [customer]", "scoping deck for [customer]".
+description: Build a customer-facing, on-brand deck from a Gong call (or direct input if none exists) plus Onyx research, assembled from the Deck Builder design system and pushed into a shared Claude Design project under a per-customer folder. Use for phrases like "build a deck for [customer]", "put together a business case for [customer]", "make me a demo deck for [customer]", "scoping deck for [customer]".
 ---
 
 # parcelLab — Deck Builder
@@ -8,10 +8,19 @@ description: Build a customer-facing, on-brand deck from a Gong call (or direct 
 Turn a customer conversation into a customer-facing, on-brand deck: source
 material from Gong (or the user directly) and Onyx, assemble an outline from
 the Deck Builder design system, optionally fold in user-confirmed pricing,
-and build the result in the customer's own Claude Design project.
+and build the result inside a per-customer folder in the shared Claude
+Design project.
 
 Deck Builder (`claude.ai/design` project `12117415-e8b6-4e02-a3ef-f9f3498d65b6`)
-is **read-only** — it is the blueprint, never a write target.
+is **read-only** — it is the blueprint, never a write target. Decks are pushed
+into a separate, shared **Project** (not a design system) — `claude.ai/design`
+project `c6f23cde-c20a-4916-a8b3-468df1929762` ("Customer decks project") —
+under `decks/<customer>/<preset>-<date>/`. Never call `DesignSync
+create_project` for this: it only creates `PROJECT_TYPE_DESIGN_SYSTEM`
+objects, a different, wrong entity type. There is no tool that creates a
+plain Project — if this shared project is ever lost or invalid, tell the
+user; a human must create its replacement via the claude.ai UI and share its
+`/p/<uuid>` link back.
 
 ## Workflow
 
@@ -63,36 +72,45 @@ is **read-only** — it is the blueprint, never a write target.
 
 1. **Resolve the Deck Builder cache.** If `deck-builder-cache/` doesn't
    exist, bootstrap it: `DesignSync list_files` on the Deck Builder project,
-   `get_file` for `colors_and_type.css`, `_ds_bundle.js`, `fonts/*`,
-   `templates/sales-deck/{deck.css,ds-base.js,deck-stage.js}`, and the
-   `assets/logo_horizontal*.svg` + only the `assets/customer_logos/*` this
-   deck actually uses. Save the fetched path list to
-   `deck-builder-cache/.manifest`. If it does exist and a refresh is
+   `get_file` for `templates/sales-deck/{deck.css,ds-base.js,deck-stage.js}`
+   and the `assets/logo_horizontal*.svg` + only the `assets/customer_logos/*`
+   this deck actually uses. **Do not fetch `colors_and_type.css`,
+   `_ds_bundle.js`, or `fonts/*`** — the shared project already has these via
+   claude.ai's own design-system binding (see step 3). Save the **full**
+   `list_files` path list (every path in the project, not just what was just
+   fetched) to `deck-builder-cache/.manifest` — `cache-diff.sh` compares this
+   manifest against a future fresh `list_files` call, so it must reflect the
+   whole project or every refresh will report spurious `ADDED` lines for
+   everything this bootstrap didn't fetch. If it does exist and a refresh is
    requested, run a fresh `list_files`, save both the old manifest and fresh
    path list to temporary files, then invoke `references/cache-diff.sh
    <old-manifest-path> <fresh-list-path>` (two file-path arguments); re-fetch
    only files marked `ADDED`.
-2. **Resolve the customer's Claude Design project.** Call `DesignSync
-   list_projects`, format the writable design-system projects as TSV
-   (`id<TAB>name`), and invoke `references/match-customer-project.sh
-   <customer-name>` with the TSV as stdin:
-   - `REUSE <id>` → use that project.
-   - `CREATE` → `DesignSync create_project` with the customer name.
-   - `AMBIGUOUS <id1>,<id2>,...` → ask the user which project to use.
+2. **Check the shared project's `assets/` folder.** `DesignSync list_files`
+   on `c6f23cde-c20a-4916-a8b3-468df1929762`. If `assets/logo_horizontal.svg`
+   (or `_white`, if this deck needs it on a dark slide) isn't already
+   present, it'll be pushed in step 4 — otherwise skip it, it's shared across
+   every customer's decks and never needs re-pushing.
 3. **Assemble the deck locally** in `decks/<customer>/<preset>-<date>/`,
-   built from the cached blueprint: copy `deck.css`, `ds-base.js`,
-   `deck-stage.js` into that folder, write the outlined slides into
-   `index.html` (each a `<section class="slide ...">` per the approved
-   Gate 2 outline), reusing the cached tokens/fonts/assets two directories
-   up (the `base = '../..'` contract — see Global Constraints in the plan
-   this skill was built from).
-4. **Push.** `DesignSync finalize_plan` with the customer project id, writes
-   covering the project root (tokens/fonts/assets, only if not already
-   present) plus `decks/<preset>-<date>/{index.html,deck.css}`; then
+   built from the cached blueprint: copy `deck.css` and `deck-stage.js` from
+   the cache into that folder unchanged. Write `ds-base.js` with its `base`
+   line set to exactly `../../../_ds/deck-builder-12117415-e8b6-4e02-a3ef-f9f3498d65b6`
+   — three `..` (this deck's folder is 3 levels below the shared project's
+   root) then into the platform's own design-system-binding folder, which
+   already holds `colors_and_type.css`, `_ds_bundle.js`, and the fonts. Write
+   `index.html` with the outlined slides (each a `<section class="slide
+   ...">` per the approved Gate 2 outline); any reference to a shared asset
+   (e.g. the logo) uses `../../../assets/...` (3 up, same reasoning).
+4. **Push.** `DesignSync finalize_plan` against
+   `c6f23cde-c20a-4916-a8b3-468df1929762`, writes covering
+   `decks/<customer>/<preset>-<date>/{index.html,deck.css,ds-base.js,
+   deck-stage.js}` (all four — omitting `ds-base.js`/`deck-stage.js` produces
+   a deck with no tokens, no fonts, and no working `<deck-stage>` component)
+   plus `assets/logo_horizontal*.svg` only if step 2 found it missing. Then
    `write_files`.
-5. Tell the user the deck is live in their Claude Design project and that
-   further edits happen there directly — this skill's job ends at the
-   initial build.
+5. Tell the user the deck is live in the shared "Customer decks project",
+   under `decks/<customer>/<preset>-<date>/`, and that further edits happen
+   there directly — this skill's job ends at the initial build.
 
 ## Confirmation gates
 
@@ -109,8 +127,13 @@ is **read-only** — it is the blueprint, never a write target.
   never blocks.
 - **Onyx returns nothing relevant for a topic** → shown as an explicit gap at
   Gate 1, not papered over.
-- **Deck Builder read fails, or a write conflict (409) on the customer's
+- **Deck Builder read fails, or a write conflict (409) on the shared
   project** → re-read and merge; never `force` without asking the user.
+- **The shared project id (`c6f23cde-c20a-4916-a8b3-468df1929762`) is
+  invalid or inaccessible** → stop and tell the user. No tool available to
+  this skill can create its replacement (only `PROJECT_TYPE_DESIGN_SYSTEM`
+  is creatable, which is the wrong entity type) — a human must create a new
+  Project via the claude.ai UI and share its `/p/<uuid>` link back.
 - **A new slide type doesn't clearly match the brand rules** → flagged at
   Gate 2 for explicit sign-off, not assumed acceptable.
 - **Pricing extraction** must use the allowlist in `references/pricing-fields.md`
