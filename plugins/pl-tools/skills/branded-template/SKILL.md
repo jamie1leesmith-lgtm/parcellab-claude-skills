@@ -349,8 +349,68 @@ journey_write_layout → {
 ```
 
 - Omit `id` to **create** a new layout; pass `id` to **update** an existing one (PATCH semantics).
-- `"autoLayout"` must be an **empty list** `[]` — not `false` or `true`.
+- `"autoLayout"` must be an **empty list** `[]` on create — not `false` or `true`. Do not try to
+  set the store mapping here; that happens in Step 9b, which has to read the account's other
+  layouts first.
 - To check existing layouts first, call the tool ending in `__journey_list_journey_layouts` with `{ "account": [{ACCOUNT_ID}] }` (optionally `search: "{BRAND_NAME}"` to avoid duplicates).
+
+---
+
+## Step 9b — Assign the template to a store (Auto Template Config)
+
+A new layout is inert until a store points at it. That pointer is the **Auto Template Config**,
+and it lives on the **layout**, not on the store — each layout carries an `autoLayout` list of
+`{client, layout, country}` entries. There is no template field on the client, so there is no
+way to look this up from the store side.
+
+**Talk about stores by name, never by client id.** Ids are internal plumbing; the name is what
+the user recognises.
+
+### 9b.1 — List the account's stores
+
+Call the tool ending in `__config_list_clients` with `{ "account": [{ACCOUNT_ID}] }`.
+
+Build a name→id map for yourself. For each store, derive a display name with this fallback so
+an option is never a blank string:
+
+1. `name` — e.g. `Jamie's Shopify Store`
+2. `fullName` — if `name` is empty
+3. `key` — e.g. `parcellab-demo-jls.myshopify.com`, if both are empty
+
+Append `(default)` to the store whose `isDefault` is `true`.
+
+If the call returns no stores, skip to Step 10 and report the layout as unassigned, saying why.
+
+### 9b.2 — Choose the store
+
+- **Exactly one store** → assign it automatically and state what you did. (Same shape as
+  Step 1b's single-account handling — don't ask a question with one possible answer.)
+- **More than one store** → ask which store should now use this template. Offer the display
+  names, plus a final option: `None — leave unassigned`.
+
+If the user picks `None`, skip to Step 10 and report the layout as unassigned.
+
+### 9b.3 — Find the template that currently holds that mapping
+
+One call: the tool ending in `__journey_list_journey_layouts` with `{ "account": [{ACCOUNT_ID}] }`.
+
+Scan every result's `autoLayout` array for an entry where `client` equals the chosen store's id:
+
+- **`country` is empty** → this is the current default mapping. Record the holding layout's `id`
+  and `prettyName`. There should be at most one.
+- **`country` is non-empty** → a country-specific override. **Leave it alone**, but warn:
+
+  > Note: `{STORE_NAME}` also has a country-specific auto-template on `{OTHER_TEMPLATE_NAME}`
+  > for `{USA, CAN}`. Orders shipping to those countries will keep using that template, not
+  > this one. Change it in the portal if that isn't what you want.
+
+  Without this warning you would tell the user the store now uses the new template while some
+  of their orders demonstrably would not.
+
+> **⚠️ This is the most expensive call in the skill.** The response includes the **full HTML
+> `content` of every layout on the account**. Read only `id`, `prettyName`, and `autoLayout`
+> from it, and never echo `content` back into the conversation. On an account with many
+> layouts, tell the user this step is token-heavy before you make the call.
 
 ---
 
