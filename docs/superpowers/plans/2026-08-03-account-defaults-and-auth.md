@@ -552,3 +552,35 @@ reads `env` from `~/.claude/settings.json`, because every existing skill already
 depends on that being true (onyx has shipped on it). If it turns out not to hold,
 it invalidates the whole approach rather than one task, and the fastest proof is
 Task 1 followed by a real setup run.
+
+---
+
+## Addendum — 2026-08-07: order writes moved to the CLI, token removed
+
+Supersedes the token-based auth in Tasks 2–3 above. Decision and evidence in the
+spec's corrected findings block. Executed inline on `feat/cli-order-writes`:
+
+1. **Block A** (all three copies): added the runtime rule — before the first
+   write, `edit-mode show` must report `account-restricted` to the resolved
+   account, or the skill stops. This replaces the token's structural scoping.
+2. **Block B** (both order skills): token intake replaced by CLI checks —
+   binary on PATH, `auth show`, default account. Byte-identical in both.
+3. **create-order**: `curl` + `AUTH` header → `parcellab api request PUT
+   /v4/track/orders/ --data @file`; failure modes rewritten for CLI errors
+   (`Unauthorized` → auth login; edit-mode block → fix account, never
+   unrestricted; missing `payload.account` → add it).
+4. **order-lifecycle / run-lifecycle.sh**: driver sends via the CLI; injects
+   `account` (guard requirement, API-tolerated) alongside `event_timestamp`;
+   fails fast in live mode without a numeric account or the CLI; DRYRUN
+   unchanged. Tests extended: E (fail-fast), F (account injection), G (legacy
+   alias) — 7/7 pass.
+5. **pl-setup**: step 6 (Order API token) deleted; CDC step renumbered.
+6. **pl_credentials.py**: `--token` mode, `decode()` and unused imports
+   removed; docstring records the removal; 67 unittest tests pass.
+7. **READMEs**: tokenless model documented; remaining `PARCELLAB_TOKEN`
+   mentions are deliberate historical notes only.
+
+Live verification (production, account 1626718): tracked order
+`CLITEST2-1786108135` created via CLI with mutation success; checkpoint POST
+accepted (204) via the rewritten driver; morning's identical call shape fully
+propagated including a fired dispatch comm. **Never add `--base-url`.**
