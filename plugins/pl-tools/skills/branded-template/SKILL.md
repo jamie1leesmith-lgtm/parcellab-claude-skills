@@ -11,7 +11,7 @@ Given a brand website URL, scrape the live site with **Claude Code's built-in br
 
 > **Built-in browser vs. Claude-in-Chrome:** the built-in Browser pane runs in a fresh context (no logged-in sessions), which is fine for public brand homepages. If you ever need to scrape a site behind a login, that's the one case where Claude-in-Chrome (the user's real Chrome) would be required instead — this skill does not cover it.
 
-> **Browser pane tabs:** `mcp__Claude_Browser__*` tools take a `tabId`; the primary tab is `"main"`. This skill reuses the `"main"` tab throughout — scraping the brand site first, then navigating the same tab to the local preview.
+> **Browser pane tabs:** `mcp__Claude_Browser__*` tools take a `tabId`. `preview_start` generates its own id each time (e.g. `seed`, `tab-1`) — it never returns `"main"`. Use whatever id `preview_start` actually returned, and reuse that exact value for every later `javascript_tool` / `computer` / `navigate` call. Each `preview_start` call opens its own tab, so the brand-scrape tab (Step 2) and the local-preview tab (Step 8) are usually **different ids** — do not assume the id from one is valid for the other. If a `tabId` is ever unclear, call `mcp__Claude_Browser__tabs_context` to list open tabs.
 
 > **MCP tool naming:** ParcelLab MCP tools appear with a per-connector prefix (e.g. `mcp__<connector-id>__journey_write_layout`). This skill refers to them by their **suffix** — match whatever prefix is present in your tool list.
 
@@ -47,13 +47,13 @@ Open the Browser pane at the brand URL:
 mcp__Claude_Browser__preview_start → { url: <the URL the user provided> }
 ```
 
-This opens a browser tab (no dev server needed) — note the `tabId` (the primary tab is `"main"`) and reuse it for every `javascript_tool` / `computer` call below. If the pane is already open, use `mcp__Claude_Browser__navigate → { tabId: "main", url: <URL> }` instead. Wait for the page to fully load. Note the final redirected URL (some brands redirect to a locale, e.g. `zara.com → zara.com/uk/`).
+This opens a browser tab (no dev server needed) — the response returns a generated `tabId` (e.g. `seed`, `tab-1`; never `"main"`). Note that exact value and reuse it for every `javascript_tool` / `computer` call below. If the pane is already open, use `mcp__Claude_Browser__navigate → { tabId: <the tabId from preview_start>, url: <URL> }` instead. Wait for the page to fully load. Note the final redirected URL (some brands redirect to a locale, e.g. `zara.com → zara.com/uk/`).
 
 ---
 
 ## Step 3 — Extract brand styles
 
-Run the extraction via `mcp__Claude_Browser__javascript_tool` with `{ action: "javascript_exec", tabId: "main", text: <snippet> }`.
+Run the extraction via `mcp__Claude_Browser__javascript_tool` with `{ action: "javascript_exec", tabId: <the tabId from Step 2's preview_start>, text: <snippet> }`.
 
 > **IMPORTANT — REPL semantics:** `javascript_tool` returns the value of the *last expression* (like a console REPL) and serialises it as JSON; it does **not** honour a top-level `return`. Wrap the extraction in an **IIFE** so the last expression is the object you want, i.e. `(() => { ... return {...}; })()`. All snippets below are already wrapped this way.
 
@@ -119,7 +119,7 @@ Run the extraction via `mcp__Claude_Browser__javascript_tool` with `{ action: "j
 
 If the captured buttons are all transparent/grey utility chips, run a second pass over `main a, main button` filtering for solid dark or coloured backgrounds to find the true primary CTA.
 
-To visually confirm the page loaded, take a screenshot with `mcp__Claude_Browser__computer` `{ action: "screenshot", tabId: "main" }`.
+To visually confirm the page loaded, take a screenshot with `mcp__Claude_Browser__computer` `{ action: "screenshot", tabId: <the brand-scrape tabId> }`.
 
 ---
 
@@ -151,8 +151,24 @@ Run this snippet (IIFE-wrapped for the REPL) via `mcp__Claude_Browser__javascrip
 
 1. Pick the **first landscape image** (`naturalW > naturalH`) with `naturalW ≥ 800` — this is almost always the primary campaign image.
 2. **Clean the URL for email**: strip high-DPR multipliers (`dpr_2.0,`) but keep the full width (`w_1200`) — email clients scale via `width="600"` on the `<img>`, so the image stays crisp on retina.
+   - **Also strip CDN resizing wrapper prefixes.** Some brands front the real asset with a resizing
+     proxy, e.g. `https://www.lush.com/cdn-cgi/image/width=640,f=auto/https://res.cloudinary.com/...`
+     — the real image is the **trailing URL** after the wrapper, and the wrapper was capping the
+     width at 640px (too small for a 600px-wide email that may render larger on some clients, and
+     it discards any width you'd otherwise request from the real CDN). Detect this shape — a URL
+     containing another `http(s)://` further along in the path — strip the wrapper, and request a
+     larger width from the **underlying** CDN's own params instead (e.g. Cloudinary's own
+     `w_1200`), not the wrapper's.
 3. If no large landscape image is found, fall back to a large square campaign image, then the OG image (`meta[property="og:image"]`). **Verify OG images before using them** (load via `new Image()` in `javascript_tool` and check dimensions; some brands' OG image is just a logo card, which duplicates the header logo and looks wrong).
 4. If still nothing, skip the hero block entirely — don't use a placeholder.
+5. **Lazy-loaded sites may show nothing on the first scan.** If the Step 4 snippet returns an
+   empty `heroImages` list, or every candidate has `naturalWidth` of `0`, the hero likely hasn't
+   loaded yet — many sites only load it once it scrolls into view. Scroll the page (e.g.
+   `window.scrollTo` or `scrollIntoView` on a likely container) and re-run the scan. When
+   re-scanning, check `img.currentSrc` as well as `img.src` — lazy-loading and `<picture>`/`srcset`
+   markup often leave `src` empty or pointing at a placeholder until `currentSrc` resolves. Before
+   committing to a candidate found this way, verify it by loading the cleaned URL via
+   `new Image()` in `javascript_tool` and checking its real `naturalWidth`/`naturalHeight`.
 
 **Hero block HTML** (goes between the header and the campaign block):
 
@@ -320,10 +336,10 @@ Serve the HTML file from disk and open it in the built-in Browser pane. This kee
 (The `sys.path` cleanup works around the Python 3.14 empty-path issue; the inline `-c` server avoids `--directory` cwd quirks.)
 
 2. `mcp__Claude_Browser__preview_start` → `{ name: "layout-preview" }` (starts the python server from launch.json, reusing it if already running).
-3. Point the pane at the file: `mcp__Claude_Browser__navigate` → `{ tabId: "main", url: "http://127.0.0.1:8098/{brand}-parcellab-layout.html" }`.
-4. Confirm with `mcp__Claude_Browser__computer` `{ action: "screenshot", tabId: "main" }` (or `mcp__Claude_Browser__read_page` to verify structure/text).
+3. Point the pane at the file: `mcp__Claude_Browser__navigate` → `{ tabId: <the tabId this preview_start call returned>, url: "http://127.0.0.1:8098/{brand}-parcellab-layout.html" }`. This is a **new** `preview_start` call, so it returns its own `tabId` — do not reuse the brand-scrape tab's id from Step 2.
+4. Confirm with `mcp__Claude_Browser__computer` `{ action: "screenshot", tabId: <the local-preview tabId> }` (or `mcp__Claude_Browser__read_page` to verify structure/text).
 
-**Iteration loop** (when the user asks for changes): edit `$HOME/parcellab-previews/{brand}-parcellab-layout.html` directly (it is the canonical working copy), then reload with `mcp__Claude_Browser__navigate` → `{ tabId: "main", url: <same URL> }` (or `javascript_tool` → `window.location.reload()`), then screenshot to confirm.
+**Iteration loop** (when the user asks for changes): edit `$HOME/parcellab-previews/{brand}-parcellab-layout.html` directly (it is the canonical working copy), then reload with `mcp__Claude_Browser__navigate` → `{ tabId: <the local-preview tabId>, url: <same URL> }` (or `javascript_tool` → `window.location.reload()`), then screenshot to confirm.
 
 > **Note:** ParcelLab tokens (`{{content}}`, `{{generated/...}}`, `{{schemaOrgMarkup}}`) render as literal text in the preview — that is expected. The preview is for confirming branding, logo, hero image, colours and structure, not the injected order content.
 
@@ -489,6 +505,11 @@ store's id:
 **This is the only step that writes anything.** Whether the store reached here via 9b.2's
 single-store path or its multi-store path, no write has happened yet — it happens here.
 
+> **⚠️ Every `journey_write_layout` call echoes the full layout HTML back in its response.** This
+> step makes at least two such writes (9b.4a, plus one per layout cleared in 9b.4b) — the same
+> cost as the list call in 9b.3, repeated per write. Read only `autoLayout` (and `id`) from each
+> response and do not echo the `content` field into the conversation.
+
 **Order matters.** Clearing the old mapping first leaves a window where the store has no
 template at all, which can break outbound emails. Setting the new one first means the worst
 case is a brief duplicate between two valid brand templates. **Never leave the store unmapped.**
@@ -547,6 +568,11 @@ If 9b.3 found no holding layout, skip 9b.4b entirely — there is nothing to cle
 
 ### 9b.5 — Verify before claiming success
 
+> **The write response cannot confirm this for you.** `journey_write_layout` responses **omit
+> `autoLayout` entirely** — even though the write in 9b.4 succeeded, its response tells you
+> nothing about what `autoLayout` ended up containing. The readback below is the **only** way to
+> verify the mapping landed correctly. Do not skip it or treat a clean write response as proof.
+
 **Read back the target layout.** Call the tool ending in `__journey_get_journey_layout` with
 `{ "id": {NEW_LAYOUT_ID} }` and confirm two things:
 
@@ -602,7 +628,7 @@ On success, tell the user:
   - `now used by {STORE_NAME}` — the store had no previous mapping
   - `not assigned` — the user chose `None`, or the account has no stores
 - Any country-specific override warning from 9b.3, repeated here so it isn't lost in scrollback.
-- Next step options: assign to a journey in the ParcelLab portal, or publish.
+- Next step option: assign it to a journey in the ParcelLab portal (publishing already happened automatically in Step 9a).
 
 On failure:
 - Validation error (400) → read the error details, fix the field, retry. `autoLayout not_a_list` → the value must be a JSON list, not a bool; on Step 9's create that list is `[]`, while after 9b a populated list of `{client, layout, country}` entries is correct.
@@ -628,7 +654,7 @@ On failure:
 
 | Concern | CLI skill | This built-in-browser skill |
 |---|---|---|
-| Browser | `mcp__playwright__browser_navigate` / `browser_evaluate` | `mcp__Claude_Browser__navigate` / `javascript_tool` (built-in Browser pane, tab `"main"`) |
+| Browser | `mcp__playwright__browser_navigate` / `browser_evaluate` | `mcp__Claude_Browser__navigate` / `javascript_tool` (built-in Browser pane, using whatever `tabId` `preview_start` returns) |
 | JS return | arrow fn with `return` | IIFE `(() => {...})()` (REPL last-expression) |
 | Page screenshot | `browser_take_screenshot` | `mcp__Claude_Browser__computer` `{action:"screenshot"}` |
 | Preview | `python3 -m http.server` + Playwright screenshot | `mcp__Claude_Browser__preview_start {name}` server + same Browser pane (live-editable; serves `$HOME/parcellab-previews/`) |
