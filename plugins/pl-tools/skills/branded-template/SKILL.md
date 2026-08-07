@@ -359,6 +359,47 @@ journey_write_layout → {
 
 ---
 
+## Step 9a — Publish the layout
+
+A pushed layout is a **draft**. Drafts are not used to send mail, so the layout must be
+published before it does anything. Publish it as soon as Step 9 succeeds — the user already
+approved the design at the Step 8 preview, so no further confirmation is needed.
+
+> **⚠️ This is the one step that does not use the MCP connector.** The ParcelLab MCP connector
+> exposes no journey-layout publish tool, so this step uses the `parcellab` CLI. Every other
+> step in this skill stays on MCP — do not migrate anything else to the CLI.
+
+```bash
+parcellab --env prod journey layout publish {NEW_LAYOUT_ID} --yes -o json
+```
+
+Confirm the response shows:
+
+- `"releaseStatus": "published"`
+- `"hasReleasedVersion": true`
+- a `releasedAt` timestamp
+
+Record `releaseStatus` as `{RELEASE_STATUS}` for Step 10.
+
+**If the CLI is not installed** (`parcellab: command not found`), do not fail the run. The layout
+is already safely in the account. Tell the user:
+
+> The layout was created but not published — the `parcellab` CLI isn't installed, and the MCP
+> connector can't publish layouts. Publish it in the ParcelLab portal, or run `/pl-setup` to
+> install the CLI.
+
+Then carry on to Step 9b and report `not published` in Step 10.
+
+**If publish returns a 400 about the layout being incomplete**, the HTML is missing something
+required: a layout must contain the `{{content}}` placeholder and both `<body>` and `<html>`
+tags to be publishable. Check those survived the Step 7 build, fix the file, re-push via Step 9,
+and publish again.
+
+Publishing does **not** touch `autoLayout`, so the order of Step 9a and Step 9b does not matter
+for correctness. Publishing first simply means the layout is live the moment it is assigned.
+
+---
+
 ## Step 9b — Assign the template to a store (Auto Template Config)
 
 A new layout is inert until a store points at it. That pointer is the **Auto Template Config**,
@@ -553,7 +594,9 @@ On success, tell the user:
 - Layout **ID** (e.g. `19584`)
 - Layout **prettyName**
 - **Account:** {ACCOUNT_ID}
-- **Status:** draft
+- **Status:** `{RELEASE_STATUS}` — `published` after a successful Step 9a, or `not published`
+  if Step 9a was skipped because the CLI was unavailable (say so plainly, and repeat how to
+  publish it).
 - **Auto-template:** one of —
   - `now used by {STORE_NAME} (previously {OLD_LAYOUT_NAME})` — a mapping was moved
   - `now used by {STORE_NAME}` — the store had no previous mapping
