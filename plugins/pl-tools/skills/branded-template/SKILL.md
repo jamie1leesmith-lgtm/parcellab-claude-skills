@@ -412,6 +412,78 @@ Scan every result's `autoLayout` array for an entry where `client` equals the ch
 > from it, and never echo `content` back into the conversation. On an account with many
 > layouts, tell the user this step is token-heavy before you make the call.
 
+### 9b.4 — Write the mappings: new first, then clear the old
+
+**This is the only step that writes anything.** Whether the store reached here via 9b.2's
+single-store path or its multi-store path, no write has happened yet — it happens here.
+
+**Order matters.** Clearing the old mapping first leaves a window where the store has no
+template at all, which can break outbound emails. Setting the new one first means the worst
+case is a brief duplicate between two valid brand templates. **Never leave the store unmapped.**
+
+> **⚠️ `autoLayout` is replaced wholesale on write, not appended to.** Always send the layout's
+> existing entries back alongside your change. Writing a bare single-entry list onto a layout
+> that serves several stores silently destroys the other stores' mappings. This is the most
+> damaging mistake available in this step.
+
+**a. Set the new mapping.** Take the new layout's current `autoLayout` (just created, so
+normally `[]`), add your entry, and write the merged list:
+
+```
+journey_write_layout → {
+  "account": {ACCOUNT_ID},
+  "id": {NEW_LAYOUT_ID},
+  "data": {
+    "autoLayout": [
+      ...any entries the new layout already had...,
+      { "client": {STORE_ID}, "layout": {NEW_LAYOUT_ID}, "country": [] }
+    ]
+  }
+}
+```
+
+The `layout` value inside the entry **must equal the id of the layout you are writing to**.
+
+**b. Clear the stale mapping.** Only if 9b.3 found a holding layout. Send back that layout's
+`autoLayout` with **only the chosen store's `country: []` entry removed**, every other entry
+preserved verbatim:
+
+```
+journey_write_layout → {
+  "account": {ACCOUNT_ID},
+  "id": {OLD_LAYOUT_ID},
+  "data": { "autoLayout": [ ...its other entries, minus the chosen store... ] }
+}
+```
+
+If 9b.3 found no holding layout, skip 9b.4b entirely — there is nothing to clear.
+
+> **Why 9b.4b is mandatory, not tidy-up:** the API accepts a second mapping for the same store
+> at the same `country` without any error or warning. Skip this and the store is mapped to two
+> templates at once, with no indication of which one wins.
+
+### 9b.5 — Verify before claiming success
+
+Call the tool ending in `__journey_get_journey_layout` with `{ "id": {NEW_LAYOUT_ID} }` and
+confirm `autoLayout` contains your `{STORE_ID}` entry.
+
+- Entry present → proceed to Step 10.
+- Entry missing → **report the failure with the readback.** Do not describe the assignment as
+  done.
+
+The mapping needs **no** `layout publish` — `autoLayout` is not part of the layout's publish
+diff, so it applies as soon as it is written.
+
+### 9b.6 — Failure handling
+
+| Failure | What to do |
+|---|---|
+| `autoLayout not_a_list` (400) | The value must be a JSON list, not a bool. Fix and retry. |
+| The 9b.4a write fails | Report it and make no further writes. The old mapping is untouched, so the store keeps working. |
+| The 9b.4b clear fails after 9b.4a landed | Report the duplicate explicitly, naming **both** templates, and tell the user which to clear in the portal. Do not claim success. |
+| 9b.5 readback shows no mapping | Report as a failure, including the readback. Not success. |
+| `__config_list_clients` returns no stores | Skip assignment, report the layout as unassigned, and say why. |
+
 ---
 
 ## Step 10 — Report back
