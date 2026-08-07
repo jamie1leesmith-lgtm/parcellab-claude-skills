@@ -27,19 +27,14 @@ global `~/.claude/settings.json` as `PARCELLAB_ACCOUNT_ID`, and points the CLI's
 write guard at that same account so a skill cannot write into a colleague's demo
 account.
 
-### Order API token
+### No Order API token
 
-Only `create-order` and `order-lifecycle` need one. `/pl-setup` asks, and if you
-say yes it hands you this to run in the app's built-in terminal:
-
-    python3 <plugin>/scripts/pl_credentials.py --token
-
-The prompt is hidden — **nothing appears as you paste, which is correct**. Paste
-the base64 value from the portal (it carries both your account ID and token).
-
-The token is never accepted in chat and never passed as a command-line argument,
-so it stays out of the conversation transcript, the process table, and your shell
-history.
+`create-order` and `order-lifecycle` write through the `parcellab` CLI's own
+OAuth login — there is no separate credential. (They required an Order API token
+before 2026-08-07; a leftover `PARCELLAB_TOKEN` in settings is harmless and
+unused.) The protection is the CLI's `edit-mode account-restricted` guard, which
+`/pl-setup` points at your own demo account and the skills verify before every
+first write.
 
 ### Custom Demo Creator token
 
@@ -48,8 +43,11 @@ this to run in the app's built-in terminal:
 
     python3 <plugin>/scripts/pl_credentials.py --cdc-token
 
-Simpler than the Order API token — it's a single value, so there's nothing to
-decode. The base URL is filled in for you.
+It's a single value, nothing to decode. The base URL is filled in for you.
+
+The token is never accepted in chat and never passed as a command-line argument,
+so it stays out of the conversation transcript, the process table, and your shell
+history.
 
 ## Prerequisites
 

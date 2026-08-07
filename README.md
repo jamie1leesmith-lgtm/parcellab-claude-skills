@@ -27,7 +27,7 @@ and neither covers the other:
 
 | Installed | Run | Sets up |
 |---|---|---|
-| `pl-tools` | **`/pl-setup`** | Your parcelLab account, the CLI write guard, and the Order API token if you use `create-order` or `order-lifecycle`. See [One-time setup](#one-time-setup). |
+| `pl-tools` | **`/pl-setup`** | Your parcelLab account, the CLI write guard, and the demo-request token if you use `demo-request`. See [One-time setup](#one-time-setup). |
 | `onyx` | **`/onyx-setup`** | Your Onyx API URL and personal token. See [onyx](#onyx). |
 
 If you installed both, run both — then **quit and reopen the app once (⌘Q)**. Both
@@ -60,7 +60,7 @@ they deliberately don't share the `parcellab-` prefix used by the org's
 | `pl-tools:branded-template` | Builds a branded transactional email layout in your parcelLab account from a brand URL, with live preview in the desktop app | *"Create a parcelLab layout for www.nike.com"* |
 | `pl-tools:demo-request` | Creates a custom demo request from a prospect website URL — collects products, verifies images, submits to the Custom Demo Creator | *"Create a demo request for www.example.com"* |
 | `pl-tools:bug-investigation` | Investigates a product bug end to end: checks live config via the `parcellab` CLI, reproduces it in Claude-in-Chrome with real screenshot/recording capture, isolates root cause against sibling portals, and publishes a shareable bug report as an artifact, HTML file, and PDF — always *before* any mitigation, which needs express account-number-specific sign-off | *"Investigate this bug on [portal]"* |
-| `pl-tools:pl-setup` | One-time setup: account, CLI write guard, and Order API token | *`/pl-setup`* |
+| `pl-tools:pl-setup` | One-time setup: account, CLI write guard, and per-skill tokens | *`/pl-setup`* |
 | `onyx` *(separate plugin)* | Pulls knowledge from your parcelLab Onyx instance into Claude — semantic search, cited RAG answers, and document retrieval | *"Search Onyx for our return policy on damaged items"* |
 
 ---
@@ -80,8 +80,11 @@ holds your demo account:
 You do not set this up by hand — `/pl-setup` writes it for you, looking your
 account up by name so you can confirm it's the right one.
 
-Two skills additionally need an Order API token (`PARCELLAB_TOKEN`):
-`create-order` and `order-lifecycle`. Nothing else does.
+Order writes need no token at all: `create-order` and `order-lifecycle` go
+through the `parcellab` CLI's own login, and the CLI's write guard checks every
+payload's account before anything is sent. (Before 2026-08-07 these two skills
+required an Order API token — they don't anymore, and a leftover
+`PARCELLAB_TOKEN` in your settings is harmless and simply unused.)
 
 > `PARCELLAB_USER_ID` is still accepted as an alias for `PARCELLAB_ACCOUNT_ID`,
 > so anyone set up before this convention keeps working. New setups use
@@ -111,18 +114,15 @@ Then, in the Claude Code desktop app:
    (`parcellab settings edit-mode set account-restricted`). That guard is what
    stops a skill writing into a colleague's demo account — there are 13 side by
    side under *Demo SolCon*.
-4. **Order API token — only if you use `create-order` or `order-lifecycle`.**
-   `/pl-setup` asks. If you say yes, it hands you one command to run in the app's
-   built-in terminal (**click the terminal icon, top right**), which prompts for
-   the credential.
+4. **Demo-request token — only if you use `demo-request`.** `/pl-setup` asks.
+   If you say yes, it hands you one command to run in the app's built-in
+   terminal (**click the terminal icon, top right**), which prompts for the
+   credential.
 
    **Nothing appears on screen as you paste it — no dots, no asterisks, no
    cursor movement. That is correct**; the input is hidden on purpose. Paste
    once, press Enter once. Pasting twice because "it didn't work" is the most
    common way this goes wrong.
-
-   Paste the **base64** value from the portal, not the raw token — it carries
-   both your account ID and your token, so one paste covers both.
 5. **Fully quit the app (⌘Q) and reopen.** Not just closing the window.
    Environment variables are read only at startup, so nothing above takes effect
    until you do.
@@ -189,12 +189,13 @@ The skill confirms the target account with you before creating anything.
 
 Creates (or updates) a real order in your ParcelLab account with a single request to the production Order API. Give it a bit of context — a country, a scenario, tracked vs. untracked — and it fills the rest with plausible dummy data.
 
-**Prerequisites:** your default account plus an Order API token — see
-[Your default account](#your-default-account).
+**Prerequisites:** your default account and the `parcellab` CLI, authenticated —
+see [Your default account](#your-default-account). No token.
 
-> **Production only.** This skill targets `api.parcellab.com` and writes real
-> orders into whichever account it's pointed at. There is no test environment
-> toggle, which is why it confirms the account before every first write.
+> **Production only.** This skill writes real orders into whichever account it's
+> pointed at. There is no test environment toggle, which is why it confirms the
+> account before every first write — and why the CLI's write guard must stay
+> `account-restricted` to your own demo account.
 
 ### pl-tools:demo-request
 
@@ -222,12 +223,13 @@ Simulates a complete post-purchase journey: sources a real product from a brand 
 
 **Prerequisites:**
 
-1. **Your default account plus an Order API token** — the same credentials as
-   `create-order`, so setting up either skill sets up both. See
-   [Your default account](#your-default-account). The skill stops on its first
-   step if they aren't set, and tells you how to fix it.
-2. **Bash and `curl`** — the checkpoint driver is a shell script
-   (`references/run-lifecycle.sh`); no other dependencies to install.
+1. **Your default account and the `parcellab` CLI, authenticated** — the same
+   setup as `create-order`, so setting up either skill sets up both. No token.
+   See [Your default account](#your-default-account). The skill stops on its
+   first step if anything is missing, and tells you how to fix it.
+2. **Bash** — the checkpoint driver is a shell script
+   (`references/run-lifecycle.sh`) that sends through the CLI; nothing else to
+   install.
 
 See `references/status-codes.md` for the checkpoint status codes used.
 
