@@ -353,6 +353,9 @@ journey_write_layout → {
   set the store mapping here; that happens in Step 9b, which has to read the account's other
   layouts first.
 - To check existing layouts first, call the tool ending in `__journey_list_journey_layouts` with `{ "account": [{ACCOUNT_ID}] }` (optionally `search: "{BRAND_NAME}"` to avoid duplicates).
+- **Record `{NEW_LAYOUT_ID}` now.** On create, take the `id` returned in the response. On update,
+  `{NEW_LAYOUT_ID}` is simply the `id` you passed in. Either way, hold onto it — Step 9b and
+  Step 10 both reference `{NEW_LAYOUT_ID}` and have no other way to resolve it.
 
 ---
 
@@ -455,7 +458,10 @@ case is a brief duplicate between two valid brand templates. **Never leave the s
 > damaging mistake available in this step.
 
 **a. Set the new mapping.** Start from `{TARGET_LAYOUT_AUTOLAYOUT}` — the target layout's full
-current `autoLayout` as recorded in 9b.3 — add your entry, and write the merged list:
+current `autoLayout` as recorded in 9b.3 — add your entry, and write the merged list. The chosen
+store must end up with **exactly one** `country: []` entry on the target layout: if
+`{TARGET_LAYOUT_AUTOLAYOUT}` already contains one for that store (per 9b.3), drop it from the
+merge base before adding your entry — do not append a second copy alongside it.
 
 ```
 journey_write_layout → {
