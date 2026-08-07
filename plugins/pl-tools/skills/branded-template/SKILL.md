@@ -383,26 +383,54 @@ If the call returns no stores, skip to Step 10 and report the layout as unassign
 
 ### 9b.2 — Choose the store
 
-- **Exactly one store** → assign it automatically and state what you did. (Same shape as
-  Step 1b's single-account handling — don't ask a question with one possible answer.)
+- **Exactly one store** → pick it automatically, state what you did, **then continue to 9b.3**.
+  (Same shape as Step 1b's single-account handling — don't ask a question with one possible
+  answer.) Choosing the store is not the same as assigning it: no write happens until 9b.4, and
+  9b.3 must run first or you will leave a duplicate mapping behind.
 - **More than one store** → ask which store should now use this template. Offer the display
-  names, plus a final option: `None — leave unassigned`.
+  names, plus a final option: `None — leave unassigned`. Once the user picks a store,
+  **then continue to 9b.3**.
+
+**Never jump from 9b.2 straight to 9b.4.** 9b.3 is what tells you the merge base for the write
+and which stale mappings have to be cleared.
 
 If the user picks `None`, skip to Step 10 and report the layout as unassigned.
 
-### 9b.3 — Find the template that currently holds that mapping
+### 9b.3 — Record the target layout's own mappings, and find any layout holding a stale one
 
 One call: the tool ending in `__journey_list_journey_layouts` with `{ "account": [{ACCOUNT_ID}] }`.
 
-Scan every result's `autoLayout` array for an entry where `client` equals the chosen store's id:
+**First, record the target layout.** Find the entry whose `id` is `{NEW_LAYOUT_ID}` — the layout
+Step 9 just wrote, whether it created it or updated an existing one — and record its **full
+current `autoLayout` array, verbatim**, as `{TARGET_LAYOUT_AUTOLAYOUT}`. That array is the merge
+base for 9b.4a; do not assume it is empty. Step 9 supports passing `id` to update an existing
+layout, and encourages reusing a layout rather than duplicating one, so the target may already
+carry entries for **other stores**. Losing those is the destructive failure this step exists to
+prevent.
 
-- **`country` is empty** → this is the current default mapping. Record the holding layout's `id`
-  and `prettyName` as `{OLD_LAYOUT_ID}` and `{OLD_LAYOUT_NAME}`. There should be at most one.
-- **`country` is non-empty** → a country-specific override. **Leave it alone**, but warn:
+If `{TARGET_LAYOUT_AUTOLAYOUT}` already contains a `country: []` entry for the chosen store, the
+mapping is already correct: drop that entry from the merge base in 9b.4a and re-add it there, so
+you end up with exactly one — do not append a second copy.
+
+**Then, scan every other result's `autoLayout`** for entries where `client` equals the chosen
+store's id:
+
+- **`country` is empty** → a stale default mapping that has to be cleared. Record, for **each**
+  such layout, its `id`, its `prettyName`, and its **full current `autoLayout` array verbatim**,
+  as `{OLD_LAYOUT_ID}`, `{OLD_LAYOUT_NAME}` and `{OLD_LAYOUT_AUTOLAYOUT}`. **There may be more
+  than one.** The API accepts duplicate mappings for the same store at the same `country` without
+  complaint, and a partially-failed earlier run of this skill can leave exactly that state — so
+  keep a list, and clear the entry on **every** layout that holds one, not just the first you find.
+- **`country` is non-empty** → a country-specific override. **Leave it alone**, but record the
+  holding layout's `prettyName` as `{OTHER_TEMPLATE_NAME}` and its country codes, and warn — once
+  per holding layout, since a store may have country entries on several layouts:
 
   > Note: `{STORE_NAME}` also has a country-specific auto-template on `{OTHER_TEMPLATE_NAME}`
-  > for `{USA, CAN}`. Orders shipping to those countries will keep using that template, not
-  > this one. Change it in the portal if that isn't what you want.
+  > for `{OTHER_TEMPLATE_COUNTRIES}` (the country codes from that entry, e.g. two ISO codes).
+  > Orders shipping to those countries will keep using that template, not this one. Change it in
+  > the portal if that isn't what you want.
+
+  Substitute the real values — never emit a placeholder token or a braced example verbatim.
 
   Without this warning you would tell the user the store now uses the new template while some
   of their orders demonstrably would not.
@@ -426,8 +454,8 @@ case is a brief duplicate between two valid brand templates. **Never leave the s
 > that serves several stores silently destroys the other stores' mappings. This is the most
 > damaging mistake available in this step.
 
-**a. Set the new mapping.** Take the new layout's current `autoLayout` (just created, so
-normally `[]`), add your entry, and write the merged list:
+**a. Set the new mapping.** Start from `{TARGET_LAYOUT_AUTOLAYOUT}` — the target layout's full
+current `autoLayout` as recorded in 9b.3 — add your entry, and write the merged list:
 
 ```
 journey_write_layout → {
@@ -435,26 +463,34 @@ journey_write_layout → {
   "id": {NEW_LAYOUT_ID},
   "data": {
     "autoLayout": [
-      ...any entries the new layout already had...,
+      ...every entry from {TARGET_LAYOUT_AUTOLAYOUT}, verbatim...,
       { "client": {STORE_ID}, "layout": {NEW_LAYOUT_ID}, "country": [] }
     ]
   }
 }
 ```
 
+Only when Step 9 **created a brand-new layout** will `{TARGET_LAYOUT_AUTOLAYOUT}` be `[]`. If
+Step 9 updated an existing layout, it may hold mappings for other stores, and those entries must
+be sent back. Never substitute `[]` for the recorded value, and never write a bare single-entry
+list — read the recorded array from 9b.3 and merge into it.
+
 The `layout` value inside the entry **must equal the id of the layout you are writing to**.
 
-**b. Clear the stale mapping.** Only if 9b.3 found a holding layout. Send back that layout's
-`autoLayout` with **only the chosen store's `country: []` entry removed**, every other entry
-preserved verbatim:
+**b. Clear the stale mapping(s).** Only if 9b.3 found one or more layouts holding a `country: []`
+entry for the chosen store. **Repeat this write once per holding layout.** For each one, send back
+that layout's recorded `{OLD_LAYOUT_AUTOLAYOUT}` with **only the chosen store's `country: []`
+entry removed**, every other entry preserved verbatim:
 
 ```
 journey_write_layout → {
   "account": {ACCOUNT_ID},
   "id": {OLD_LAYOUT_ID},
-  "data": { "autoLayout": [ ...its other entries, minus the chosen store... ] }
+  "data": { "autoLayout": [ ...{OLD_LAYOUT_AUTOLAYOUT}, minus the chosen store's country:[] entry... ] }
 }
 ```
+
+Keep the store's country-specific entries on that layout — 9b.3 said to leave those alone.
 
 If 9b.3 found no holding layout, skip 9b.4b entirely — there is nothing to clear.
 
@@ -464,12 +500,28 @@ If 9b.3 found no holding layout, skip 9b.4b entirely — there is nothing to cle
 
 ### 9b.5 — Verify before claiming success
 
-Call the tool ending in `__journey_get_journey_layout` with `{ "id": {NEW_LAYOUT_ID} }` and
-confirm `autoLayout` contains your `{STORE_ID}` entry.
+**Read back the target layout.** Call the tool ending in `__journey_get_journey_layout` with
+`{ "id": {NEW_LAYOUT_ID} }` and confirm two things:
 
-- Entry present → proceed to Step 10.
-- Entry missing → **report the failure with the readback.** Do not describe the assignment as
-  done.
+1. `autoLayout` contains your `{STORE_ID}` entry.
+2. Every entry that was in `{TARGET_LAYOUT_AUTOLAYOUT}` is **still there**. A mapping for another
+   store that has gone missing means the write clobbered it.
+
+**Read back every layout you wrote in 9b.4b.** Call the same tool with `{ "id": {OLD_LAYOUT_ID} }`
+for each and confirm:
+
+1. The chosen store's `country: []` entry is **gone**.
+2. **Every other store's entries survived**, matching `{OLD_LAYOUT_AUTOLAYOUT}` minus that one
+   entry. This is the check that catches the destructive failure — the damage lands on the *old*
+   layout, and verifying only the new one would report success while other stores sit unmapped.
+
+Then:
+
+- All checks pass → proceed to Step 10.
+- Your entry missing, or **any** other store's entry missing on either layout → **report the
+  failure with the readback**, name the stores whose mappings are affected, and do not describe
+  the assignment as done. If entries were lost, say so explicitly and give the user the recorded
+  pre-write list so they can restore it.
 
 The mapping needs **no** `layout publish` — `autoLayout` is not part of the layout's publish
 diff, so it applies as soon as it is written.
@@ -479,9 +531,11 @@ diff, so it applies as soon as it is written.
 | Failure | What to do |
 |---|---|
 | `autoLayout not_a_list` (400) | The value must be a JSON list, not a bool. Fix and retry. |
-| The 9b.4a write fails | Report it and make no further writes. The old mapping is untouched, so the store keeps working. |
-| The 9b.4b clear fails after 9b.4a landed | Report the duplicate explicitly, naming **both** templates, and tell the user which to clear in the portal. Do not claim success. |
+| 9b.3 can't find `{NEW_LAYOUT_ID}` in the list response | Do **not** write with an assumed `[]` merge base. Fetch it with the tool ending in `__journey_get_journey_layout` and use its real `autoLayout`, or report and stop. |
+| The 9b.4a write fails | Report it and make no further writes. The old mappings are untouched, so the store keeps working. |
+| Any 9b.4b clear fails after 9b.4a landed | Report the duplicate explicitly, naming **every** template still holding a mapping for the store, and tell the user which to clear in the portal. Do not claim success. |
 | 9b.5 readback shows no mapping | Report as a failure, including the readback. Not success. |
+| 9b.5 readback shows another store's entry missing | Treat as a data-loss incident: say plainly which stores lost their auto-template, give the recorded pre-write `autoLayout` for the affected layout, and do not claim success. |
 | `__config_list_clients` returns no stores | Skip assignment, report the layout as unassigned, and say why. |
 
 ---
@@ -502,7 +556,7 @@ On success, tell the user:
 - Next step options: assign to a journey in the ParcelLab portal, or publish.
 
 On failure:
-- Validation error (400) → read the error details, fix the field, retry. `autoLayout not_a_list` → ensure `autoLayout` is `[]` not a bool.
+- Validation error (400) → read the error details, fix the field, retry. `autoLayout not_a_list` → the value must be a JSON list, not a bool; on Step 9's create that list is `[]`, while after 9b a populated list of `{client, layout, country}` entries is correct.
 - Auth/permission error → the ParcelLab MCP connector needs re-authentication; tell the user to reconnect it in Settings → Connectors.
 
 ---
@@ -513,7 +567,7 @@ On failure:
 - Inspect one layout: tool ending `__journey_get_journey_layout` → `{ "id": <layout id> }`
 - Update a layout: tool ending `__journey_write_layout` → `{ "account": {ACCOUNT_ID}, "id": <layout id>, "data": { ...changed fields... } }`
 - List the account's stores (for auto-template selection): tool ending `__config_list_clients` → `{ "account": [{ACCOUNT_ID}] }`
-- Set/clear a store→template mapping: tool ending `__journey_write_layout` → `{ "account": {ACCOUNT_ID}, "id": <layout id>, "data": { "autoLayout": [ { "client": <store id>, "layout": <layout id>, "country": [] } ] } }` — remember this **replaces** the whole list
+- Set/clear a store→template mapping: tool ending `__journey_write_layout` → `{ "account": {ACCOUNT_ID}, "id": <layout id>, "data": { "autoLayout": [ ...the layout's existing entries, verbatim..., { "client": <store id>, "layout": <layout id>, "country": [] } ] } }` — this write **replaces** the whole list, so always read the layout's current `autoLayout` first and merge into it. **Do not copy this as a single-entry list.** Follow Step 9b.4 rather than writing from here.
 - Read back a mapping: tool ending `__journey_get_journey_layout` → `{ "id": <layout id> }`, then check `autoLayout`
 
 ---
