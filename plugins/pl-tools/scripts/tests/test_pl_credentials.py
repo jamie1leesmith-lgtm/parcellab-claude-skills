@@ -15,35 +15,6 @@ def b64(raw):
     return base64.b64encode(raw.encode()).decode()
 
 
-class TestDecode(unittest.TestCase):
-    def test_valid_pair(self):
-        self.assertEqual(plc.decode(b64("1626718:secrettoken")),
-                         ("1626718", "secrettoken"))
-
-    def test_token_containing_colon_splits_once(self):
-        self.assertEqual(plc.decode(b64("1626718:abc:def")),
-                         ("1626718", "abc:def"))
-
-    def test_surrounding_whitespace_stripped(self):
-        self.assertEqual(plc.decode(b64(" 1626718 : secret ")),
-                         ("1626718", "secret"))
-
-    def test_base64_without_colon_is_rejected(self):
-        self.assertIsNone(plc.decode(b64("noseparator")))
-
-    def test_non_base64_is_rejected(self):
-        self.assertIsNone(plc.decode("this-is-a-raw-token"))
-
-    def test_empty_is_rejected(self):
-        self.assertIsNone(plc.decode(""))
-
-    def test_non_numeric_account_is_rejected(self):
-        self.assertIsNone(plc.decode(b64("notanumber:secret")))
-
-    def test_empty_token_is_rejected(self):
-        self.assertIsNone(plc.decode(b64("1626718:")))
-
-
 class TestMergeEnv(unittest.TestCase):
     def test_unrelated_env_keys_preserved(self):
         before = {"env": {"ONYX_API_TOKEN": "keep-me"}}

@@ -96,38 +96,7 @@ invisible until a write fails. There are 13 demo accounts side by side under
 
 If this step fails, say so plainly: setup is incomplete. Do not report success.
 
-## 6. Order API token — check first, then ask
-
-**First check whether I already have one:** if `$PARCELLAB_TOKEN` is set, say so
-and skip the rest of this step. Do not ask me to paste a credential I already
-have. (Mention that if it turns out to be wrong or expired — an unexplained `401`
-from an order skill — the fix is to re-run the `--token` command below.)
-
-If it is not set: only two skills need it, `create-order` and `order-lifecycle`.
-Ask whether I will use them. If not, skip this step and tell me it was skipped.
-
-If I will, print this command and ask me to run it myself:
-
-    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/pl_credentials.py --token
-
-Tell me, in these terms:
-
-1. Click the terminal icon at the top right of the Claude Code window.
-2. Paste that command and press Enter.
-3. Paste the **base64** value from the parcelLab portal, then press Enter.
-   **Nothing will appear on screen as you paste — no dots, no asterisks. That is
-   correct, the input is hidden on purpose.** Paste once, press Enter once.
-
-Prefer the base64 value over the raw token: it contains both my account ID and my
-token, so one paste covers both, and it avoids the commonest error — pasting the
-base64 blob into a field expecting the raw token, which shows up later as an
-unexplained `401`.
-
-**Do not offer to take the token in chat, and do not read it from a file path I
-give you.** Chat messages are stored in the transcript. The terminal is the only
-correct route.
-
-## 6a. Custom Demo Creator token — check first, then ask
+## 6. Custom Demo Creator token — check first, then ask
 
 Only `demo-request` needs this.
 
@@ -137,14 +106,17 @@ and skip the rest of this step.
 If it is not set: ask whether I will use `demo-request`. If not, skip this step
 and tell me it was skipped.
 
-If I will, print this command and ask me to run it myself, the same way as the
-Order API token above — terminal icon top right, paste, press Enter, nothing
-appears on screen and that is correct:
+If I will, print this command and ask me to run it myself:
+
+1. Click the terminal icon at the top right of the Claude Code window.
+2. Paste the command and press Enter.
+3. Paste the token, then press Enter. **Nothing will appear on screen as you
+   paste — no dots, no asterisks. That is correct, the input is hidden on
+   purpose.** Paste once, press Enter once.
 
     python3 ${CLAUDE_PLUGIN_ROOT}/scripts/pl_credentials.py --cdc-token
 
-This one is simpler than the Order API token: it's a single value, not a base64
-pair, so there is nothing to decode. The base URL is filled in automatically.
+It's a single value, nothing to decode. The base URL is filled in automatically.
 
 ## 7. Tell me to restart
 
