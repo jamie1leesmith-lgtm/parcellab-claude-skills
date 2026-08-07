@@ -26,15 +26,33 @@ It exists because hand-crafting realistic test/demo orders against the v4 spec i
 We chose a description-based trigger covering phrasings like *"create a parcellab order"*, *"push a test order to PL"*, *"send an order to parcellab for [country]"*. ParcelLab work is conversational — the user is rarely in a "now I'll run a command" mindset; they're describing a scenario. A slash command would mean breaking that flow. The description is also deliberately a bit pushy ("trigger even when the user has not specified every field") because skills tend to under-trigger by default.
 
 ### Production-only, no test environment toggle
-The skill always targets `api.parcellab.com`. We considered an `--env=test|prod` flag, but ParcelLab accounts are typically configured for a single environment, and a per-run env switch creates a foot-gun (sending a "test" order to production by mistake). Instead, the workflow forces an explicit confirmation step before every PUT — every send is a deliberate act, not an accidental one.
+The skill always writes to production. We considered an `--env=test|prod` flag, but ParcelLab accounts are typically configured for a single environment, and a per-run env switch creates a foot-gun (sending a "test" order to production by mistake). Instead, the workflow forces an explicit confirmation step before every PUT — every send is a deliberate act, not an accidental one.
 
-### Credentials via env vars, not in-conversation
-Credentials live in `~/.claude/settings.json` under the `env` block, scoped to Claude only. We rejected pasting them per-run (ends up in transcript) and pulling from a project-specific file (couples credentials to a workspace, which doesn't fit this user's setup).
+### CLI OAuth, no token (changed 2026-08-07)
+Earlier versions authenticated with an Order API token (`PARCELLAB_TOKEN`,
+base64 `accountID:token`). That's gone. Writes now go through
+`parcellab api request PUT /v4/track/orders/` — the CLI's default host serves
+the v4 order paths directly, authenticated by the OAuth session every internal
+user already has from `parcellab auth login`.
 
-The skill stores the **raw token** as `PARCELLAB_TOKEN` and the **numeric account ID** as `PARCELLAB_USER_ID`, then constructs the auth header at request time via `base64("$PARCELLAB_USER_ID:$PARCELLAB_TOKEN")`. The ParcelLab portal often exposes the credential as the pre-encoded blob — if you encounter that, decode it once and store the parts separately. This is what the skill expects.
+Two things protect the account, replacing the token's built-in scoping:
 
-### `curl` via Bash, no SDK or extra dependencies
-Personal skills should be portable across machines. Adding a Python or Node dependency means installing things, pinning versions, and dealing with virtualenvs. A single `curl` call backed by `mktemp` + the Write tool for the JSON payload gets the same result with zero install footprint. The `--data-binary @file` pattern avoids shell-quoting issues with UTF-8 characters (e.g. £, ß).
+1. The CLI's own `edit-mode account-restricted` guard, which refuses any write
+   whose `payload.account` doesn't match — locally, before the request is sent.
+2. The skill verifies that guard is aimed at the resolved account before its
+   first write, and refuses to proceed otherwise (see *Account resolution and
+   confirmation* in the SKILL).
+
+**Never pass `--base-url`.** Overriding the host silently redirects the guard's
+own account lookup and every write fails with a misleading 404. This exact flag
+once produced a whole wrong conclusion that the CLI couldn't create orders at
+all — the full story is in `docs/superpowers/specs/2026-08-03-account-defaults-and-auth-design.md`.
+
+`PARCELLAB_ACCOUNT_ID` in `~/.claude/settings.json`'s `env` block still names
+the default demo account (`PARCELLAB_USER_ID` accepted as a legacy alias).
+
+### CLI via Bash, no SDK or extra dependencies
+Personal skills should be portable across machines. The `parcellab` CLI is the one tool every internal user already has, and `--data @file` backed by `mktemp` + the Write tool avoids shell-quoting issues with UTF-8 characters (e.g. £, ß).
 
 ### Plausible dummy data, country-driven
 When the user gives partial context (just a country, or just a scenario), the skill fills the rest from a small table — language, currency, timezone, default courier, example address. The defaults match the destination country because mismatched data is the obvious "tell" that an order is fake (a UK recipient with a German DHL tracking number looks wrong in the portal). The defaults are intentionally short (DEU, GBR, USA, FRA, NLD, AUT) rather than exhaustive; for anything else, the skill is told to pick a sensible carrier and use a capital-city address, or ask the user.

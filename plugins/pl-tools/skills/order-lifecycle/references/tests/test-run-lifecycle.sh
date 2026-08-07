@@ -65,4 +65,26 @@ case "$stamp" in
 esac
 rm -rf "$TMP2"
 
+# Test E: live mode without an account id fails fast — before any CLI call.
+LOG="$TMP/e.log"
+if env -u PARCELLAB_ACCOUNT_ID -u PARCELLAB_USER_ID \
+    EVENTS_DIR="$TMP" GAP_SECONDS=0 LOG_FILE="$LOG" DRYRUN=0 bash "$SCRIPT" 2>/dev/null; then
+  fail "E: expected non-zero exit in live mode with no account id"
+fi
+grep -q "must be set to a numeric account id" "$LOG" || fail "E: missing fail-fast reason in log"
+grep -q "EVENT 1/" "$LOG" && fail "E: must fail before processing any event"
+
+# Test F: the driver injects the resolved account into each event —
+# the CLI's edit-mode guard rejects raw writes whose payload has no account.
+LOG="$TMP/f.log"
+env -u PARCELLAB_USER_ID PARCELLAB_ACCOUNT_ID=1626718 \
+  EVENTS_DIR="$TMP" GAP_SECONDS=0 LOG_FILE="$LOG" DRYRUN=1 bash "$SCRIPT"
+grep -q "EVENT 1/3 .*(account=1626718)" "$LOG" || fail "F: event line must show injected account"
+
+# Test G: legacy PARCELLAB_USER_ID still works as the account source.
+LOG="$TMP/g.log"
+env -u PARCELLAB_ACCOUNT_ID PARCELLAB_USER_ID=1626718 \
+  EVENTS_DIR="$TMP" GAP_SECONDS=0 LOG_FILE="$LOG" DRYRUN=1 bash "$SCRIPT"
+grep -q "EVENT 1/3 .*(account=1626718)" "$LOG" || fail "G: legacy alias must resolve as account"
+
 echo "ALL TESTS PASSED"

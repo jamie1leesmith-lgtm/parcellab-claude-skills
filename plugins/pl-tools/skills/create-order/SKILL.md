@@ -11,19 +11,19 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
 
 ## Workflow
 
-1. **Resolve the account and confirm credentials.** See *Account resolution and confirmation* below for which account to use and how to confirm it.
+1. **Resolve the account and check the CLI.** See *Account resolution and confirmation* below for which account to use and how to confirm it. There is no token — writes go through the `parcellab` CLI's own login.
 
    ```bash
-   test -n "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" && test -n "$PARCELLAB_TOKEN" && echo ok
+   test -n "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" && command -v parcellab >/dev/null && parcellab auth show >/dev/null 2>&1 && echo ok
    ```
 
-   If either is missing, follow *If credentials are missing* below — don't guess values and don't proceed.
+   If any part fails, follow *If credentials are missing* below — don't guess values and don't proceed.
 
 2. **Gather context from the user's message.** Look for: destination country, courier, scenario (e.g. "delivered", "in transit", "return"), number of items, tracking vs untracked, language. Anything they don't mention, you make up — see *Defaults & dummy data* below — **except the destination country, which you always ask for if they haven't named one.**
 
 2a. **Always confirm the carrier before building a tracked order.** Even if the user's message implies a country (and therefore a sensible default courier), explicitly ask which courier they want — state the default you'd otherwise use and let them confirm or override. Skip this only for untracked orders (no `mutations`). Never silently pick a courier for a tracked order.
 
-3. **Build the payload.** Construct a single JSON object following the structure in *Payload shape*. Save it to a temp file so `curl` can use `--data-binary @file` and you avoid shell-quoting pain:
+3. **Build the payload.** Construct a single JSON object following the structure in *Payload shape*. Save it to a temp file so the CLI can use `--data @file` and you avoid shell-quoting pain:
 
    ```bash
    PAYLOAD_FILE=$(mktemp -t pl-order.XXXXXX.json)
@@ -32,21 +32,19 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
 
 4. **Show the payload and ask the user to confirm.** Display the JSON (or a tight summary of the key fields — order_number, recipient, country, courier, tracking number, article count) and ask "send this to ParcelLab?" Wait for an affirmative reply before step 5. This matters because every successful PUT writes a real order to their production account.
 
-5. **Send it.** PUT to `https://api.parcellab.com/v4/track/orders/` with the encoded auth header. Capture status and body:
+5. **Send it** through the CLI. The path is served by the CLI's default host — **never add `--base-url`**; overriding the host breaks the CLI's own edit-mode account check and every write fails with a misleading `HTTP 404` about child accounts.
 
    ```bash
-   AUTH=$(printf '%s:%s' "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" "$PARCELLAB_TOKEN" | base64)
-   curl -sS -X PUT "https://api.parcellab.com/v4/track/orders/" \
-     -H "Authorization: Parcellab-API-Token $AUTH" \
-     -H "Content-Type: application/json" \
-     -w "\n---HTTP %{http_code}---\n" \
-     --data-binary @"$PAYLOAD_FILE"
+   parcellab api request PUT /v4/track/orders/ --data @"$PAYLOAD_FILE" -o json
    ```
 
-   `base64` on macOS produces single-line output by default, which is what the API wants. If you ever need to be safe, pipe through `tr -d '\n'`.
+   The CLI is already authenticated (OAuth) and its edit-mode guard checks
+   `payload.account` before anything is sent — a payload naming any account other
+   than the restricted one is refused locally. That is expected behaviour, not an
+   error to work around: fix the account, don't loosen the guard.
 
 6. **Report back.** Tell the user:
-   - HTTP status (200 update / 201 create / 4xx error)
+   - Whether it succeeded (the CLI prints the saved order as JSON on success and a clear `Error:` line on failure)
    - The returned `external_id` and `order_number`
    - Any `mutations[].result.warnings` or `errors` — these come back as 200 but mean the tracking didn't fully apply
    - A link to the order in the parcelLab dashboard if helpful: `https://portal.parcellab.com/` (you don't know the exact deep link format; just point them at the portal)
@@ -88,29 +86,30 @@ Rules:
 - Confirm once per conversation, before the first write — not before every call.
 - An account the user names explicitly still gets confirmed, the same way.
 - Read-only inspection needs no confirmation. Every write does.
+- **Also before the first write:** run `parcellab settings edit-mode show`. It
+  must say `account-restricted` scoped to this same account. If it says
+  anything else — unrestricted, read-only, or a different account — stop and
+  offer to fix it (`parcellab settings edit-mode set account-restricted
+  --account <id>`) before writing anything. This guard is the only thing that
+  physically stops a write landing in a colleague's account; a write must never
+  proceed while it is off or aimed elsewhere.
 
 ### If credentials are missing
 
-Stop. Do not guess values and do not proceed. Say this:
+Stop. Do not guess values and do not proceed. Everything this skill needs comes
+from the parcelLab CLI — there is no token.
 
-> **If you have just set these up, quit and reopen the app** — environment
-> variables are only read at startup.
->
-> Otherwise, let's set them up now. I need your parcelLab Order API credential.
-> In the portal it's shown as a base64 value — paste that and I'll handle the
-> rest. (A raw token works too; I'll just need your account ID as well.)
+1. `command -v parcellab` — if missing, the CLI needs installing (internal users:
+   the `parcellab-cli` repo). Stop and say so.
+2. `parcellab auth show` — if not authenticated, run `parcellab auth login`
+   **in the background** (it blocks while the browser waits for approval) and
+   tell the user their browser will open.
+3. No default account? Run the account setup above, or suggest `/pl-setup`,
+   which does all of this in one pass.
 
-On receiving a base64 value: decode it, split on the first `:` — the part before
-is the account ID, the part after is the token. This is why the base64 form is
-preferred: one paste gives both, and it removes the commonest setup error, which
-is pasting the whole encoded blob in as the token and getting an unexplained
-`401`.
-
-Write both to the `env` block of `~/.claude/settings.json`, merging into any
-existing `env` block rather than replacing it. Then tell the user to quit and
-reopen the app.
-
-Never print the token back to the user or repeat it anywhere in your reply.
+> **If you have just run setup, quit and reopen the app** — environment
+> variables are only read at startup. (CLI login and edit-mode take effect
+> immediately; only the `settings.json` env block needs the restart.)
 
 ## Payload shape
 
@@ -282,12 +281,14 @@ They don't need to be live — just unique and correctly formatted for the chose
 - **"Split shipment"** — emit two `add_tracking` mutations, each with a `tracking.articles` array referencing the relevant `line_item_id`s; set `has_multiple_shipments: true` on the order.
 - **"No tracking, just the order"** — omit `mutations`.
 - **"Use order number X"** — use exactly what they gave; don't append a timestamp.
-- **"Send to test/staging"** — there's no separate test env on this skill. Tell the user this skill only targets production (`api.parcellab.com`) and ask if they really want to proceed.
+- **"Send to test/staging"** — there's no separate test env on this skill. Tell the user this skill only targets production and ask if they really want to proceed.
 
 ## Failure modes to watch for
 
 - **HTTP 400 with `client_error`** — usually a missing required field, bad country code (must be 3-letter ISO), or an invalid `recipient_email`. Read the `errors` array and fix the offending field rather than retrying blind.
-- **HTTP 401/403** — credentials are wrong or the token lacks order-write scope. Don't retry; surface the error.
-- **HTTP 200 with `mutations[0].result.success: false`** — the order saved but tracking didn't attach. Common causes: courier code not recognised, tracking number conflicts with an existing order on the account. Report the warning verbatim.
+- **`Unauthorized response: Run 'parcellab --env prod auth login' and retry.`** — the CLI's OAuth session expired. Run `parcellab auth login` in the background (it blocks on browser approval) and retry after the user approves.
+- **`Blocked by edit mode 'account-restricted' … does not match restricted account …`** — the CLI's write guard is aimed at a different account than the payload. Working as designed. Either the payload's `account` is wrong, or the user's guard is misconfigured — show them `parcellab settings edit-mode show` and fix whichever is wrong. Never suggest `unrestricted`.
+- **`Raw write requests require payload.account in account-restricted mode.`** — the payload is missing its `account` field. Add it; don't loosen the guard.
+- **Success with `mutations[0].result.success: false`** — the order saved but tracking didn't attach. Common causes: courier code not recognised, tracking number conflicts with an existing order on the account. Report the warning verbatim.
 
-If `curl` itself fails (no network, DNS), surface the error; don't retry silently.
+If the CLI itself fails (no network, command not found), surface the error; don't retry silently.

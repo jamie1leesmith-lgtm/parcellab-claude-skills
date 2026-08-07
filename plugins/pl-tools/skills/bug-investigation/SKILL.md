@@ -72,6 +72,13 @@ Rules:
 - Confirm once per conversation, before the first write — not before every call.
 - An account the user names explicitly still gets confirmed, the same way.
 - Read-only inspection needs no confirmation. Every write does.
+- **Also before the first write:** run `parcellab settings edit-mode show`. It
+  must say `account-restricted` scoped to this same account. If it says
+  anything else — unrestricted, read-only, or a different account — stop and
+  offer to fix it (`parcellab settings edit-mode set account-restricted
+  --account <id>`) before writing anything. This guard is the only thing that
+  physically stops a write landing in a colleague's account; a write must never
+  proceed while it is off or aimed elsewhere.
 
 ## Step 1 — Identify the resource and inspect config
 

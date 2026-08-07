@@ -38,41 +38,70 @@ live with.
   tree (900 lines, `parcellab registry tree`) contains no order-create and no
   checkpoint-push command. `track event` and `track tracking` expose `list` and
   `show` only.
-- **`parcellab-create-order` and `parcellab-order-lifecycle` do not use the
-  Product API.** They write to the Order API (`api.parcellab.com/v4/orders`,
-  `/v4/track/events/`), a separate ingestion API authenticated with a base64
-  `accountID:token` pair.
+- ⚠️ **CORRECTED TWICE — current finding (2026-08-04): the CLI CAN create
+  orders, safely, with the edit-mode guard intact.** The history matters because
+  two wrong versions of this bullet have already existed:
 
-  ⚠️ **The CLI *can* reach the Order API, and the token still stays. Read this
-  before "fixing" it.** An earlier version of this spec claimed the CLI could not
-  reach the Order API at all. That was wrong — it was inferred from the CLI's
-  command tree rather than tested. In fact:
+  1. *First wrong version:* "the CLI cannot reach the Order API at all" —
+     inferred from the CLI's command tree, never tested.
+  2. *Second wrong version:* "the CLI can reach it, but only via
+     `--base-url https://api.parcellab.com`, which breaks the edit-mode guard,
+     so the route requires `unrestricted` and must not be adopted." The token
+     decision of 2026-08-03 was made on this basis.
+
+  Both were artifacts of the same self-inflicted error: **the `--base-url`
+  override was never needed.** The default Product API host
+  (`product-api.parcellab.com`) serves `/v4/track/orders/` directly. Verified
+  2026-08-04 against production:
 
   ```
-  parcellab --base-url https://api.parcellab.com api request GET /v4/track/orders/
+  parcellab api request PUT /v4/track/orders/ --data @order.json -o json
   ```
 
-  returns real order data, authenticated by the CLI's OAuth session alone
-  (verified with `PARCELLAB_TOKEN` unset, and again with the OAuth token
-  deliberately invalidated, which fails). The archived `demo-orders` skill said
-  as much in its description.
+  - created a real order in the user's own account (1626718) with
+    `edit-mode account-restricted` ON and `PARCELLAB_TOKEN` unset;
+  - a payload naming any other account is blocked client-side by the guard
+    before the request is sent;
+  - the guard's child-account lookup works, because with no override it goes to
+    the correct host. (The earlier `HTTP 404` guard failure only ever occurred
+    under the override.)
 
-  **The token stays anyway, for a different and better reason.** `--base-url`
-  redirects *every* request the CLI makes, including its own internal
-  `edit-mode` guard lookup (`GET /v3/account/accounts/?include_children=true`,
-  a Product API path). Against the Order API host that 404s, so
-  `account-restricted` mode hard-fails and no write can proceed. The only way
-  through is `edit-mode set unrestricted` — which removes the guard for every
-  account the user can see.
+  Team members were already using this exact invocation in restricted mode; the
+  usage predates and disproves the second wrong version.
 
-  There are **13 demo accounts under `Demo SolCon` (1621786), one per SC**. Asking
-  every teammate to run unrestricted so a skill can create an order would trade a
-  credential that is account-bound by construction for one that isn't. Rejected
-  on that basis (Jamie, 2026-08-03).
+  Two durable lessons recorded so this doesn't happen a third time:
+  `parcellab registry list --routes` lists only generated resource commands, not
+  every path the host serves — absence there proves nothing; and never test a
+  hypothesis only through an invocation you modified yourself.
 
-  So: **the Order API token is required, and the CLI route must not be adopted
-  even though it demonstrably works.** Re-testing the GET above will succeed and
-  prove nothing — the blocker is the guard, not the auth.
+  **Consequence: the 2026-08-03 "token stays" decision rested on a false premise
+  and was reopened — then DECIDED (Jamie, 2026-08-07): all order-writing skills
+  go through the CLI, and the Order API token is removed entirely.**
+
+  The config-drift counter-argument (a scoped token has no configuration to get
+  wrong; edit-mode does) was raised explicitly and Jamie reaffirmed the CLI
+  route. Mitigation adopted instead of the token: Block A verifies at run time,
+  before the first write, that `edit-mode` is `account-restricted` to the
+  resolved account — the skill refuses to write until the guard is aimed right.
+
+  **Checkpoint events, verified 2026-08-07 (production, account 1626718):**
+
+  - The edit-mode guard requires `payload.account` on **every** raw write:
+    `Error: Raw write requests require payload.account in account-restricted
+    mode.` It fails closed on payloads it cannot attribute — correct behaviour,
+    but the Order API's event payloads never carried an account field.
+  - The events API **tolerates** the extra `account` field: adding it satisfies
+    the guard and `POST /v4/track/events/` returns 204, the checkpoint is
+    ingested, and journey comms fire (dispatch email observed end-to-end).
+  - Therefore the lifecycle driver **injects `account` into every event body**
+    at send time, the same way it stamps `event_timestamp`.
+  - Tracked orders (`add_tracking` mutations) also verified via plain
+    `parcellab api request PUT /v4/track/orders/` — `mutations: [true]`.
+
+  What `PARCELLAB_TOKEN`'s removal touches: both order skills' Block B,
+  `run-lifecycle.sh`, `pl-setup` step 6, `pl_credentials.py --token` mode and
+  its tests, and both READMEs. `CDC_DEMO_API_TOKEN` (demo-request) is a
+  different API and is untouched.
 - **The Product API does not expose the Order API token.** Checked
   `account account show` (76 fields), `account account info` (51),
   `account user list` and `config client list` against a real account. The only
@@ -92,9 +121,14 @@ live with.
   writes — so it protects `parcellab-bug-investigation` and (after the swap)
   `parcellab-brand-layout`, but **not** Order API writes, which don't go through
   the CLI at all under the accepted design.
-- **Pointing `edit-mode` at a parent account does not work**, even though the
-  hierarchy is readable: the guard's child-account lookup fails. Set it to the
-  user's own leaf account.
+- **Whether `edit-mode` can be pointed at a parent account is UNTESTED.** An
+  earlier draft of this spec asserted it does not work. That was wrong: the
+  failure we saw (`Failed to load child accounts … HTTP 404`) was caused by the
+  `--base-url` override redirecting the guard's own Product API lookup to the
+  Order API host, which happens for *any* target account, parent or leaf. In
+  normal CLI use, with no base-url override, parent-scoping was never exercised.
+  Treat it as unknown. Setting the user's own leaf account is what the setup flow
+  does, and is known-good.
 - **Found in passing, worth acting on:** Jamie's `edit-mode` was restricted to
   `1625801` — *Demo - Paula Petersen*, a colleague's account — while his own is
   `1626718`. So his CLI permitted writes to someone else's demo account and
