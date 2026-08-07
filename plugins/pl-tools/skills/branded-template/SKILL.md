@@ -7,7 +7,7 @@ description: Create a branded transactional email layout in the user's ParcelLab
 
 Given a brand website URL, scrape the live site with **Claude Code's built-in browser** (the Browser pane, `mcp__Claude_Browser__*`), extract brand styles and logo, generate a branded email layout HTML, preview it **live in the same Browser pane**, and push it to the **user's ParcelLab account** via the **ParcelLab MCP connector**.
 
-> **Why this variant exists:** the original `parcellab-brand-layout` skill is hard-wired to the Playwright MCP and the ParcelLab CLI. This version uses the built-in browser (one tool family for both scraping *and* the live preview) plus the ParcelLab MCP connector — no CLI, no Playwright, and no external Chrome extension required.
+> **Why this variant exists:** the original `parcellab-brand-layout` skill is hard-wired to the Playwright MCP and the ParcelLab CLI. This version uses the built-in browser (one tool family for both scraping *and* the live preview) plus **MCP for everything except the publish call** — no Playwright and no external Chrome extension required. The only CLI use in the whole skill is Step 9a's publish, because the MCP connector exposes no layout-publish tool; Step 9a degrades gracefully and finishes the run as `not published` when the CLI isn't usable.
 
 > **Built-in browser vs. Claude-in-Chrome:** the built-in Browser pane runs in a fresh context (no logged-in sessions), which is fine for public brand homepages. If you ever need to scrape a site behind a login, that's the one case where Claude-in-Chrome (the user's real Chrome) would be required instead — this skill does not cover it.
 
@@ -24,6 +24,8 @@ Verify both tool families are available before doing anything else:
 1. **Built-in browser**: `mcp__Claude_Browser__preview_start` / `mcp__Claude_Browser__navigate` must be in the tool list (they are loaded by default in Claude Code — no ToolSearch needed). If they are genuinely unavailable, stop and tell the user the built-in browser isn't available in this session.
 2. **ParcelLab MCP**: a tool ending in `__journey_write_layout` must be available (it may be deferred — search the tool list / ToolSearch for `journey_write_layout`). If not, stop and tell the user:
    > "The ParcelLab MCP connector isn't enabled. Enable it in Settings → Connectors, then try again."
+
+There is deliberately no third check here: publishing (Step 9a) is the one part of this skill that is not on MCP, and it checks its own tooling at the point of use. A clean Step 1 is **not** licence to skip Step 9a — always attempt it.
 
 ---
 
@@ -302,7 +304,15 @@ Substitute all `__BRAND_X__` tokens. Key structural rules for the final HTML:
 - **Content card:** white, `border:1px solid #e0e0e0`, `border-radius:RADIUS_LG`, 4px black top-stripe, `padding:36px 36px 32px`. Contains `{{content}}` token.
 - **Help block:** below the card, same border style. "NEED HELP?" in uppercase bold, body text, CTA button right-aligned.
 - **Footer:** black background. Logo (white variant) centred, footer links row, received copy, address. All text muted white.
-- **ParcelLab tokens** that must survive verbatim: `{{content}}`, `{{preview}}`, `{{schemaOrgMarkup}}`, `{{generated/campaignManager/banner}}`, `{{generated/campaignManager/html}}`, `{{generated/campaignManager/productRecommendation}}`.
+- **ParcelLab tokens already present in `template.html`** — these must survive substitution verbatim, exactly as the template has them: `{{content}}`, `{{schemaOrgMarkup}}`, `{{generated/campaignManager/banner}}`, `{{generated/campaignManager/html}}`, `{{generated/campaignManager/productRecommendation}}`.
+- **`{{preview}}` is *not* in the template — you have to put it there.** The template carries
+  `__BRAND_PREHEADER__` in the hidden preheader `<div>` at the top of `<body>`. Replace
+  `__BRAND_PREHEADER__` with the literal token `{{preview}}` — not with brand copy, and not with a
+  generated preheader sentence. ParcelLab fills it at send time. This is the only `__BRAND_*__`
+  token that maps to a ParcelLab token; every other `__BRAND_*__` token in the template is a
+  brand/style value from Step 6 (colours, fonts, radii, logo URLs, footer copy and address) and
+  takes a real value. After substitution, grep the output for `{{preview}}` and for a leftover
+  `__BRAND_` to confirm both.
 
 Write to: `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html` — where `$HOME` is the current user's home directory. Create the folder if missing. **Do NOT write under `~/Documents`** — the preview server cannot read it (macOS TCC protection).
 
@@ -368,6 +378,10 @@ journey_write_layout → {
 - `"autoLayout"` must be an **empty list** `[]` on create — not `false` or `true`. Do not try to
   set the store mapping here; that happens in Step 9b, which has to read the account's other
   layouts first.
+- **`"autoLayout": []` is for creates only.** If you are passing `id` — an update, or a re-push
+  after a Step 9a failure — **omit the `autoLayout` key entirely and send `content` only.** Writes
+  are PATCH semantics, so an omitted key is left untouched, whereas `[]` **replaces** the list and
+  wipes every store mapping the layout already carries.
 - To check existing layouts first, call the tool ending in `__journey_list_journey_layouts` with `{ "account": [{ACCOUNT_ID}] }` (optionally `search: "{BRAND_NAME}"` to avoid duplicates).
 - **Record `{NEW_LAYOUT_ID}` now.** On create, take the `id` returned in the response. On update,
   `{NEW_LAYOUT_ID}` is simply the `id` you passed in. Either way, hold onto it — Step 9b and
@@ -389,27 +403,63 @@ approved the design at the Step 8 preview, so no further confirmation is needed.
 parcellab --env prod journey layout publish {NEW_LAYOUT_ID} --yes -o json
 ```
 
+**There is no `--account` flag on this command, and none is needed.** Layout ids are global
+primary keys, so the account is implicit in `{NEW_LAYOUT_ID}` and this command cannot be
+mis-targeted at another account by omitting an account argument. Do not invent an `--account`
+flag — it does not exist and passing it will just fail.
+
 Confirm the response shows:
 
 - `"releaseStatus": "published"`
 - `"hasReleasedVersion": true`
 - a `releasedAt` timestamp
+- **`"account"` equal to `{ACCOUNT_ID}`** — the guard that replaces an account flag. The publish
+  response echoes the layout's owning account, so check it. If it is **not** `{ACCOUNT_ID}`,
+  **stop and report**: `{NEW_LAYOUT_ID}` is not the layout you think it is, you have just published
+  a stranger's layout, and nothing further in this skill (least of all Step 9b's `autoLayout`
+  writes) may run against that id.
 
 Record `releaseStatus` as `{RELEASE_STATUS}` for Step 10.
 
-**If the CLI is not installed** (`parcellab: command not found`), do not fail the run. The layout
-is already safely in the account. Tell the user:
-
-> The layout was created but not published — the `parcellab` CLI isn't installed, and the MCP
-> connector can't publish layouts. Publish it in the ParcelLab portal, or run `/pl-setup` to
-> install the CLI.
-
-Then carry on to Step 9b and report `not published` in Step 10.
+**Re-publishing an already-published layout is safe** — verified live: `releaseStatus` stays
+`published`, the layout's `autoLayout` entry is left byte-identical (same entry id), and only
+`releasedAt` advances as a new release snapshot. So an agent re-running this skill over an
+existing layout may publish again without hesitation.
 
 **If publish returns a 400 about the layout being incomplete**, the HTML is missing something
 required: a layout must contain the `{{content}}` placeholder and both `<body>` and `<html>`
 tags to be publishable. Check those survived the Step 7 build, fix the file, re-push via Step 9,
-and publish again.
+and publish again. If the re-publish still fails, treat it as the catch-all below: bind
+`{RELEASE_STATUS}` to `not published` and carry on — do not retry indefinitely and do not abort.
+
+> **⚠️ When re-pushing an existing layout through Step 9, send `content` only — never
+> `autoLayout`.** Step 9's payload shows `"autoLayout": []`, which is correct **only** when
+> creating a brand-new layout. On a re-push over a layout that already exists (you are passing
+> `id`), that empty list would **replace and destroy** every store mapping the layout carries —
+> and it would happen *before* 9b.3 reads the merge base, so 9b.3 would record the already-emptied
+> list as the baseline, 9b.4 would never restore the lost entries, and 9b.5 would verify against a
+> destroyed baseline and report success. Omit the `autoLayout` key entirely on any re-push
+> (writes are PATCH semantics, so an omitted key is left untouched).
+
+**Any other publish failure — do not abort the run.** The layout is already safely saved in the
+account; a failed publish is a reportable outcome, not a reason to stop. Whatever the error
+(exit status, 4xx, 5xx, timeout, unparseable output), bind `{RELEASE_STATUS}` to `not published`,
+carry on to Step 9b, and report the error **verbatim** in Step 10. Never leave
+`{RELEASE_STATUS}` unbound, and never report a publish that did not happen. Likely causes,
+all of which land here rather than in the 400 branch above:
+
+- **CLI not installed** (`parcellab: command not found`) — tell the user they can publish in the
+  ParcelLab portal, or run `/pl-setup` to install it.
+- **CLI installed but not authenticated or not configured** — `/pl-setup` never run, or an expired
+  or revoked token. Usually surfaces as a 401/403 or an explicit credentials error.
+- **The CLI's per-environment write guard / edit mode refuses the write** — writes to `prod` can be
+  gated, so publish is rejected before it ever reaches the API. Nothing about the layout is wrong;
+  the environment simply isn't cleared for writes.
+- **A 5xx or transient network error** — the layout may or may not have published. Do not guess:
+  report `not published` and quote the error, and let the user confirm in the portal.
+
+In every case say plainly that the layout was created but not published, and repeat how to
+publish it.
 
 Publishing does **not** touch `autoLayout`, so the order of Step 9a and Step 9b does not matter
 for correctness. Publishing first simply means the layout is live the moment it is assigned.
@@ -620,15 +670,20 @@ On success, tell the user:
 - Layout **ID** (e.g. `19584`)
 - Layout **prettyName**
 - **Account:** {ACCOUNT_ID}
-- **Status:** `{RELEASE_STATUS}` — `published` after a successful Step 9a, or `not published`
-  if Step 9a was skipped because the CLI was unavailable (say so plainly, and repeat how to
-  publish it).
+- **Status:** `{RELEASE_STATUS}` — `published` after a successful Step 9a, or `not published` if
+  the Step 9a publish failed for any reason (say so plainly, quote the error verbatim, and repeat
+  how to publish it).
 - **Auto-template:** one of —
   - `now used by {STORE_NAME} (previously {OLD_LAYOUT_NAME})` — a mapping was moved
   - `now used by {STORE_NAME}` — the store had no previous mapping
   - `not assigned` — the user chose `None`, or the account has no stores
 - Any country-specific override warning from 9b.3, repeated here so it isn't lost in scrollback.
-- Next step option: assign it to a journey in the ParcelLab portal (publishing already happened automatically in Step 9a).
+- Next step option — **conditional on `{RELEASE_STATUS}`**, and never claim a publish that did not
+  happen:
+  - `{RELEASE_STATUS}` is `published` → "assign it to a journey in the ParcelLab portal; publishing
+    already happened automatically in Step 9a."
+  - `{RELEASE_STATUS}` is `not published` → "**publish the layout in the ParcelLab portal first** —
+    a draft layout is never used to send mail — then assign it to a journey."
 
 On failure:
 - Validation error (400) → read the error details, fix the field, retry. `autoLayout not_a_list` → the value must be a JSON list, not a bool; on Step 9's create that list is `[]`, while after 9b a populated list of `{client, layout, country}` entries is correct.
@@ -658,7 +713,7 @@ On failure:
 | JS return | arrow fn with `return` | IIFE `(() => {...})()` (REPL last-expression) |
 | Page screenshot | `browser_take_screenshot` | `mcp__Claude_Browser__computer` `{action:"screenshot"}` |
 | Preview | `python3 -m http.server` + Playwright screenshot | `mcp__Claude_Browser__preview_start {name}` server + same Browser pane (live-editable; serves `$HOME/parcellab-previews/`) |
-| Push to ParcelLab | `parcellab` CLI (`api request POST`) | ParcelLab MCP connector (`journey_write_layout`) |
+| Push to ParcelLab | `parcellab` CLI (`api request POST`) | ParcelLab MCP connector (`journey_write_layout`) — MCP for everything except Step 9a's publish call, which needs the `parcellab` CLI because the connector exposes no layout-publish tool (and is optional: the run finishes as `not published` without it) |
 | Template | read from sibling `brand-style-guide` skill | bundled `template.html` in this skill's folder |
 
 > **Prior variant:** an earlier version of this skill used the Claude-in-Chrome extension (`mcp__Claude_in_Chrome__*`) plus a separate `mcp__Claude_Preview__*` panel. Both are now replaced by the single built-in Browser pane. Only revert to Claude-in-Chrome if you must scrape a login-gated site.
