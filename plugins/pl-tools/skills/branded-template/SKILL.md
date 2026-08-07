@@ -397,7 +397,7 @@ One call: the tool ending in `__journey_list_journey_layouts` with `{ "account":
 Scan every result's `autoLayout` array for an entry where `client` equals the chosen store's id:
 
 - **`country` is empty** → this is the current default mapping. Record the holding layout's `id`
-  and `prettyName`. There should be at most one.
+  and `prettyName` as `{OLD_LAYOUT_ID}` and `{OLD_LAYOUT_NAME}`. There should be at most one.
 - **`country` is non-empty** → a country-specific override. **Leave it alone**, but warn:
 
   > Note: `{STORE_NAME}` also has a country-specific auto-template on `{OTHER_TEMPLATE_NAME}`
@@ -494,6 +494,11 @@ On success, tell the user:
 - Layout **prettyName**
 - **Account:** {ACCOUNT_ID}
 - **Status:** draft
+- **Auto-template:** one of —
+  - `now used by {STORE_NAME} (previously {OLD_LAYOUT_NAME})` — a mapping was moved
+  - `now used by {STORE_NAME}` — the store had no previous mapping
+  - `not assigned` — the user chose `None`, or the account has no stores
+- Any country-specific override warning from 9b.3, repeated here so it isn't lost in scrollback.
 - Next step options: assign to a journey in the ParcelLab portal, or publish.
 
 On failure:
@@ -507,6 +512,9 @@ On failure:
 - List layouts on the account: tool ending `__journey_list_journey_layouts` → `{ "account": [{ACCOUNT_ID}], "ordering": "-created_at" }`
 - Inspect one layout: tool ending `__journey_get_journey_layout` → `{ "id": <layout id> }`
 - Update a layout: tool ending `__journey_write_layout` → `{ "account": {ACCOUNT_ID}, "id": <layout id>, "data": { ...changed fields... } }`
+- List the account's stores (for auto-template selection): tool ending `__config_list_clients` → `{ "account": [{ACCOUNT_ID}] }`
+- Set/clear a store→template mapping: tool ending `__journey_write_layout` → `{ "account": {ACCOUNT_ID}, "id": <layout id>, "data": { "autoLayout": [ { "client": <store id>, "layout": <layout id>, "country": [] } ] } }` — remember this **replaces** the whole list
+- Read back a mapping: tool ending `__journey_get_journey_layout` → `{ "id": <layout id> }`, then check `autoLayout`
 
 ---
 
