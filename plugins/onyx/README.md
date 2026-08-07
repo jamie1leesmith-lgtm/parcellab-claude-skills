@@ -67,7 +67,7 @@ global `~/.claude/settings.json`, inside its top-level `env` object:
   "env": {
     "ONYX_API_URL": "https://cloud.onyx.app/api",
     "ONYX_API_TOKEN": "onyx_pat_xxxxxxxxxxxxxxxx",
-    "ONYX_PERSONA_ID": "0"
+    "ONYX_PERSONA_ID": "5"
   }
 }
 ```
@@ -76,7 +76,7 @@ global `~/.claude/settings.json`, inside its top-level `env` object:
 |----------|----------|-------------|
 | `ONYX_API_URL` | yes | Base API URL **including `/api`**. Cloud: `https://cloud.onyx.app/api`. Self-hosted: `https://onyx.your-company.com/api`. |
 | `ONYX_API_TOKEN` | yes | A Personal Access Token (`onyx_pat_...`) or an admin/basic API key. |
-| `ONYX_PERSONA_ID` | no | Assistant/persona id used by `onyx_ask`. Default `0` = Onyx's built-in default assistant. Set to a custom assistant's id (see `GET /api/persona`) to use a specialised one. |
+| `ONYX_PERSONA_ID` | no | Assistant/persona id used by `onyx_ask`. Default `5` = pauL, parcelLab's general-purpose Onyx agent. `/onyx-setup` no longer asks about this — set a different assistant's id (see `GET /api/persona`) yourself if you need a specialised one. |
 
 If you already have other keys in that file (enabled plugins, other tokens), merge
 these in carefully — a JSON syntax mistake can break your whole Claude Code
@@ -114,5 +114,6 @@ so it works across Onyx versions.
 - **401 / 403** — check the token and that its role has search/chat access. (`/query/document-search`
   works for standard users; the admin-only `/admin/search` does not.)
 - **`onyx_ask` returns odd JSON** (e.g. `{"is_wismo_query":...}`) — you've pointed `ONYX_PERSONA_ID`
-  at a specialised agent. Use `0` (default assistant) or a general-purpose custom assistant.
+  at a specialised agent. Use `5` (pauL, the default general-purpose assistant) or another
+  general-purpose custom assistant.
 - **Base URL** — must end in `/api` (e.g. `https://onyx.your-company.com/api`), not `/app`.

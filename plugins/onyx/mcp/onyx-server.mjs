@@ -12,12 +12,16 @@
  *                    Cloud:       https://cloud.onyx.app/api
  *                    Self-hosted: https://onyx.your-company.com/api
  *   ONYX_API_TOKEN A Personal Access Token (onyx_pat_...) or API key.
- *   ONYX_PERSONA_ID Optional. Assistant/persona id for chat (default 0).
+ *   ONYX_PERSONA_ID Optional. Assistant/persona id for chat (default 5 —
+ *                    pauL, parcelLab's general-purpose Onyx assistant).
  */
 
 const API_URL = (process.env.ONYX_API_URL || '').replace(/\/+$/, '');
 const API_TOKEN = process.env.ONYX_API_TOKEN || '';
-const DEFAULT_PERSONA_ID = Number.parseInt(process.env.ONYX_PERSONA_ID || '0', 10) || 0;
+// An explicitly configured id always wins — including 0, Onyx's built-in
+// default assistant. Only a missing/invalid value falls back to pauL (5).
+const configuredPersonaId = Number.parseInt(process.env.ONYX_PERSONA_ID ?? '', 10);
+const DEFAULT_PERSONA_ID = Number.isNaN(configuredPersonaId) ? 5 : configuredPersonaId;
 
 const SERVER_INFO = { name: 'onyx', version: '0.1.0' };
 const DEFAULT_PROTOCOL = '2025-06-18';
@@ -78,10 +82,10 @@ async function searchOnyx({ query, document_sets = [] }) {
   return data?.top_documents || data?.documents || [];
 }
 
-// Resolve a persona/assistant id. Persona 0 is Onyx's built-in default assistant
-// (a general RAG assistant) — it isn't returned by GET /persona, which only lists
-// custom assistants, but it's the right universal default. Override with a specific
-// custom assistant via ONYX_PERSONA_ID or the tool's persona_id argument.
+// Resolve a persona/assistant id. The default is 5 — pauL, parcelLab's
+// general-purpose Onyx assistant. Persona 0, Onyx's built-in default assistant
+// (not listed by GET /persona, which only returns custom assistants), still
+// works when set explicitly via ONYX_PERSONA_ID or the tool's persona_id argument.
 function resolvePersonaId(explicit) {
   if (explicit != null) return explicit;
   return DEFAULT_PERSONA_ID;
@@ -252,8 +256,8 @@ const TOOLS = [
         persona_id: {
           type: 'number',
           description:
-            'Optional Onyx assistant/persona id. Defaults to ONYX_PERSONA_ID, or the first ' +
-            'available assistant if unset.',
+            'Optional Onyx assistant/persona id. Defaults to ONYX_PERSONA_ID, or 5 ' +
+            "(pauL, parcelLab's general-purpose assistant) if unset.",
         },
       },
       required: ['query'],
