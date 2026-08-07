@@ -9,17 +9,18 @@ Simulate a full post-purchase journey: source a real product from a brand site,
 create an **untracked** order, then push a timed sequence of tracking checkpoints
 so parcelLab ingests each stage and fires the configured comms.
 
-Production only (`api.parcellab.com`). Every run is isolated — fresh product,
+Production only. Every run is isolated — fresh product,
 fresh order number, no carryover — unless the user explicitly says reuse/resend.
 
 ## Workflow
 
-1. **Resolve the account and confirm credentials.** See *Account resolution and
-   confirmation* below. If either value is missing, follow *If credentials are
-   missing* — don't guess them.
+1. **Resolve the account and check the CLI.** See *Account resolution and
+   confirmation* below. There is no token — every write goes through the
+   `parcellab` CLI's own login. If any part fails, follow *If credentials are
+   missing* — don't guess values.
 
    ```bash
-   test -n "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" && test -n "$PARCELLAB_TOKEN" && echo ok
+   test -n "${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}" && command -v parcellab >/dev/null && parcellab auth show >/dev/null 2>&1 && echo ok
    ```
 2. **Gather inputs:** brand site URL + a rough product idea (e.g. "coffee machine"), destination country, and any overrides (gap, extra items). **Ask for the destination country if the user hasn't named one — never assume it.** It silently sets the language, currency, timezone, courier and address, so a wrong guess yields an entirely wrong-looking journey. `create-order`'s *Defaults & dummy data* table lists the countries with ready-made defaults.
 3. **Source the product** (see *Product sourcing*).
@@ -66,29 +67,30 @@ Rules:
 - Confirm once per conversation, before the first write — not before every call.
 - An account the user names explicitly still gets confirmed, the same way.
 - Read-only inspection needs no confirmation. Every write does.
+- **Also before the first write:** run `parcellab settings edit-mode show`. It
+  must say `account-restricted` scoped to this same account. If it says
+  anything else — unrestricted, read-only, or a different account — stop and
+  offer to fix it (`parcellab settings edit-mode set account-restricted
+  --account <id>`) before writing anything. This guard is the only thing that
+  physically stops a write landing in a colleague's account; a write must never
+  proceed while it is off or aimed elsewhere.
 
 ### If credentials are missing
 
-Stop. Do not guess values and do not proceed. Say this:
+Stop. Do not guess values and do not proceed. Everything this skill needs comes
+from the parcelLab CLI — there is no token.
 
-> **If you have just set these up, quit and reopen the app** — environment
-> variables are only read at startup.
->
-> Otherwise, let's set them up now. I need your parcelLab Order API credential.
-> In the portal it's shown as a base64 value — paste that and I'll handle the
-> rest. (A raw token works too; I'll just need your account ID as well.)
+1. `command -v parcellab` — if missing, the CLI needs installing (internal users:
+   the `parcellab-cli` repo). Stop and say so.
+2. `parcellab auth show` — if not authenticated, run `parcellab auth login`
+   **in the background** (it blocks while the browser waits for approval) and
+   tell the user their browser will open.
+3. No default account? Run the account setup above, or suggest `/pl-setup`,
+   which does all of this in one pass.
 
-On receiving a base64 value: decode it, split on the first `:` — the part before
-is the account ID, the part after is the token. This is why the base64 form is
-preferred: one paste gives both, and it removes the commonest setup error, which
-is pasting the whole encoded blob in as the token and getting an unexplained
-`401`.
-
-Write both to the `env` block of `~/.claude/settings.json`, merging into any
-existing `env` block rather than replacing it. Then tell the user to quit and
-reopen the app.
-
-Never print the token back to the user or repeat it anywhere in your reply.
+> **If you have just run setup, quit and reopen the app** — environment
+> variables are only read at startup. (CLI login and edit-mode take effect
+> immediately; only the `settings.json` env block needs the restart.)
 
 ## Product sourcing
 
@@ -101,8 +103,13 @@ Never print the token back to the user or repeat it anywhere in your reply.
 
 ## Order + tracking setup (before the event loop)
 
-Two `PUT https://api.parcellab.com/v4/track/orders/` calls, done directly (not by
-the driver):
+Two order writes, done directly (not by the driver) through the CLI — **never
+add `--base-url`**, the default host serves these paths and overriding it breaks
+the CLI's own account guard:
+
+```bash
+parcellab api request PUT /v4/track/orders/ --data @create.json -o json
+```
 
 1. **Untracked order** — build a payload following the `create-order`
    shape: `account` (the resolved account id, `${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`), `order_number` (`<XXX>-<ts>`),
@@ -147,10 +154,11 @@ the driver):
 
 ## Event sequence
 
-Events are pushed via **`POST https://api.parcellab.com/v4/track/events/`**
-(trailing slash required; success = **HTTP 204**), one standalone POST per stage —
-there is no cumulative array. For each stage in the chosen sequence (see
-`references/status-codes.md`), write `NN-<status>.json` containing:
+Events are pushed via **`POST /v4/track/events/`** through the CLI (trailing
+slash required; success = **HTTP 204**, which the CLI shows as empty output and
+exit 0), one standalone POST per stage — there is no cumulative array. For each
+stage in the chosen sequence (see `references/status-codes.md`), write
+`NN-<status>.json` containing:
 
 ```json
 {
@@ -161,11 +169,13 @@ there is no cumulative array. For each stage in the chosen sequence (see
 }
 ```
 
-**Do not include `event_timestamp` in this file.** The driver injects it at
-the moment it sends each event, stamped with real wall-clock "now" — see
-*Timing & background execution*. A precomputed timestamp (future OR past)
-makes the checkpoint disagree with when its comm actually sends, since comms
-always fire at real send time regardless of what the payload claims.
+**Do not include `event_timestamp` or `account` in this file.** The driver
+injects both at the moment it sends each event: `event_timestamp` stamped with
+real wall-clock "now" (see *Timing & background execution* — a precomputed
+timestamp, future OR past, makes the checkpoint disagree with when its comm
+actually sends), and `account` from the resolved account id, because the CLI's
+edit-mode guard refuses any raw write whose payload it cannot attribute to an
+account. The events API accepts the extra field (verified in production).
 
 **Always identify the event by `courier` + `tracking_number` — never
 `account` + `order_number`.** Live testing proved the order-number identifier

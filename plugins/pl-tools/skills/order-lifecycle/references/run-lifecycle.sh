@@ -1,25 +1,35 @@
 #!/usr/bin/env bash
-# run-lifecycle.sh — push a timed sequence of parcelLab tracking events.
+# run-lifecycle.sh — push a timed sequence of parcelLab tracking events
+# through the parcellab CLI. No token: the CLI's OAuth session authenticates,
+# and its edit-mode guard checks every payload's account before sending.
 # Each NN-*.json in EVENTS_DIR is a PARTIAL event body for POST
 # /v4/track/events/ (fields: event_status, location, courier,
-# tracking_number) — it must NOT set event_timestamp. The driver stamps
-# event_timestamp with the REAL wall-clock time at the moment each event is
-# actually sent, because parcelLab always sends comms at real send time
-# regardless of what event_timestamp says. Any pre-baked timestamp (future
-# OR past) makes the checkpoint and its comm disagree on ordering. Success
-# is HTTP 204.
+# tracking_number) — it must NOT set event_timestamp or account. The driver
+# injects both at send time:
+#   - event_timestamp: REAL wall-clock now, because parcelLab always sends
+#     comms at real send time regardless of what event_timestamp says. Any
+#     pre-baked timestamp (future OR past) makes the checkpoint and its comm
+#     disagree on ordering.
+#   - account: from PARCELLAB_ACCOUNT_ID — the CLI's edit-mode guard refuses
+#     raw writes whose payload carries no account, and the events API accepts
+#     the extra field (verified in production 2026-08-07).
+# Success is HTTP 204, which the CLI reports as empty output and exit 0.
+# NEVER add --base-url: the default host serves /v4/track/events/, and
+# overriding the host silently breaks the CLI's own edit-mode account lookup
+# (every write then fails with a misleading 404 about child accounts).
 # Env: EVENTS_DIR (required), GAP_SECONDS (default 180), LOG_FILE
 #      (default $EVENTS_DIR/run.log), DRYRUN (default 0).
-# Live mode also needs PARCELLAB_ACCOUNT_ID (or the legacy PARCELLAB_USER_ID)
-# and PARCELLAB_TOKEN.
+# Live mode also needs PARCELLAB_ACCOUNT_ID (or legacy PARCELLAB_USER_ID)
+# and the parcellab CLI on PATH, authenticated (parcellab auth login).
 set -euo pipefail
 
 EVENTS_DIR="${EVENTS_DIR:?EVENTS_DIR required}"
 GAP_SECONDS="${GAP_SECONDS:-180}"
 LOG_FILE="${LOG_FILE:-$EVENTS_DIR/run.log}"
 DRYRUN="${DRYRUN:-0}"
-# Trailing slash is required; without it the API 301-redirects and drops the body.
-API_URL="https://api.parcellab.com/v4/track/events/"
+# CLI request path. Trailing slash is required; without it the API
+# 301-redirects and drops the body.
+API_PATH="/v4/track/events/"
 # GAP_SECONDS is applied BEFORE every event, including the first. The setup
 # calls (order create + add_tracking, done before this script runs) trigger an
 # order-confirmation comm that also processes asynchronously — firing event 1
@@ -28,11 +38,18 @@ API_URL="https://api.parcellab.com/v4/track/events/"
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOG_FILE"; }
 
+ACCOUNT_ID="${PARCELLAB_ACCOUNT_ID:-${PARCELLAB_USER_ID:-}}"
 if [ "$DRYRUN" != "1" ]; then
-  ACCOUNT_ID="${PARCELLAB_ACCOUNT_ID:-${PARCELLAB_USER_ID:-}}"
-  : "${ACCOUNT_ID:?PARCELLAB_ACCOUNT_ID (or legacy PARCELLAB_USER_ID) required}"
-  : "${PARCELLAB_TOKEN:?PARCELLAB_TOKEN required}"
-  AUTH=$(printf '%s:%s' "$ACCOUNT_ID" "$PARCELLAB_TOKEN" | base64 | tr -d '\n')
+  case "$ACCOUNT_ID" in
+    ''|*[!0-9]*)
+      log "ERROR: PARCELLAB_ACCOUNT_ID (or legacy PARCELLAB_USER_ID) must be set to a numeric account id for live mode"
+      exit 1
+      ;;
+  esac
+  if ! command -v parcellab >/dev/null 2>&1; then
+    log "ERROR: parcellab CLI not found on PATH — live mode needs it (dry runs don't)"
+    exit 1
+  fi
 fi
 
 # Portable (bash 3.2) collection of sorted payload files.
@@ -46,7 +63,7 @@ if [ "${#FILES[@]}" -eq 0 ]; then
   exit 1
 fi
 
-log "START sequence: ${#FILES[@]} events, gap=${GAP_SECONDS}s, dryrun=${DRYRUN}, endpoint=${API_URL}"
+log "START sequence: ${#FILES[@]} events, gap=${GAP_SECONDS}s, dryrun=${DRYRUN}, endpoint=${API_PATH}, account=${ACCOUNT_ID:-unset}"
 i=0
 for f in "${FILES[@]}"; do
   i=$((i + 1))
@@ -58,18 +75,21 @@ for f in "${FILES[@]}"; do
 import json, sys
 d = json.load(open(sys.argv[1]))
 d['event_timestamp'] = sys.argv[2]
+if sys.argv[3]:
+    d['account'] = int(sys.argv[3])
 print(json.dumps(d))
-" "$f" "$now")
-  log "EVENT $i/${#FILES[@]} -> $name (event_timestamp=$now)"
+" "$f" "$now" "$ACCOUNT_ID")
+  log "EVENT $i/${#FILES[@]} -> $name (event_timestamp=$now) (account=${ACCOUNT_ID:-unset})"
   if [ "$DRYRUN" = "1" ]; then
-    log "[dry-run] would POST $name to $API_URL"
+    log "[dry-run] would POST $name to $API_PATH"
   else
-    resp=$(curl -sS -X POST "$API_URL" \
-      -H "Authorization: Parcellab-API-Token $AUTH" \
-      -H "Content-Type: application/json" \
-      -w $'\n---HTTP %{http_code}---' \
-      --data-binary "$body" 2>&1) || resp="CURL_ERROR exit=$?"
-    log "RESPONSE $name: $resp"
+    if resp=$(parcellab api request POST "$API_PATH" --data "$body" -o json 2>&1); then
+      # HTTP 204 -> empty output; anything else the API returned gets logged.
+      log "RESPONSE $name: OK${resp:+ $resp}"
+    else
+      rc=$?
+      log "RESPONSE $name: CLI_ERROR exit=$rc ${resp}"
+    fi
   fi
 done
 log "DONE sequence complete"
