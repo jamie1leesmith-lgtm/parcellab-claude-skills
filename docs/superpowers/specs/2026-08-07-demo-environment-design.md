@@ -349,8 +349,11 @@ orchestrated.
 1. **Shopify order-write scope & carrier mapping** — the dev-store auth may
    need re-consenting with an order-write scope; and the fulfilment's
    tracking company must map to a pL courier. Verify both in live test 3.
-2. **Fraud payload currency** — compare the repo's `fraud_risk_payloads.json`
-   against Jamie's current working order payload before shipping fragments.
+2. ~~Fraud payload currency~~ **Resolved 2026-08-10**: Jamie's current
+   working order payload carries riskAssessment content identical to the
+   repo's `fraud_risk_payloads.json` (same prediction ids/timestamps/domain);
+   stored orders expose it as `customFields.riskAssessment` + `tags`,
+   confirming the `additional_attributes` send shape.
 3. **CDC landing-page slot semantics** — ask Max what each `order_type`
    drives on the v2 demo page, so slot claims (esp. linking real orders into
    fraud slots) render as intended. Also collect the two

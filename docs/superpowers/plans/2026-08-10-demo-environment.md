@@ -59,7 +59,7 @@ gh api repos/parcelLab/custom-demo-creator/contents/fraud_risk_payloads.json \
 python3 -c "import json;d=json.load(open('plugins/pl-tools/skills/demo-environment/references/fraud_risk_payloads.json'));assert set(d)=={'low','medium','high'};print('source OK')"
 ```
 
-If `gh` lacks access to `parcelLab/custom-demo-creator`, stop and report — do not hand-write the fragments. (Open item: Jamie may supply a newer payload; if he has by execution time, use his file instead and note the swap in the commit message.)
+If `gh` lacks access to `parcelLab/custom-demo-creator`, stop and report — do not hand-write the fragments. (Resolved 2026-08-10: Jamie's current working order payload carries riskAssessment content identical to this repo file — same prediction ids, timestamps and source domain — so this source is confirmed current. The stored order exposes it as `customFields.riskAssessment` + top-level `tags`, confirming the send-side `additional_attributes` shape.)
 
 - [ ] **Step 2: Write the failing tests**
 
