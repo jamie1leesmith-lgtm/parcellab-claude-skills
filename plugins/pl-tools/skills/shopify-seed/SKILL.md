@@ -424,3 +424,33 @@ are not the prospect's real prices. Surface any `warnings` from the script.
 
 **No currency symbols** in any figure — a dev store set to a non-GBP or non-USD currency
 displays different symbols, so a demo script must not hard-code one.
+
+---
+
+## Orchestrated runs (demo-environment)
+
+When invoked as a background agent by the `demo-environment` conductor, the
+brief names a run directory; `demo-manifest.json` and `seed/seed-products.json`
+inside it replace Steps 1, 2, 3 and 5:
+
+- **Store and location come from the manifest** (`shopify.store`,
+  `shopify.location_id`) — both were confirmed/resolved at intake. State the
+  store name in output; do not re-ask, do not run `store auth list`.
+- **Products come from `seed/seed-products.json`** — already in Step 3's
+  input shape with images verified at intake. Skip all browsing.
+- **The Step 5 approval is already given** (`approvals.products_approved_at`
+  in the manifest). Do not wait for a yes.
+- **Agent ground rules:** never open the Browser pane; never ask the user
+  anything. A gap (missing file, image Shopify won't fetch, push failure) is
+  a failure report, not a question: write it to the results file and stop.
+- **Steps 0, 4, 6, 7, 8 run unchanged** (preflight, shaping via
+  `shape_product_mix.py`, archive, push, verify by returned IDs).
+- **Instead of the Step 9 prose-only report**, write
+  `results/shopify-seed.json` in the run dir:
+  `{"status": "ok"|"failed", "products": [{"title", "id", "admin_url",
+  "seeded_price", "variants", "adjusted"}], "demos": <the shape script's
+  demos output verbatim>, "warnings": [...], "error": null|"<message>"}` —
+  then give the usual Step 9 tables as the agent's returned summary.
+
+Standalone behaviour (no brief/manifest): everything above this section,
+unchanged.
