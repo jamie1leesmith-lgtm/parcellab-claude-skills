@@ -23,10 +23,13 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
 
 2a. **Always confirm the carrier before building a tracked order.** Even if the user's message implies a country (and therefore a sensible default courier), explicitly ask which courier they want — state the default you'd otherwise use and let them confirm or override. Skip this only for untracked orders (no `mutations`). Never silently pick a courier for a tracked order.
 
-2b. **Confirm article categories before building the payload.** `article_category`
-   is what returns-portal reason filters key on, so never leave it off and never
-   pick it silently. Propose a baseline from what the products are, then ask —
-   see *Article categories* below.
+2b. **Confirm the articles and their categories together, before building the
+   payload.** `article_category` is what returns-portal reason filters key on,
+   so never leave it off and never pick it silently — but the articles
+   themselves don't exist yet at this point in the workflow either (step 3,
+   *Build the payload*, is where they'd otherwise first appear), so propose
+   both the specific articles and a baseline category in the same exchange.
+   See *Article categories* below.
 
 2c. **Offer the extras gate before building anything.** Ask once whether anything
    else should go on the order, then apply what the user picks — see *Extra order
@@ -221,14 +224,18 @@ return-reason filters key on it, so an order built for a returns demo shows the
 wrong reasons — or none — when the category is missing or spelled differently
 from what the portal expects. Nothing in the API response signals this.
 
-**Propose a baseline, then ask.** Derive one category from what the products
-actually are (four clothing items → `fashion` for all four) and put the question
-in a single exchange:
+**Propose the articles and a baseline category together, in one exchange.**
+The articles haven't been named anywhere yet at this point in the workflow —
+*Build the payload* is where they'd otherwise first appear — so name them here
+rather than asking the user to approve a category for products they haven't
+seen. Derive one category from what the products actually are (four clothing
+items → `fashion` for all four):
 
-> Categories drive which return reasons show in the portal. I'd set **`fashion`**
-> for all 4 items. Keep it, set a different one for all, or go per-product?
-> Standards: `fashion`, `home`, `electronics`, `beauty`, `sports`, `food`,
-> `toys`, `media` — or any string you like.
+> Categories drive which return reasons show in the portal. I'd add **`<N>`
+> items** — `<article 1>`, `<article 2>`, ... — all as category **`fashion`**.
+> Keep it, set a different one for all, or go per-product? Standards:
+> `fashion`, `home`, `electronics`, `beauty`, `sports`, `food`, `toys`, `media`
+> — or any string you like.
 
 - Blocking: don't send a payload on an unanswered category prompt. "Keep it"
   answers it in one word.
@@ -239,10 +246,13 @@ in a single exchange:
   match.
 - Per-product categories are expected for a mixed order (jacket + kettle).
 - **Write it at both levels**: `articles_order[].article_category` *and* every
-  `add_tracking.tracking.articles[].article_category`. Returns eligibility is
-  derived from `tracking.articles`, so an order-level-only category leaves the
-  returns portal filtering on nothing. Untracked orders (no `mutations`) have
-  only the order level to write to.
+  `add_tracking.tracking.articles[].article_category`, for the same reason you
+  mirror `article_name`/`unit_price`/`article_image_url`: the Returns Order
+  API derives returnable items from `tracking.articles` (see *Payload shape*
+  above), so that's the level a reason filter has anything to act on.
+  Untracked orders (no `mutations`) only ever write the order level — there is
+  no tracking record, so there is no returns flow to filter in the first
+  place.
 
 ## Extra order information
 

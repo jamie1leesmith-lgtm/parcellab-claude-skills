@@ -119,7 +119,7 @@ Propose one category derived from what the products are (four clothing items →
 `fashion` for all four), then ask:
 
 > Categories drive which return reasons show in the portal. I'd set **`fashion`**
-> for all 4 items. Keep it, set a different one for all, or go per-product?
+> for all `<N>` items. Keep it, set a different one for all, or go per-product?
 > Standards: `fashion`, `home`, `electronics`, `beauty`, `sports`, `food`,
 > `toys`, `media` — or any string you like.
 
@@ -144,7 +144,8 @@ parcellab api request PUT /v4/track/orders/ --data @create.json -o json
 
 1. **Untracked order** — build a payload following the `create-order`
    shape: `account` (the resolved account id, `${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`), `order_number` (`<XXX>-<ts>`),
-   destination country ISO3, recipient, shipping address, `articles_order`,
+   destination country ISO3, recipient, shipping address, `articles_order`
+   (each article including `article_category`, from Gate A's approval),
    currency/timezone from the country. Save as `create.json` with **no
    `mutations`**. Send it → HTTP 201.
 2. **Attach tracking** — send an `add_tracking` mutation with a randomised,
@@ -162,9 +163,11 @@ parcellab api request PUT /v4/track/orders/ --data @create.json -o json
    order-level confirmation email. Omitting it is why article name/image/price
    can look fine in the order-confirmation email but come back blank in every
    later shipment comm. Mirror the same items (with matching `line_item_id`s)
-   from `articles_order` into `tracking.articles`, **including `article_category`** — returns
-   eligibility is derived from `tracking.articles`, so a category present only at
-   order level leaves the returns portal filtering on nothing:
+   from `articles_order` into `tracking.articles`, **including
+   `article_category`** — for the same reason you mirror name/image/price: the
+   Returns Order API derives returnable items from `tracking.articles` (see
+   `create-order`'s *Payload shape*), so that's the level a reason filter has
+   anything to act on:
 
    ```json
    "tracking": {
