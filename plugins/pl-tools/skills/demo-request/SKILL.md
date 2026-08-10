@@ -262,6 +262,37 @@ On error:
 
 ---
 
+## Orchestrated runs (demo-environment)
+
+When this skill is invoked by the `demo-environment` conductor with a run
+directory containing `demo-manifest.json` whose
+`approvals.products_approved_at` is set, the manifest replaces Steps 1–6:
+
+- **No browsing, no questions.** Products, region and category were collected
+  and approved at the conductor's intake. If anything needed is missing from
+  the manifest, STOP and report the gap — never re-open the browser and never
+  ask the user.
+- **Build the payload from the manifest:** `prospect_name` = `brand.name`,
+  `website_url` = `brand.url`, `region` = `brand.region`, `category` =
+  `brand.category`, `products` = the four `selection.core4` entries as
+  `{name, image_url}`. From `cdc`: `selected_account_config_id` (omit the key
+  when null), `generate_orders`, and `order_types` (omit when empty).
+- **Link the real orders:** if `results/linked-orders.json` exists in the run
+  dir, pass its array verbatim as `linked_orders`.
+- **Submit** exactly as Step 7 (same script, same env), then write
+  `results/demo-request.json` in the run dir:
+  `{"id", "request_status", "request_url", "linked_submitted": <the
+  linked_orders array or []>}` — and report the same values in prose.
+- **On HTTP 500:** the request still exists (`status: failed`) — record its
+  id/URL in the results file and report "created but generation failed;
+  retry manually in-app". Linking is best-effort per item: tell the user to
+  eyeball the request's activity log, since per-item failures never fail the
+  call.
+
+Standalone behaviour (no manifest): everything above this section, unchanged.
+
+---
+
 ## Edge cases
 
 - **Cookie / consent modal blocking the page** — `mcp__Claude_Browser__read_page`
