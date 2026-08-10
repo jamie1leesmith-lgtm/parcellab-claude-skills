@@ -24,7 +24,9 @@ fresh order number, no carryover — unless the user explicitly says reuse/resen
    ```
 2. **Gather inputs:** brand site URL + a rough product idea (e.g. "coffee machine"), destination country, and any overrides (gap, extra items). **Ask for the destination country if the user hasn't named one — never assume it.** It silently sets the language, currency, timezone, courier and address, so a wrong guess yields an entirely wrong-looking journey. `create-order`'s *Defaults & dummy data* table lists the countries with ready-made defaults.
 3. **Source the product** (see *Product sourcing*).
-4. **Gate A — product approval.** Show product(s); wait for approval.
+4. **Gate A — product and category approval.** Show product(s) with a proposed
+   `article_category` for each; wait for approval of both. See *Gate A — product
+   and category approval*.
 5. **Gate B — journey and scenario selection.** Ask one shipment or a split, then which scenario each shipment runs: happy, unhappy, or custom. Show the events and the comm each is expected to fire. See *Gate B — scenario selection*. **Never skip this and never assume a default.**
 6. **Confirm the carrier(s).** State the country default courier; let the user confirm/override. For a split shipment, confirm a courier per shipment (they may differ).
 7. **Build payloads** (see *Order + tracking setup* and *Event sequence*). Write the untracked order as `create.json` (no `NN-` prefix so the driver skips it), and each event as `NN-<status>.json` in the same run directory. For split shipments, interleave both shipments' events into one numbered sequence — see *Split shipments*.
@@ -101,6 +103,35 @@ from the parcelLab CLI — there is no token.
 - Verify the image URL loads (navigate to it or check network 200 + image type).
 - One product by default; repeat per extra item the user asks for.
 
+## Gate A — product and category approval
+
+Show each sourced product — name, price, image URL, store URL — with a proposed
+`article_category`, and get both approved in one exchange. Categories ride along
+here because the products are already on screen; they don't need a gate of their
+own.
+
+`article_category` is what the returns portal's return-reason filters key on, so
+a run built for a returns demo shows the wrong reasons — or none — when it's
+missing or cased differently from what the portal expects. Nothing in the API
+response signals this.
+
+Propose one category derived from what the products are (four clothing items →
+`fashion` for all four), then ask:
+
+> Categories drive which return reasons show in the portal. I'd set **`fashion`**
+> for all 4 items. Keep it, set a different one for all, or go per-product?
+> Standards: `fashion`, `home`, `electronics`, `beauty`, `sports`, `food`,
+> `toys`, `media` — or any string you like.
+
+- Blocking, like the rest of Gate A. "Keep it" answers it in one word.
+- A proposal is not a default — it has to be shown and accepted.
+- The eight standards are a convention; the API takes any string.
+- **Use the user's string verbatim, case included.** If the portal filter keys on
+  `Fashion`, sending `fashion` matches nothing.
+- Per-product categories are expected for a mixed order.
+- Full rules, including the untracked-order case, are in `create-order`'s
+  *Article categories*.
+
 ## Order + tracking setup (before the event loop)
 
 Two order writes, done directly (not by the driver) through the CLI — **never
@@ -131,7 +162,9 @@ parcellab api request PUT /v4/track/orders/ --data @create.json -o json
    order-level confirmation email. Omitting it is why article name/image/price
    can look fine in the order-confirmation email but come back blank in every
    later shipment comm. Mirror the same items (with matching `line_item_id`s)
-   from `articles_order` into `tracking.articles`:
+   from `articles_order` into `tracking.articles`, **including `article_category`** — returns
+   eligibility is derived from `tracking.articles`, so a category present only at
+   order level leaves the returns portal filtering on nothing:
 
    ```json
    "tracking": {
@@ -141,6 +174,7 @@ parcellab api request PUT /v4/track/orders/ --data @create.json -o json
        {
          "line_item_id": "1",
          "article_name": "Classic T-Shirt — Black, M",
+         "article_category": "fashion",
          "quantity": 1,
          "article_image_url": "https://picsum.photos/seed/tshirt/400/400",
          "article_store_url": "https://example.com/products/classic-t-shirt"
@@ -449,16 +483,25 @@ the chosen journey eligible) appears here pre-filled and is **not** optional.
 **Split shipments are not offered here** — they are chosen at Gate B, because a
 split needs a scenario per shipment.
 
-After the menu, show the final plan — order summary, carrier(s), scenario per
-shipment, event list with expected comms, and the gap — then wait for approval.
-This is the last stop before anything reaches production.
+After the menu, show the final plan and wait for approval. It itemises, field by
+field:
+
+- order summary, carrier(s), scenario per shipment, event list with expected
+  comms, and the gap
+- every article with its `article_category`
+- **every extra agreed at this gate, with its actual value**
+
+An extra that was discussed but doesn't appear in the summary is a defect. This
+is the last stop before anything reaches production, and a wrong promise date or
+a mistyped recipient role is invisible in the API's success response.
 
 ## Confirmation gates
 
 Three gates. All three are blocking — a run with no user response at any gate
 stops and waits. Never infer an answer from earlier context.
 
-- **Gate A:** product(s) approved before anything else.
+- **Gate A:** product(s) **and their `article_category`** approved before
+  anything else.
 - **Gate B:** journey and scenario chosen — one shipment or split, and which
   scenario each runs. Asked **every run**; there is no default.
 - **Gate C:** optional extras offered, then the final plan approved before
