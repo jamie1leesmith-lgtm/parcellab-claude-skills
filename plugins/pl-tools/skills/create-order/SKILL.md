@@ -23,6 +23,11 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
 
 2a. **Always confirm the carrier before building a tracked order.** Even if the user's message implies a country (and therefore a sensible default courier), explicitly ask which courier they want — state the default you'd otherwise use and let them confirm or override. Skip this only for untracked orders (no `mutations`). Never silently pick a courier for a tracked order.
 
+2b. **Confirm article categories before building the payload.** `article_category`
+   is what returns-portal reason filters key on, so never leave it off and never
+   pick it silently. Propose a baseline from what the products are, then ask —
+   see *Article categories* below.
+
 3. **Build the payload.** Construct a single JSON object following the structure in *Payload shape*. Save it to a temp file so the CLI can use `--data @file` and you avoid shell-quoting pain:
 
    ```bash
@@ -30,7 +35,18 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
    # write JSON to $PAYLOAD_FILE using the Write tool
    ```
 
-4. **Show the payload and ask the user to confirm.** Display the JSON (or a tight summary of the key fields — order_number, recipient, country, courier, tracking number, article count) and ask "send this to ParcelLab?" Wait for an affirmative reply before step 5. This matters because every successful PUT writes a real order to their production account.
+4. **Show the payload and ask the user to confirm.** Display a summary that
+   itemises, field by field:
+   - order_number, recipient, destination country, courier, tracking number
+   - every article with its `article_category`
+   - **every extra agreed at the previous step, with its actual value**
+
+   An extra that was discussed but doesn't appear here is a defect: this summary
+   is the last point where a wrong promise date or a mistyped recipient role is
+   catchable, and both are invisible in the API's success response. Offer the
+   full JSON on request. Then ask "send this to ParcelLab?" and wait for an
+   affirmative reply before step 5 — every successful PUT writes a real order to
+   their production account.
 
 5. **Send it** through the CLI. The path is served by the CLI's default host — **never add `--base-url`**; overriding the host breaks the CLI's own edit-mode account check and every write fails with a misleading `HTTP 404` about child accounts.
 
@@ -153,6 +169,7 @@ A realistic tracked order with one article:
       "line_item_id": "1",
       "sku": "TS-BLK-M",
       "article_name": "Classic T-Shirt — Black, M",
+      "article_category": "fashion",
       "quantity": 1,
       "unit_price": "89.90",
       "article_image_url": "https://picsum.photos/seed/tshirt/400/400"
@@ -172,6 +189,7 @@ A realistic tracked order with one article:
             "line_item_id": "1",
             "sku": "TS-BLK-M",
             "article_name": "Classic T-Shirt — Black, M",
+            "article_category": "fashion",
             "quantity": 1,
             "unit_price": "89.90"
           }
@@ -187,8 +205,61 @@ Notes:
 - `order_number` must be unique per account. **Prefix it with the first three letters of the business/brand name, uppercased, then a timestamp** — `<XXX>-$(date +%s)` — so orders are easy to find in the portal (e.g. Moonpig → `MOO-1784828280`, Nike → `NIK-…`). Strip leading "www."/articles and non-letters before taking the three letters; if no brand is given, fall back to `ORD-$(date +%s)`. Unless the user gives an explicit order number, always follow this scheme.
 - `line_item_id` must be unique within `articles_order`.
 - **Always populate each `add_tracking` mutation's `tracking.articles` with the items that ship in that parcel** (each entry needs at least `line_item_id`, `sku`, `article_name`, `quantity`, `unit_price`; `line_item_id` must match the corresponding `articles_order` entry). `articles_order` is the full order; `tracking.articles` is what's in the box. The parcelLab Returns Order API derives returnable items from `tracking.articles`, so leaving it empty means the returns portal shows **no selectable items** even though the products are present in `articles_order`.
+- **`article_category` belongs on every article at both levels** — see *Article
+  categories*. It drives the returns portal's return-reason filters.
 - For an untracked order, omit `mutations` entirely.
 - For an order with multiple articles or shipments, repeat the structure — keep `line_item_id`s aligned between `articles_order` and `tracking.articles`. For a split shipment, each `add_tracking` mutation's `tracking.articles` holds only the items in that parcel.
+
+## Article categories
+
+`article_category` is a free-text string on each article. The returns portal's
+return-reason filters key on it, so an order built for a returns demo shows the
+wrong reasons — or none — when the category is missing or spelled differently
+from what the portal expects. Nothing in the API response signals this.
+
+**Propose a baseline, then ask.** Derive one category from what the products
+actually are (four clothing items → `fashion` for all four) and put the question
+in a single exchange:
+
+> Categories drive which return reasons show in the portal. I'd set **`fashion`**
+> for all 4 items. Keep it, set a different one for all, or go per-product?
+> Standards: `fashion`, `home`, `electronics`, `beauty`, `sports`, `food`,
+> `toys`, `media` — or any string you like.
+
+- Blocking: don't send a payload on an unanswered category prompt. "Keep it"
+  answers it in one word.
+- A proposal is not a default — show it and get it accepted.
+- The eight standards are this skill's convention. The API accepts any string.
+- **Use the user's string verbatim, case included.** If the portal filter keys on
+  `Fashion`, sending `fashion` matches nothing. Normalising the input breaks the
+  match.
+- Per-product categories are expected for a mixed order (jacket + kettle).
+- **Write it at both levels**: `articles_order[].article_category` *and* every
+  `add_tracking.tracking.articles[].article_category`. Returns eligibility is
+  derived from `tracking.articles`, so an order-level-only category leaves the
+  returns portal filtering on nothing. Untracked orders (no `mutations`) have
+  only the order level to write to.
+
+## Extra order information
+
+Ask this once, after categories and before the payload summary. It is an offer
+with a fast exit, not a form:
+
+> Anything else to add to this order, or send as-is?
+
+Then show this menu. Don't ask an open "any other fields?" — that's unanswerable
+unless the user has the Order API spec memorised.
+
+| Extra | Fields | State this |
+|---|---|---|
+| Dynamic recipients | `additional_recipients: [{role, email}]` at **both** order and tracking level | Role matches the Journey's `advancedRecipients` literally, case-sensitive. Preserve the user's spelling even if it looks like a typo. See *Additional recipients*. |
+| Promise dates | `announced_delivery_date`, `announced_delivery_date_min`, `announced_delivery_date_max` | **`YYYY-MM-DD` only** — a full ISO datetime is rejected. (`order_date` does take full ISO; the fields differ.) |
+| Order financials | `order_tax_amount`, `order_net_amount`, `order_discount_amount` | For invoice-style comms |
+| Tags / custom fields | `tags`, `additional_attributes` | What filter-driven Journey triggers key on |
+
+Anything the user asks for that isn't listed is still fair game — check the
+[full spec](https://docs.parcellab.com/docs/developers/orders/full-order-api-spec)
+rather than refusing.
 
 ## Additional recipients (Dynamic Recipients)
 
