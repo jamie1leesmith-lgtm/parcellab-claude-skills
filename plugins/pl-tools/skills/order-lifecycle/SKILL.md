@@ -587,3 +587,52 @@ Two things confirmed live on account 1626718, worth not re-deriving:
   called it out before), the table has nothing to render. Always mirror the
   order's articles into `tracking.articles` on every `add_tracking` mutation
   — see *Order + tracking setup*, step 2.
+
+---
+
+## Orchestrated runs (demo-environment)
+
+When the `demo-environment` conductor drives this skill, `demo-manifest.json`
+answers the gates — the manifest's recorded approvals ARE the user's answers,
+given at the conductor's intake (this is not inference):
+
+- **Gate A** (product approval): `approvals.products_approved_at`.
+- **Gate B** (journey/scenario): each manifest order's `shipments[]` carries
+  the chosen scenario, courier and exact `events` sequence. Scenarios beyond
+  the proven happy/unhappy shapes (e.g. `recovered` =
+  `InTransit → WarehouseDelay → OutForDelivery → Delivered`, or locker
+  endings) are **custom-path sequences the user explicitly chose at intake**;
+  keep this skill's confidence labelling when reporting them, and never
+  silently reorder a sequence.
+- **Gate C** (enrichment): `gates.order_lifecycle.gate_c` — `"send-as-is"`
+  unless `extras` carries fields, which are applied exactly as the Gate C
+  table specifies.
+- **Destination country** comes from `destination_country`; the account was
+  confirmed by name at intake — do not re-confirm mid-run.
+
+**Multi-order runs.** Each manifest order gets its own directory
+(`orders/<nn>-<label>/` inside the run dir), its own `create.json`,
+`NN-<status>.json` files, and its own detached driver — the "every run is
+isolated" rule applies per order. Drivers run concurrently; a split-shipment
+order follows the *Split shipments* rules unchanged within its own directory.
+
+**Fraud data on direct-path orders.** Before sending `create.json`, generate
+the order's fragment and merge it in at the top level:
+
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_fraud_fragment.py \
+      --level <order.fraud_level> --shop-url <shopify.store, or the
+      brand handle + ".myshopify.com" when no store is configured>
+
+The output's `tags` and `additional_attributes` become `create.json`'s
+top-level `tags` and `additional_attributes` fields.
+
+**After the order + add_tracking writes succeed**, write
+`orders/<nn>-<label>/order.json`:
+`{"order_number", "customer": {"name","email"}, "cdc_slot", "fraud_level",
+"trackings": [{"shipment", "courier", "tracking_number"}]}` — the conductor
+builds the CDC linking file and the final report from these.
+
+Everything else — payload rules, `tracking.articles` mirroring, the driver,
+timing, reporting, failure modes — is unchanged from the sections above.
+
+Standalone behaviour (no manifest): everything above this section, unchanged.
