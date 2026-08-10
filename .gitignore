@@ -11,3 +11,6 @@ __pycache__/
 
 # Harness-created git worktrees — scratch checkouts of this same repo
 .claude/worktrees/
+
+# Subagent-driven-development scratch — ledgers, briefs, review packages
+.superpowers/

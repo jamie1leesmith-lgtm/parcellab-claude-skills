@@ -60,7 +60,13 @@ When the user gives partial context (just a country, or just a scenario), the sk
 Tracking numbers follow each carrier's real format (Royal Mail `XX#########GB`, USPS 22-digit, UPS `1Z…`) so they at least look plausible in the portal, even though they're not live.
 
 ### Always show the payload before sending
-Every successful PUT writes a real order. The confirmation step exists to give the user a chance to catch (a) Claude misinterpreting their scenario, (b) typos in addresses or tracking numbers, and (c) cases where the user changed their mind about a field. We show a tight summary table (order number, recipient, country, courier, tracking number, article count) by default with the full JSON on request — the table is what humans actually read.
+Every successful PUT writes a real order. The confirmation step exists to give the user a chance to catch (a) Claude misinterpreting their scenario, (b) typos in addresses or tracking numbers, and (c) cases where the user changed their mind about a field. We show a tight summary table by default with the full JSON on request — the table
+is what humans actually read. It itemises order number, recipient, country,
+courier, tracking number, each article with its `article_category`, and every
+extra field agreed during the run. Categories and extras are listed individually
+rather than counted, because a wrong `article_category` (which drives the returns
+portal's reason filters) or a mistyped promise date both return a clean HTTP 200 —
+the summary is the only place they surface.
 
 ---
 
