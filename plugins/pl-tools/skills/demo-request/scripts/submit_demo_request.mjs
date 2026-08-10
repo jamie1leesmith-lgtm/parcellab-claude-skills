@@ -76,6 +76,38 @@ function validatePayload(payload) {
     }
   }
 
+  const ORDER_TYPES = new Set([
+    'fraud_high', 'fraud_medium', 'fraud_low', 'manual_return', 'return_tracking',
+  ]);
+
+  if (payload.generate_orders != null && typeof payload.generate_orders !== 'boolean') {
+    throw new Error('generate_orders must be a boolean when provided.');
+  }
+
+  if (payload.order_types != null) {
+    if (!Array.isArray(payload.order_types)) {
+      throw new Error('order_types must be an array when provided.');
+    }
+    const bad = payload.order_types.filter((t) => !ORDER_TYPES.has(t));
+    if (bad.length) {
+      throw new Error(`order_types contains invalid values: ${bad.join(', ')}`);
+    }
+  }
+
+  if (payload.linked_orders != null) {
+    if (!Array.isArray(payload.linked_orders)) {
+      throw new Error('linked_orders must be an array when provided.');
+    }
+    payload.linked_orders.forEach((o, i) => {
+      if (!String(o?.order_number ?? '').trim()) {
+        throw new Error(`linked_orders[${i}].order_number is required.`);
+      }
+      if (!ORDER_TYPES.has(o?.order_type)) {
+        throw new Error(`linked_orders[${i}].order_type is invalid: ${o?.order_type}`);
+      }
+    });
+  }
+
   if (!Array.isArray(payload.products) || payload.products.length !== 4) {
     throw new Error('products must contain exactly 4 items.');
   }
@@ -85,6 +117,10 @@ function validatePayload(payload) {
       throw new Error(`products[${index}].name is required.`);
     }
     assertUrlOrEmpty(String(product?.image_url ?? ''), `products[${index}].image_url`);
+    if (product?.category_override != null
+        && !VALID_CATEGORIES.has(product.category_override)) {
+      throw new Error(`products[${index}].category_override must be Home, Electronics, or Fashion.`);
+    }
   });
 }
 
