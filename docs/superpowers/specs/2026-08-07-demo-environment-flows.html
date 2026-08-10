@@ -1,0 +1,381 @@
+<title>demo-environment — intended flows</title>
+<style>
+  :root {
+    --bg: #f4f8f6;
+    --surface: #ffffff;
+    --ink: #17211e;
+    --muted: #5c6b66;
+    --line: #d5e0dc;
+    --accent: #0e7c6b;
+    --eng: #3667d6;
+    --dir: #7c4dc4;
+    --shp: #1f8a4c;
+    --warn: #b45309;
+    --high: #c0392b;
+    --sans: "Avenir Next", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101715; --surface: #18211e; --ink: #e4ece9; --muted: #93a39d;
+      --line: #2a3733; --accent: #2fb39f; --eng: #7fa3f0; --dir: #b492ec;
+      --shp: #58be84; --warn: #e8a44c; --high: #e4715f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101715; --surface: #18211e; --ink: #e4ece9; --muted: #93a39d;
+    --line: #2a3733; --accent: #2fb39f; --eng: #7fa3f0; --dir: #b492ec;
+    --shp: #58be84; --warn: #e8a44c; --high: #e4715f;
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f8f6; --surface: #ffffff; --ink: #17211e; --muted: #5c6b66;
+    --line: #d5e0dc; --accent: #0e7c6b; --eng: #3667d6; --dir: #7c4dc4;
+    --shp: #1f8a4c; --warn: #b45309; --high: #c0392b;
+  }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); margin: 0; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 40px 24px 72px; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 10px; }
+  h1 { font-size: 27px; font-weight: 650; letter-spacing: -0.015em; margin: 0 0 10px; text-wrap: balance; }
+  .lede { color: var(--muted); font-size: 14.5px; line-height: 1.55; max-width: 62ch; margin: 0 0 18px; }
+  .lede code, p code { font-family: var(--mono); font-size: 0.92em; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+  h2 { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; margin: 44px 0 6px; }
+  .intro { color: var(--muted); font-size: 13.5px; line-height: 1.55; max-width: 68ch; margin: 0 0 14px; }
+  figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 14px 8px; }
+  .scroll { overflow-x: auto; }
+  .scroll svg { display: block; min-width: 740px; width: 100%; height: auto; }
+  figcaption { font-size: 12.5px; color: var(--muted); line-height: 1.5; padding: 10px 6px 8px; border-top: 1px solid var(--line); margin-top: 10px; }
+  footer { margin-top: 48px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; line-height: 1.6; }
+  footer code { font-family: var(--mono); }
+
+  /* SVG vocabulary */
+  svg text { font-family: var(--sans); }
+  .bx { fill: var(--bg); stroke: var(--line); rx: 10; }
+  .bx-dash { fill: var(--bg); stroke: var(--line); stroke-dasharray: 5 4; }
+  .pill { fill: var(--bg); stroke: var(--accent); stroke-width: 1.5; }
+  .stripe-e { fill: var(--eng); } .stripe-d { fill: var(--dir); } .stripe-s { fill: var(--shp); }
+  .edge { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+  .edge-dash { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  .life { stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 3 5; }
+  .t-title { font-size: 14px; font-weight: 650; fill: var(--ink); }
+  .t-body { font-size: 12px; fill: var(--muted); }
+  .t-lab { font-size: 11.5px; font-weight: 650; fill: var(--muted); }
+  .t-q { font-size: 13px; font-weight: 650; fill: var(--ink); }
+  .t-mono { font-family: var(--mono); font-size: 11px; fill: var(--ink); }
+  .t-mono-mut { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); }
+  .t-comm { font-size: 10.5px; fill: var(--muted); }
+  .t-warn { fill: var(--warn); }
+  .t-chip { font-family: var(--mono); font-size: 10.5px; fill: var(--accent); }
+  .node { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+  .node-end { fill: var(--ink); stroke: var(--ink); }
+  .node-warn { fill: var(--surface); stroke: var(--warn); stroke-width: 2; }
+  .gate { fill: color-mix(in srgb, var(--accent) 10%, transparent); stroke: var(--accent); stroke-dasharray: 7 5; }
+  .t-gate { font-size: 12.5px; font-weight: 650; fill: var(--accent); }
+  .arw { fill: var(--muted); }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">parcelLab · pl-tools · design review</p>
+  <h1>demo-environment — the intended flows</h1>
+  <p class="lede">Four views of the unified demo-build skill as specced on the
+  <code>feat/demo-environment</code> branch: how a run picks its path, the phase
+  skeleton with its two gates, the Shopify order engine, and the default order
+  set with the comm story each order tells.</p>
+  <div class="legend">
+    <span class="chip"><span class="dot" style="background:var(--eng)"></span>Engage</span>
+    <span class="chip"><span class="dot" style="background:var(--dir)"></span>Retain · non-Shopify</span>
+    <span class="chip"><span class="dot" style="background:var(--shp)"></span>Retain · Shopify</span>
+    <span class="chip"><span class="dot" style="background:var(--warn)"></span>delay / problem</span>
+  </div>
+
+  <h2>1 · Which path a run takes</h2>
+  <p class="intro">Two intake questions route everything. Retain covers the Engage
+  story automatically (its orders still fire every tracking comm), so there is no
+  separate "both" pipeline — and an Engage-only run never asks about Shopify.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 860 300" role="img" aria-label="Decision tree: returns in scope? No leads to the Engage path. Yes leads to Shopify opp? No leads to Retain non-Shopify, yes leads to Retain Shopify.">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arw"/>
+        </marker>
+      </defs>
+      <!-- decision pills -->
+      <rect class="pill" x="30" y="120" width="185" height="48" rx="24"/>
+      <text class="t-q" x="122" y="149" text-anchor="middle">Returns in scope?</text>
+      <rect class="pill" x="305" y="120" width="150" height="48" rx="24"/>
+      <text class="t-q" x="380" y="149" text-anchor="middle">Shopify opp?</text>
+      <!-- routes -->
+      <path class="edge" d="M122,120 L122,54 L566,54" marker-end="url(#a1)"/>
+      <text class="t-lab" x="134" y="100">no</text>
+      <path class="edge" d="M215,144 L299,144" marker-end="url(#a1)"/>
+      <text class="t-lab" x="248" y="136">yes</text>
+      <path class="edge" d="M455,144 L566,144" marker-end="url(#a1)"/>
+      <text class="t-lab" x="500" y="136">no</text>
+      <path class="edge" d="M380,168 L380,242 L566,242" marker-end="url(#a1)"/>
+      <text class="t-lab" x="390" y="196">yes</text>
+      <!-- path cards -->
+      <rect class="bx" x="572" y="10" width="258" height="88" rx="10"/>
+      <rect class="stripe-e" x="572" y="10" width="4" height="88" rx="2"/>
+      <text class="t-title" x="590" y="34">Engage</text>
+      <text class="t-body" x="590" y="54">tracking comms only · orders via</text>
+      <text class="t-body" x="590" y="69">direct pL writes</text>
+      <text class="t-chip" x="590" y="88">CDC config: standard</text>
+
+      <rect class="bx" x="572" y="100" width="258" height="88" rx="10"/>
+      <rect class="stripe-d" x="572" y="100" width="4" height="88" rx="2"/>
+      <text class="t-title" x="590" y="124">Retain · non-Shopify</text>
+      <text class="t-body" x="590" y="144">pL returns portal · orders via</text>
+      <text class="t-body" x="590" y="159">direct pL writes</text>
+      <text class="t-chip" x="590" y="178">CDC config: standard</text>
+
+      <rect class="bx" x="572" y="198" width="258" height="88" rx="10"/>
+      <rect class="stripe-s" x="572" y="198" width="4" height="88" rx="2"/>
+      <text class="t-title" x="590" y="222">Retain · Shopify</text>
+      <text class="t-body" x="590" y="242">Returns Portal v2 on the dev store ·</text>
+      <text class="t-body" x="590" y="257">real Shopify orders via CLI</text>
+      <text class="t-chip" x="590" y="276">CDC config: shopify</text>
+    </svg>
+    </div>
+    <figcaption><strong>Fig 1.</strong> The two intake questions and the three
+    resulting paths. Each path also selects the CDC account config the final
+    demo-request call will name (missing UUID → the CDC uses the caller's
+    default).</figcaption>
+  </figure>
+
+  <h2>2 · The run skeleton — phases, gates, concurrency</h2>
+  <p class="intro">All three paths share this skeleton. Two things pause a run:
+  the ✋ approval gate at the end of intake and the ★ template checkpoint — the
+  only mid-run moment that needs you. Everything below the publish gate runs
+  unattended.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 880 716" role="img" aria-label="Phase flow: intake produces a validated manifest; template build in the main session runs concurrently with the shopify-seed agent; a publish gate holds orders back; then orders run through the direct or Shopify engine; then one CDC call; then the two-beat report.">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arw"/>
+        </marker>
+      </defs>
+      <!-- Phase 0 -->
+      <rect class="bx" x="60" y="20" width="460" height="112" rx="10"/>
+      <text class="t-title" x="80" y="46">Phase 0 — Intake <tspan class="t-body">(the only interview)</tspan></text>
+      <text class="t-body" x="80" y="68">path · country · order plan (count, fraud, scenarios) · CDC fields</text>
+      <text class="t-body" x="80" y="86">account confirmed by name + edit-mode guard · ONE browser pass</text>
+      <text class="t-body" x="80" y="104">(brand tokens + product pool) · <tspan class="t-lab" style="fill:var(--accent)">✋ product &amp; plan approval</tspan></text>
+      <path class="edge" d="M290,132 L290,150" marker-end="url(#a2)"/>
+      <rect class="pill" x="170" y="154" width="240" height="36" rx="18"/>
+      <text class="t-mono" x="290" y="177" text-anchor="middle">demo-manifest.json ✓ validated</text>
+      <!-- split to parallel -->
+      <path class="edge" d="M290,190 L290,212" marker-end="url(#a2)"/>
+      <path class="edge" d="M290,198 L705,198 L705,212" marker-end="url(#a2)"/>
+      <!-- Phase 1 main -->
+      <rect class="bx" x="60" y="216" width="460" height="124" rx="10"/>
+      <text class="t-title" x="80" y="242">Phase 1 — Template <tspan class="t-body">(main session)</tspan></text>
+      <text class="t-body" x="80" y="264">build from brand_tokens (no re-scrape) → live preview</text>
+      <text class="t-body" x="80" y="282"><tspan class="t-lab" style="fill:var(--accent)">★ your one checkpoint — approve the template</tspan></text>
+      <text class="t-body" x="80" y="300">push → publish → assign to store</text>
+      <!-- Phase 1 agent -->
+      <rect class="bx-dash" x="560" y="216" width="290" height="124" rx="10"/>
+      <rect class="stripe-s" x="560" y="216" width="4" height="124" rx="2"/>
+      <text class="t-title" x="580" y="242">shopify-seed agent</text>
+      <text class="t-body" x="580" y="262">Shopify path only · runs concurrently</text>
+      <text class="t-body" x="580" y="282">briefed from manifest — no browser,</text>
+      <text class="t-body" x="580" y="300">no questions · archive → push → verify</text>
+      <!-- Gate -->
+      <path class="edge" d="M290,340 L290,364" marker-end="url(#a2)"/>
+      <path class="edge" d="M705,340 L705,364" marker-end="url(#a2)"/>
+      <rect class="gate" x="60" y="368" width="790" height="40" rx="8"/>
+      <text class="t-gate" x="455" y="393" text-anchor="middle">GATE — layout published (orders would comm unbranded) · Shopify path also waits for seed ✓</text>
+      <!-- Phase 2 -->
+      <path class="edge" d="M250,408 L250,432" marker-end="url(#a2)"/>
+      <path class="edge" d="M660,408 L660,432" marker-end="url(#a2)"/>
+      <rect class="bx" x="60" y="436" width="380" height="104" rx="10"/>
+      <rect class="stripe-e" x="60" y="436" width="4" height="52" rx="2"/>
+      <rect class="stripe-d" x="60" y="488" width="4" height="52" rx="2"/>
+      <text class="t-title" x="80" y="462">Phase 2 — Orders · direct engine</text>
+      <text class="t-body" x="80" y="484">per order: create.json + add_tracking</text>
+      <text class="t-body" x="80" y="502">(fraud data rides in the payload)</text>
+      <text class="t-body" x="80" y="520">event driver per order, concurrent</text>
+      <rect class="bx" x="470" y="436" width="380" height="104" rx="10"/>
+      <rect class="stripe-s" x="470" y="436" width="4" height="104" rx="2"/>
+      <text class="t-title" x="490" y="462">Phase 2 — Orders · Shopify engine</text>
+      <text class="t-body" x="490" y="484">create in Shopify → ingest → enrich →</text>
+      <text class="t-body" x="490" y="502">fulfil → events <tspan class="t-mono-mut">(see Fig 3)</tspan></text>
+      <text class="t-body" x="490" y="520">same event driver underneath</text>
+      <!-- Phase 3 -->
+      <path class="edge" d="M250,540 L250,564" marker-end="url(#a2)"/>
+      <path class="edge" d="M660,540 L660,564" marker-end="url(#a2)"/>
+      <rect class="bx" x="170" y="568" width="570" height="52" rx="10"/>
+      <text class="t-title" x="190" y="590">Phase 3 — ONE CDC call</text>
+      <text class="t-body" x="190" y="608">create demo request + linked_orders (every order, typed slot) · generate_orders: false</text>
+      <!-- Phase 4 -->
+      <path class="edge" d="M455,620 L455,644" marker-end="url(#a2)"/>
+      <rect class="bx" x="170" y="648" width="570" height="52" rx="10"/>
+      <text class="t-title" x="190" y="670">Phase 4 — Report, two beats</text>
+      <text class="t-body" x="190" y="688">Beat 1: environment built · Beat 2: comms verified (≥5 min after each order's final event)</text>
+    </svg>
+    </div>
+    <figcaption><strong>Fig 2.</strong> The CDC call sits <em>after</em> orders
+    because a <code>cdc_live_</code> token can only attach existing orders on the
+    creation call — "post order values to CDC" and "create the request" are the
+    same POST. On non-Shopify paths the agent lane is empty and Phase 1 is just
+    the template.</figcaption>
+  </figure>
+
+  <h2>3 · The Shopify order engine — one order's journey</h2>
+  <p class="intro">Repeated per order (3 by default, up to 5). Solid arrows are
+  the skill acting; dashed arrows are the installed parcelLab Shopify app doing
+  its real job — which is the point: the demo runs on the genuine integration.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 880 470" role="img" aria-label="Sequence diagram: the skill creates an order in the Shopify dev store, the parcelLab app syncs it, the skill polls until ingested, enriches the pL order with fraud data, fulfils in Shopify with a tracking number, the app syncs the fulfilment creating the pL tracking, then the skill pushes shipment events and journey comms fire.">
+      <defs>
+        <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arw"/>
+        </marker>
+      </defs>
+      <!-- actors -->
+      <rect class="bx" x="60" y="16" width="200" height="36" rx="8"/>
+      <text class="t-title" x="160" y="39" text-anchor="middle">demo-environment</text>
+      <rect class="bx" x="350" y="16" width="200" height="36" rx="8"/>
+      <rect class="stripe-s" x="350" y="16" width="4" height="36" rx="2"/>
+      <text class="t-title" x="452" y="39" text-anchor="middle">Shopify dev store</text>
+      <rect class="bx" x="640" y="16" width="200" height="36" rx="8"/>
+      <text class="t-title" x="740" y="39" text-anchor="middle">parcelLab</text>
+      <line class="life" x1="160" y1="52" x2="160" y2="444"/>
+      <line class="life" x1="450" y1="52" x2="450" y2="444"/>
+      <line class="life" x1="740" y1="52" x2="740" y2="444"/>
+      <!-- messages -->
+      <text class="t-mono" x="170" y="84">① create order — Admin GraphQL, seeded variants</text>
+      <line class="edge" x1="160" y1="92" x2="443" y2="92" marker-end="url(#a3)"/>
+      <text class="t-mono-mut" x="460" y="128">② order syncs into pL (parcelLab app)</text>
+      <line class="edge-dash" x1="450" y1="136" x2="733" y2="136" marker-end="url(#a3)"/>
+      <text class="t-mono" x="170" y="172">③ poll order-info until ingested — normally instant</text>
+      <line class="edge" x1="160" y1="180" x2="733" y2="180" marker-end="url(#a3)"/>
+      <text class="t-mono" x="170" y="216">④ PUT order update — fraud tags + riskAssessment</text>
+      <line class="edge" x1="160" y1="224" x2="733" y2="224" marker-end="url(#a3)"/>
+      <text class="t-mono" x="170" y="260">⑤ fulfil + tracking number — per shipment (split = two)</text>
+      <line class="edge" x1="160" y1="268" x2="443" y2="268" marker-end="url(#a3)"/>
+      <text class="t-mono-mut" x="460" y="304">⑥ fulfilment syncs → pL tracking created</text>
+      <line class="edge-dash" x1="450" y1="312" x2="733" y2="312" marker-end="url(#a3)"/>
+      <text class="t-mono" x="170" y="348">⑦ push shipment events — courier + tracking number</text>
+      <line class="edge" x1="160" y1="356" x2="733" y2="356" marker-end="url(#a3)"/>
+      <rect class="bx" x="620" y="384" width="240" height="40" rx="8"/>
+      <text class="t-body" x="740" y="409" text-anchor="middle">✉ journey comms fire per event</text>
+      <!-- legend -->
+      <line class="edge" x1="80" y1="440" x2="130" y2="440"/>
+      <text class="t-comm" x="138" y="444">skill acts</text>
+      <line class="edge-dash" x1="220" y1="440" x2="270" y2="440"/>
+      <text class="t-comm" x="278" y="444">integration acts automatically</text>
+    </svg>
+    </div>
+    <figcaption><strong>Fig 3.</strong> Fraud data needs step ④ because the
+    integration, not the skill, creates the pL order — there is no creation
+    payload to ride in on. On the direct paths (Fig 2, left engine) the same
+    fraud fragments ship inside <code>create.json</code> and steps ①–⑥ collapse
+    into one PUT.</figcaption>
+  </figure>
+
+  <h2>4 · The default order set — events and comm arcs</h2>
+  <p class="intro">"Give me the default 3" produces one order per comm arc:
+  clean, stuck, and delayed-but-recovered. Event names are the literal
+  <code>event_status</code> values pushed; ✉ marks the comm each event is
+  expected to fire. Fraud level rides on every order and maps one-to-one onto
+  the CDC's fraud slots.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 880 480" role="img" aria-label="Three order timelines: order one, low fraud, clean path to Delivered; order two, medium fraud, split shipment with A delivered and B stuck at WarehouseDelay; order three, high fraud, delayed at WarehouseDelay then recovering through OutForDelivery to Delivered. Optional orders four and five are delivered orders reserved for the returns portal demo.">
+      <defs>
+        <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arw"/>
+        </marker>
+      </defs>
+      <!-- Order 1 -->
+      <rect class="bx" x="20" y="42" width="140" height="56" rx="8"/>
+      <text class="t-title" x="34" y="66">#1</text>
+      <text class="t-mono-mut" x="34" y="84">LOW · fraud_low</text>
+      <line class="edge" x1="180" y1="70" x2="800" y2="70" marker-end="url(#a4)"/>
+      <circle class="node" cx="210" cy="70" r="5"/>
+      <text class="t-mono" x="210" y="54" text-anchor="middle">created</text>
+      <text class="t-comm" x="210" y="92" text-anchor="middle">✉ confirmation</text>
+      <circle class="node" cx="390" cy="70" r="5"/>
+      <text class="t-mono" x="390" y="54" text-anchor="middle">InTransit</text>
+      <text class="t-comm" x="390" y="92" text-anchor="middle">✉ dispatched</text>
+      <circle class="node" cx="560" cy="70" r="5"/>
+      <text class="t-mono" x="560" y="54" text-anchor="middle">OutForDelivery</text>
+      <text class="t-comm" x="560" y="92" text-anchor="middle">✉ out for delivery</text>
+      <circle class="node-end" cx="720" cy="70" r="5.5"/>
+      <text class="t-mono" x="720" y="54" text-anchor="middle">Delivered</text>
+      <text class="t-comm" x="720" y="92" text-anchor="middle">✉ delivered</text>
+      <!-- Order 2 -->
+      <rect class="bx" x="20" y="150" width="140" height="90" rx="8"/>
+      <text class="t-title" x="34" y="174">#2</text>
+      <text class="t-mono-mut" x="34" y="192">MED · fraud_medium</text>
+      <text class="t-mono-mut" x="34" y="208">split shipment</text>
+      <circle class="node" cx="210" cy="195" r="5"/>
+      <text class="t-mono" x="210" y="179" text-anchor="middle">created</text>
+      <text class="t-comm" x="210" y="217" text-anchor="middle">✉ confirmation</text>
+      <path class="edge" d="M215,192 L262,172" />
+      <path class="edge" d="M215,198 L262,218" />
+      <text class="t-lab" x="272" y="174">A</text>
+      <line class="edge" x1="284" y1="170" x2="800" y2="170" marker-end="url(#a4)"/>
+      <circle class="node" cx="390" cy="170" r="5"/>
+      <text class="t-mono" x="390" y="154" text-anchor="middle">InTransit</text>
+      <circle class="node" cx="560" cy="170" r="5"/>
+      <text class="t-mono" x="560" y="154" text-anchor="middle">OutForDelivery</text>
+      <circle class="node-end" cx="720" cy="170" r="5.5"/>
+      <text class="t-mono" x="720" y="154" text-anchor="middle">Delivered</text>
+      <text class="t-lab" x="272" y="224">B</text>
+      <line class="edge" x1="284" y1="220" x2="560" y2="220"/>
+      <circle class="node" cx="390" cy="220" r="5"/>
+      <text class="t-mono" x="390" y="242" text-anchor="middle">InTransit</text>
+      <circle class="node-warn" cx="530" cy="220" r="5"/>
+      <text class="t-mono t-warn" x="530" y="242" text-anchor="middle">WarehouseDelay</text>
+      <text class="t-comm t-warn" x="530" y="258" text-anchor="middle">✉ delay comm</text>
+      <line class="edge-dash" x1="536" y1="220" x2="620" y2="220"/>
+      <text class="t-comm t-warn" x="630" y="224">stays stuck</text>
+      <!-- Order 3 -->
+      <rect class="bx" x="20" y="292" width="140" height="56" rx="8"/>
+      <text class="t-title" x="34" y="316">#3</text>
+      <text class="t-mono-mut" x="34" y="334">HIGH · fraud_high</text>
+      <line class="edge" x1="180" y1="320" x2="800" y2="320" marker-end="url(#a4)"/>
+      <circle class="node" cx="210" cy="320" r="5"/>
+      <text class="t-mono" x="210" y="304" text-anchor="middle">created</text>
+      <text class="t-comm" x="210" y="342" text-anchor="middle">✉ confirmation</text>
+      <circle class="node" cx="340" cy="320" r="5"/>
+      <text class="t-mono" x="340" y="304" text-anchor="middle">InTransit</text>
+      <circle class="node-warn" cx="480" cy="320" r="5"/>
+      <text class="t-mono t-warn" x="480" y="304" text-anchor="middle">WarehouseDelay</text>
+      <text class="t-comm t-warn" x="480" y="342" text-anchor="middle">✉ delay comm</text>
+      <circle class="node" cx="620" cy="320" r="5"/>
+      <text class="t-mono" x="620" y="304" text-anchor="middle">OutForDelivery</text>
+      <circle class="node-end" cx="750" cy="320" r="5.5"/>
+      <text class="t-mono" x="750" y="304" text-anchor="middle">Delivered</text>
+      <text class="t-comm" x="750" y="342" text-anchor="middle">✉ delivered</text>
+      <path class="edge-dash" d="M480,354 L480,362 L750,362 L750,354"/>
+      <text class="t-comm" x="615" y="378" text-anchor="middle">"recovered" arc — statuses proven, chain unproven until first live run</text>
+      <!-- Optional slots -->
+      <rect class="bx-dash" x="20" y="404" width="410" height="60" rx="8"/>
+      <text class="t-title" x="36" y="428">#4 · manual_return <tspan class="t-body">(Retain runs)</tspan></text>
+      <text class="t-body" x="36" y="448">happy → Delivered · walked through the portal live in the demo</text>
+      <rect class="bx-dash" x="450" y="404" width="410" height="60" rx="8"/>
+      <text class="t-title" x="466" y="428">#5 · return_tracking <tspan class="t-body">(Retain runs)</tspan></text>
+      <text class="t-body" x="466" y="448">happy → Delivered · AE registers the return manually (v1 behaviour)</text>
+    </svg>
+    </div>
+    <figcaption><strong>Fig 4.</strong> Ground rules behind this picture: 1–5
+    orders (default 3), unique synthetic customer per order, fraud level on every
+    order, a split-shipment order in any 2+-order run, and on Retain runs at
+    least one order ending <code>Delivered</code>. Beat 2 of the report verifies
+    every ✉ actually fired.</figcaption>
+  </figure>
+
+  <footer>
+    Spec: <code>docs/superpowers/specs/2026-08-07-demo-environment-design.md</code>
+    (branch <code>feat/demo-environment</code>) · revised 2026-08-10 after the
+    Lucidchart walk-through · approved by Jamie 2026-08-10 · published artifact:
+    https://claude.ai/code/artifact/6c3dfbe6-cbfb-43de-b4d1-0cf9a9ffaa2d
+  </footer>
+</div>
