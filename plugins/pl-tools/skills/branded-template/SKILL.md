@@ -717,3 +717,32 @@ On failure:
 | Template | read from sibling `brand-style-guide` skill | bundled `template.html` in this skill's folder |
 
 > **Prior variant:** an earlier version of this skill used the Claude-in-Chrome extension (`mcp__Claude_in_Chrome__*`) plus a separate `mcp__Claude_Preview__*` panel. Both are now replaced by the single built-in Browser pane. Only revert to Claude-in-Chrome if you must scrape a login-gated site.
+
+---
+
+## Orchestrated runs (demo-environment)
+
+When invoked by the `demo-environment` conductor with a run directory whose
+`demo-manifest.json` carries `brand_tokens`, the manifest replaces Steps 1b–6:
+
+- **Account:** use `account.id` from the manifest — it was already confirmed
+  by name at the conductor's intake. Do not re-ask.
+- **No scraping.** `brand_tokens.tokens` holds the Step 6 token map keyed by
+  the template's `__BRAND_X__` names (e.g. `BRAND_NAME`, `CTA_BG`,
+  `RADIUS_LG`); `brand_tokens.logo` is either a URL or inline-SVG markup
+  (apply the Step 5 decision tree's fill/viewBox rules); `brand_tokens.hero`
+  is a verified URL + alt, or null → skip the hero block per Step 4 rule 4.
+  If a token the template needs is absent, STOP and report the gap to the
+  conductor — do not open the brand site.
+- **Steps 7–10 run unchanged**, including the Step 8 preview and its
+  question — this is the whole run's one human checkpoint, never skip it.
+- **Store assignment preference:** on a Shopify-path run (`shopify.enabled`),
+  when 9b.2 offers multiple stores, pre-select the client whose `key` or
+  `name` matches `shopify.store`; still follow 9b.3–9b.5 in full.
+- **After Step 10**, additionally write `results/branded-template.json` in
+  the run dir: `{"layout_id", "release_status", "store_assignment",
+  "account"}` with the exact values Step 10 reported. `release_status` is
+  what the conductor's publish gate reads — never write `published` unless
+  Step 9a's response confirmed it.
+
+Standalone behaviour (no manifest): everything above this section, unchanged.
