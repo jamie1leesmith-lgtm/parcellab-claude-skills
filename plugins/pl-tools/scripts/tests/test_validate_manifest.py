@@ -146,6 +146,15 @@ class TestValidateManifest(unittest.TestCase):
         m["approvals"]["products_approved_at"] = ""
         self.assertTrue(any("approval" in e for e in validate(m)))
 
+    def test_unproven_sequence_needs_chain_label(self):
+        m = valid_manifest()
+        m["orders"][0]["shipments"][0]["events"] = ["InTransit", "WarehouseDelay", "OutForDelivery", "Delivered"]
+        m["orders"][0]["shipments"][0]["scenario"] = "recovered"
+        errs = validate(m)
+        self.assertTrue(any("unproven_chain" in e for e in errs))
+        m["orders"][0]["shipments"][0]["unproven_chain"] = True
+        self.assertEqual(validate(m), [])
+
 
 if __name__ == "__main__":
     unittest.main()

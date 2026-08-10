@@ -13,6 +13,10 @@ CDC_SLOTS = {"fraud_high", "fraud_medium", "fraud_low",
              "manual_return", "return_tracking"}
 FRAUD_LEVELS = {"low", "medium", "high"}
 PATHS = {"engage", "retain", "retain-shopify"}
+PROVEN_SEQUENCES = (
+    ("InTransit", "OutForDelivery", "Delivered"),
+    ("InTransit", "WarehouseDelay"),
+)
 
 
 def validate(m):
@@ -79,6 +83,11 @@ def validate(m):
                 need(e in PROVEN_EVENTS or e in unproven,
                      f"order {label}/{s.get('label')}: event {e} outside the "
                      f"proven set must be listed in unproven_events")
+            # Check if all events are proven but sequence is unproven
+            if events and all(e in PROVEN_EVENTS for e in events):
+                if tuple(events) not in PROVEN_SEQUENCES and not s.get("unproven_chain"):
+                    need(False,
+                         f"order {label}/{s.get('label')}: proven events in an unproven sequence — set unproven_chain: true")
             if events and events[-1] == "Delivered":
                 any_delivered = True
 
