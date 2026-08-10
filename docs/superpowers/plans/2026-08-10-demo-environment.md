@@ -989,18 +989,29 @@ Ask **"Are returns in scope for this demo?"** first.
    `shopify store auth list`), then resolve the location GID immediately —
    follow shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
    preference rules. Record both in the manifest.
-4. **Account confirmation (every run):** resolve
-   `${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`; `parcellab account account
-   show <id>` for the human name; ask "Using **<name>** (<id>) — correct?";
-   verify `parcellab settings edit-mode show` says `account-restricted` for
-   that same account, offering the fix if not. This single confirmation
-   covers every parcelLab write in the run.
-5. **CDC config:** read `CDC_ACCOUNT_CONFIG_SHOPIFY` /
-   `CDC_ACCOUNT_CONFIG_STANDARD` (process env, then
-   `~/.claude/parcellab-demo-request.env`). retain-shopify → the Shopify
-   UUID; otherwise the standard one. Missing → `selected_account_config_id:
-   null`, `config_source: "none"` (the CDC will use the caller's default —
-   say so in the final report).
+4. **Target account + confirmation (every run):** the demo's target is a
+   run-level choice — the user's own demo account
+   (`${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`, the default) or the
+   shared **parcelfashion** account (offer it only when
+   `CDC_ACCOUNT_CONFIG_PARCELFASHION` is stored; on retain-shopify never
+   offer it — the Shopify integration lives in the user's own account). The
+   choice drives every pL write in the run AND the CDC config key (the CDC
+   looks up linked orders in the config's target account, so they must
+   agree). Then: `parcellab account account show <id>` for the human name;
+   ask "Using **<name>** (<id>) — correct?"; verify
+   `parcellab settings edit-mode show` says `account-restricted` for that
+   same account, offering the fix if not.
+5. **CDC config:** read the key matching the target (process env, then
+   `~/.claude/parcellab-demo-request.env`): own account →
+   `CDC_ACCOUNT_CONFIG_DEFAULT` · parcelfashion →
+   `CDC_ACCOUNT_CONFIG_PARCELFASHION` · retain-shopify →
+   `CDC_ACCOUNT_CONFIG_SHOPIFY`. **First-run capture:** if the needed key is
+   missing, ask the user for the UUID once (it is visible in the CDC UI —
+   there is no list API; it is an id, not a credential), offer to append it
+   to `~/.claude/parcellab-demo-request.env`, and proceed. If they don't
+   have it: `selected_account_config_id: null`, `config_source: "none"`
+   (the CDC will use the caller's default — say so in the final report).
+   `config_source` values: `default | parcelfashion | shopify | none`.
 6. **One browser pass** (the run's only browsing):
    - Brand tokens: run branded-template's Step 3–6 extraction snippets
      (`${CLAUDE_PLUGIN_ROOT}/skills/branded-template/SKILL.md`) and build
@@ -1338,18 +1349,19 @@ Find the existing CDC credentials step (it sets `CDC_DEMO_API_TOKEN` / `CDC_DEMO
 ```markdown
 ### Optional: CDC account-config UUIDs (for demo-environment)
 
-The `demo-environment` skill selects a CDC account configuration by path:
-Shopify demos vs everything else. If the user has the UUIDs (visible in the
-CDC UI when editing an account config — there is no API to list them), append
-to `~/.claude/parcellab-demo-request.env`:
+The `demo-environment` skill selects a CDC account configuration matching the
+run's target account. Each user has up to three (visible in the CDC UI when
+editing an account config — there is no API to list them). If the user has
+them, append to `~/.claude/parcellab-demo-request.env`:
 
-    CDC_ACCOUNT_CONFIG_SHOPIFY=<uuid>
-    CDC_ACCOUNT_CONFIG_STANDARD=<uuid>
+    CDC_ACCOUNT_CONFIG_DEFAULT=<uuid>        # their own demo account (the default target)
+    CDC_ACCOUNT_CONFIG_PARCELFASHION=<uuid>  # the shared parcelfashion account
+    CDC_ACCOUNT_CONFIG_SHOPIFY=<uuid>        # Shopify demos
 
-Both optional. Missing values are fine — the CDC then uses the caller's
-default config and demo-environment says so in its report. Never ask for
-these in chat as pasted secrets — they are ids, not credentials, but still
-belong in the env file, not the transcript.
+All optional — demo-environment also captures a missing one on its first run
+and offers to store it here. With none stored, the CDC uses the caller's
+default config and demo-environment says so in its report. They are ids, not
+credentials, but they still belong in the env file, not the transcript.
 ```
 
 - [ ] **Step 2: Add the README rows**

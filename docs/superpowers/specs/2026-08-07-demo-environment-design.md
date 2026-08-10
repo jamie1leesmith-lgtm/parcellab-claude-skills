@@ -52,9 +52,9 @@ machinery fires all the Engage comms anyway). If yes, the second question is
 
 | Path | Orders created via | Returns story | CDC account config |
 |---|---|---|---|
-| **Engage** | direct pL writes (`order-lifecycle` mechanics) | none | standard |
-| **Retain, non-Shopify** | direct pL writes (`order-lifecycle` mechanics) | pL returns portal on the account | standard |
-| **Retain, Shopify** | **real Shopify orders** via CLI → parcelLab Shopify integration syncs them | Shopify-linked Returns Portal v2 against the seeded dev store | shopify |
+| **Engage** | direct pL writes (`order-lifecycle` mechanics) | none | matches the target account (default / parcelfashion) |
+| **Retain, non-Shopify** | direct pL writes (`order-lifecycle` mechanics) | pL returns portal on the account | matches the target account (default / parcelfashion) |
+| **Retain, Shopify** | **real Shopify orders** via CLI → parcelLab Shopify integration syncs them | Shopify-linked Returns Portal v2 against the seeded dev store | shopify (user's own account) |
 
 All three share the same skeleton: intake → template (checkpoint → publish →
 assign) → orders with events → **one CDC call** → report.
@@ -74,11 +74,17 @@ The conductor is a new skill at `plugins/pl-tools/skills/demo-environment/`
    count (1–5, default 3), per-order fraud level + scenario, slots 4/5 on
    Retain runs · CDC region + category (US/UK/DE, Home/Electronics/Fashion),
    inferred then confirmed.
-2. **parcelLab account confirmation** — resolve `$PARCELLAB_ACCOUNT_ID`
-   (fallback `$PARCELLAB_USER_ID`), show the account **by name** via
-   `parcellab account account show`, get a yes, verify
-   `parcellab settings edit-mode show` says `account-restricted` for that
-   account. Covers every pL write in the run.
+2. **Target account + parcelLab account confirmation** — the demo's target
+   is a run-level choice: the user's own demo account
+   (`$PARCELLAB_ACCOUNT_ID`, fallback `$PARCELLAB_USER_ID` — the default) or
+   the shared **parcelfashion** account (offered when its config UUID is
+   stored; Shopify opps always use the user's own account, where their
+   Shopify integration lives). The choice drives every pL write in the run
+   (template, orders) *and* the CDC config selection — the CDC looks up
+   linked orders in the config's target account, so these must agree. Then:
+   show the chosen account **by name** via `parcellab account account show`,
+   get a yes, verify `parcellab settings edit-mode show` says
+   `account-restricted` for that same account (offer the fix if not).
 3. **One browser pass** on the prospect site (the only browsing in the run):
    brand styles/logo/hero via the `branded-template` Step 3–6 snippets →
    `brand_tokens`; product pool (aim ≥8 PDP candidates) in the superset shape,
@@ -162,12 +168,17 @@ id/status/request_url. Linking is best-effort per item — failures land only
 in the request's `job_logs`, so the report tells the user to eyeball the
 request page (no list/read API exists).
 
-`selected_account_config_id` comes from `~/.claude/parcellab-demo-request.env`:
-`CDC_ACCOUNT_CONFIG_SHOPIFY` on the Shopify path, `CDC_ACCOUNT_CONFIG_STANDARD`
-otherwise. Missing value → omit the field (the CDC then uses the caller's
-default config) and say so in the report. Intake may optionally enable
-synthetic generation (`generate_orders: true` + `order_types`) for slots not
-covered by real orders; default is off.
+`selected_account_config_id` is per-user and per-target, from
+`~/.claude/parcellab-demo-request.env`: `CDC_ACCOUNT_CONFIG_DEFAULT` (the
+user's own demo account — the default target), `CDC_ACCOUNT_CONFIG_PARCELFASHION`
+(the shared parcelfashion account), `CDC_ACCOUNT_CONFIG_SHOPIFY` (Shopify
+demos). The intake's target-account choice selects the key. **First-run
+capture:** when the needed key is missing at intake, the skill asks for the
+UUID once (from the CDC UI — there is no list API), offers to store it in the
+env file, and proceeds; if the user doesn't have it, omit the field (the CDC
+then uses the caller's default config) and say so in the report. Intake may
+optionally enable synthetic generation (`generate_orders: true` +
+`order_types`) for slots not covered by real orders; default is off.
 
 ### Phase 4 — Report (two beats)
 
@@ -245,7 +256,7 @@ the single interface between conductor and sub-skills. Sketch:
   "account": { "id": 1626718, "name": "…", "confirmed_at": "…",
                "edit_mode_verified": true },
   "cdc": { "selected_account_config_id": "<uuid or null>",
-           "config_source": "shopify | standard | none",
+           "config_source": "default | parcelfashion | shopify | none",
            "generate_orders": false, "order_types": [] },
   "shopify": { "enabled": true, "store": "x.myshopify.com",
                "location_id": "gid://shopify/Location/…" },
@@ -354,10 +365,11 @@ orchestrated.
    repo's `fraud_risk_payloads.json` (same prediction ids/timestamps/domain);
    stored orders expose it as `customFields.riskAssessment` + `tags`,
    confirming the `additional_attributes` send shape.
-3. **CDC landing-page slot semantics** — ask Max what each `order_type`
-   drives on the v2 demo page, so slot claims (esp. linking real orders into
-   fraud slots) render as intended. Also collect the two
-   `CDC_ACCOUNT_CONFIG_*` UUIDs from the CDC UI.
+3. **CDC landing-page slot semantics** — Jamie is asking Max what each
+   `order_type` drives on the v2 demo page, so slot claims (esp. linking real
+   orders into fraud slots) render as intended. The three per-user
+   `CDC_ACCOUNT_CONFIG_*` UUIDs (default / parcelfashion / shopify) come from
+   the CDC UI; the skill captures them on first run (decided 2026-08-10).
 4. **Unproven event chains** — `recovered` sequence and `Delivered-
    ParcelLocker`: verify live, record in `status-codes.md`.
 
