@@ -28,6 +28,10 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
    pick it silently. Propose a baseline from what the products are, then ask —
    see *Article categories* below.
 
+2c. **Offer the extras gate before building anything.** Ask once whether anything
+   else should go on the order, then apply what the user picks — see *Extra order
+   information* below. The default is send-as-is; skipping takes one word.
+
 3. **Build the payload.** Construct a single JSON object following the structure in *Payload shape*. Save it to a temp file so the CLI can use `--data @file` and you avoid shell-quoting pain:
 
    ```bash
@@ -39,7 +43,7 @@ The full API spec lives at <https://docs.parcellab.com/docs/developers/orders/fu
    itemises, field by field:
    - order_number, recipient, destination country, courier, tracking number
    - every article with its `article_category`
-   - **every extra agreed at the previous step, with its actual value**
+   - **every extra agreed at step 2c, with its actual value**
 
    An extra that was discussed but doesn't appear here is a defect: this summary
    is the last point where a wrong promise date or a mistyped recipient role is
