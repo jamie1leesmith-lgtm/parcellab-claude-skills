@@ -241,12 +241,19 @@ def summarise(run_dir):
         window = None
 
     def by_kind(kind):
-        out = {}
+        """Minutes per name, unioned across every closed span for that name.
+
+        `pair_intervals` emits one span per open/close pair, so a lane marked
+        twice has several. Keying by name alone let the last one overwrite the
+        rest — 52 minutes of work reported as 2.0. A name with no closed span
+        stays absent.
+        """
+        grouped = {}
         for s in everything:
             if s["kind"] == kind and s["start"] and s["end"]:
-                out[s["name"]] = _minutes(
-                    (s["end"] - s["start"]).total_seconds())
-        return out
+                grouped.setdefault(s["name"], []).append((s["start"], s["end"]))
+        return {name: _minutes(union_seconds(spans))
+                for name, spans in grouped.items()}
 
     per_lane = by_kind("lane")
     slowest = max(per_lane, key=per_lane.get) if per_lane else None

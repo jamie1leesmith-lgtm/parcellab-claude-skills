@@ -349,6 +349,53 @@ class TestSummarise(unittest.TestCase):
         self.assertEqual(out["per_lane"]["scrape"], 10.0)
         self.assertEqual(out["per_lane"]["cdc"], 1.0)
 
+    def test_a_lane_marked_twice_counts_both_spans(self):
+        # SKILL.md opens lane/orders at more than one site, and any retry adds
+        # a second pair. Keying per_lane by name alone let the last pair
+        # overwrite the first: 52 minutes of work reported as 2.0, and the
+        # wrong lane named as slowest in a written telemetry column.
+        timeline = [
+            {"kind": "lane", "name": "orders", "phase": "start",
+             "at": "2026-08-11T20:00:00Z"},
+            {"kind": "lane", "name": "orders", "phase": "end",
+             "at": "2026-08-11T20:50:00Z"},
+            {"kind": "lane", "name": "orders", "phase": "start",
+             "at": "2026-08-11T21:00:00Z"},
+            {"kind": "lane", "name": "orders", "phase": "end",
+             "at": "2026-08-11T21:02:00Z"},
+            {"kind": "lane", "name": "cdc", "phase": "start",
+             "at": "2026-08-11T21:10:00Z"},
+            {"kind": "lane", "name": "cdc", "phase": "end",
+             "at": "2026-08-11T21:15:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertEqual(out["per_lane"]["orders"], 52.0)
+        self.assertEqual(out["per_lane"]["cdc"], 5.0)
+        self.assertEqual(out["slowest_lane"], "orders")
+
+    def test_overlapping_spans_for_one_name_are_not_double_counted(self):
+        # Same union rule as everywhere else: a name's spans combine by union.
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:00:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:05:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "end",
+             "at": "2026-08-11T20:15:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:10:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "end",
+             "at": "2026-08-11T20:20:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertEqual(out["per_agent"]["scrape"], 15.0)
+
+    def test_a_lane_with_no_closed_span_stays_absent(self):
+        timeline = [{"kind": "lane", "name": "cdc", "phase": "start",
+                     "at": "2026-08-11T21:05:00Z"}]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertEqual(out["per_lane"], {})
+
     def test_empty_run_reports_nulls_not_zeros(self):
         out = timings.summarise(a_run_dir())
         self.assertIsNone(out["total_elapsed_min"])
