@@ -61,7 +61,8 @@ would retire that distinction.
 
 Durations are only ever the difference between two recorded stamps, so a phase
 nobody marked is a phase nobody can measure. Call `run_state.mark()` at each
-boundary below; each is one line beside work you are already doing.
+boundary below; each is one line beside work you are already doing, and each
+is named again at the step where it happens.
 
 | Boundary | Call |
 |---|---|
@@ -121,7 +122,7 @@ next republish. Publishing is never load-bearing.
    the most recent such run is the candidate. If one exists, offer it in this
    same round ("reuse the pool scraped for <brand> on <date>, or scrape
    fresh?"). No candidate → no offer, and step 3 dispatches as normal.
-3. **Dispatch the scrape agent immediately.** Use the Agent tool
+3. **Dispatch the scrape agent immediately** — `mark(d, "agent", "scrape", "start")` and `mark(d, "lane", "scrape", "start")` as you dispatch. Use the Agent tool
    (general-purpose subagent, background) with exactly this brief, filling
    the placeholders. **Resolve `${CLAUDE_PLUGIN_ROOT}` to its absolute path
    and paste the three real file paths into the dispatched brief** — a
@@ -165,7 +166,7 @@ next republish. Publishing is never load-bearing.
    `{"status": "ok", "error": null}`. Without that file the pre-build at
    step 6 waits on a precondition nothing else will ever satisfy. Once
    `results/scrape.json` shows
-   `ok`: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py`, then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and republish the artifact — non-fatal. **Never hand-edit `run-page.html`;** it is derived, and the next render overwrites it.
+   `ok`: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py` — `mark(d, "agent", "scrape", "end")` the moment the file lands, plus `mark(d, "lane", "scrape", "end")` — then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and republish the artifact — non-fatal. **Never hand-edit `run-page.html`;** it is derived, and the next render overwrites it.
 4. **Interview concurrently, in chat** (batch with AskUserQuestion where
    possible) — the remaining rounds, while the scrape agent runs:
    - destination country — **never assume it**
@@ -294,7 +295,8 @@ next republish. Publishing is never load-bearing.
    proposed.** The HTML exists on disk from step 6, so serve it and put it in
    front of the user now: follow branded-template Step 8 (launch config →
    `preview_start` → navigate → screenshot), ask *"Does this look right before
-   I push it to parcelLab?"*, and iterate on the file until they say yes. This
+   I push it to parcelLab?"* — `mark(d, "gate", "template", "asked")` as you
+   ask, `"answered"` when they reply — and iterate on the file until they say yes. This
    is the run's first deliverable and it gates every comm the environment will
    send, so it is approved on its own, ahead of the plan.
    - **Hold the run page here.** Publish a template-only state — the preview,
@@ -317,10 +319,13 @@ next republish. Publishing is never load-bearing.
    unproven items) · CDC region/category/config source · CDC synthetic
    generation on/off (+ which slots) · the account by name. One explicit yes
    covers all of it; any tweak loops back here. When the gate opens: record it
-   via `run_state.py`, re-render with `render_run_page.py <run dir>` and
+   via `run_state.py` — `mark(d, "gate", "plan", "asked")` as you pose it, and
+   again on every re-ask — re-render with `render_run_page.py <run dir>` and
    republish — non-fatal.
 
-   **Once approved:** record it via `run_state.py`, re-render, and republish
+   **Once approved:** record it via `run_state.py` —
+   `mark(d, "gate", "plan", "answered")` at the moment the yes arrives, which
+   is where `Duration to build` starts — re-render, and republish
    again — non-fatal. **Then open the telemetry row** (skip entirely when
    `PL_RUN_TELEMETRY_DB` is unset): build the payload with
    `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_telemetry_row.py <run dir> committed
@@ -367,7 +372,10 @@ next republish. Publishing is never load-bearing.
 ## Phase 1 — Template ∥ seed
 
 **Dispatch the seed agent first (retain-shopify only)**, so it runs while
-you build the template. Use the Agent tool (general-purpose subagent,
+you build the template — `mark(d, "agent", "seed", "start")` as you dispatch,
+and `mark(d, "agent", "seed", "end")` when `results/shopify-seed.json` lands.
+Open each lane's own work with `mark(d, "lane", "<template|seed>", "start")`
+and close it with `"end"`. Use the Agent tool (general-purpose subagent,
 background) with exactly this brief, filling the placeholders:
 
 > Invoke the pl-tools:shopify-seed skill and execute its "Orchestrated runs
@@ -461,13 +469,15 @@ files.)
    account both come from the manifest, never from the ambient
    `$PARCELLAB_ACCOUNT_ID`, which may point at a different account than the
    one confirmed at intake. Once drivers are launched: record it via
-   `run_state.py` (including `set_schedule`, which the page's clock needs),
+   `run_state.py` — `mark(d, "lane", "orders", "start")`, and
+   `set_schedule`, which the page's clock needs —
    re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 5. **Watch and republish.** After launching every driver, run
    `${CLAUDE_PLUGIN_ROOT}/scripts/wait_for_event.sh <run dir>` as a tracked
    background task. When it returns, ingest each order's new `events.jsonl`
    lines with `run_state.confirm_event(...)`, re-render, republish, and start
-   the watcher again. Repeat until every driver's task has reported completion.
+   the watcher again. Repeat until every driver's task has reported completion,
+   then `mark(d, "lane", "orders", "end")`.
 
    This is what makes the page live rather than frozen for the fifteen minutes
    that matter most. Expect roughly 8–12 republishes per run; that cost was
@@ -503,7 +513,8 @@ pace. It also includes the launch mechanics in full: a **tracked background task
 per order (`run_in_background: true`, never `nohup`)** with `STATE_FILE` set,
 followed by the same `wait_for_event.sh` watch-and-republish loop as the direct
 engine's step 5. Once drivers are launched: record it via `run_state.py`
-(including `set_schedule`), re-render with `render_run_page.py <run dir>` and
+(`mark(d, "lane", "orders", "start")` and `set_schedule`, with the matching
+`"end"` when the watch loop finishes), re-render with `render_run_page.py <run dir>` and
 republish — non-fatal. Then write `order.json` (order_number = the Shopify
 order name, e.g. "#1001") and, once all orders are processed, build
 `results/linked-orders.json` the same way as the direct engine.
@@ -519,7 +530,8 @@ Exactly one CDC interaction per run, after Phase 2 — with a `cdc_live_`
 token, linking existing orders is only possible on the creation call.
 Invoke the pl-tools:demo-request skill's "Orchestrated runs
 (demo-environment)" contract against the run dir: it builds the payload
-from the manifest + `results/linked-orders.json` and submits once. Do not
+from the manifest + `results/linked-orders.json` and submits once — bracket
+the invocation with `mark(d, "lane", "cdc", "start")` and `"end"`. Do not
 retry a 500 (the request already exists — the results file records it).
 
 ## Phase 4 — Report
@@ -535,7 +547,7 @@ config" when `config_source` is `none`), and `generate_orders`/`orders`
 (say plainly whether the CDC was also asked to generate synthetic orders,
 and for which slots). No currency symbols. **If the edit-mode guard was
 repointed for this run** (per Phase 0 step 4's note), offer here to restore
-it to the user's own account. Once Beat 1 is posted: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
+it to the user's own account. Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends — re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 Update the telemetry row (stage `beat1`) with the build results, if
 `results/telemetry.json` exists.
 
@@ -552,8 +564,8 @@ unproven event or chain that fired correctly, offer to record it in
 Once Beat 2 is posted: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 
 Update the telemetry row (stage `beat2`), filling `Comms expected` and
-`Comms fired` from the verification just performed, and `Duration to build`
-from the gate-approval and Beat 1 timestamps.
+`Comms fired` from the verification just performed. `Duration to build` is
+derived from the marks — never compute a duration by hand.
 
 **Then answer these three questions explicitly before writing the row** — they
 are the only source for the self-reported deviations, and an open "did

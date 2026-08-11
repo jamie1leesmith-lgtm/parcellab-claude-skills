@@ -44,12 +44,12 @@ Columns, exactly:
 | Events pushed | Number | |
 | Comms expected | Number | |
 | Comms fired | Number | |
-| Duration to build | Number | |
+| Duration to build | Number | minutes, derived: plan gate `answered` → Beat 1 `end`; null if either mark is missing |
 | Total elapsed | Number | minutes, derived |
 | Measured working time | Number | minutes, union of all measured intervals |
 | Waiting on user | Number | minutes, union of gate ask→answer |
 | Unattributed | Number | minutes, total minus everything covered |
-| Event window | Number | minutes, first driver start → last driver end |
+| Event window | Number | minutes, first driver start → last driver end; null while any driver is unfinished |
 | Slowest lane | Text | |
 | Timeline | Text | the run's timeline as JSON |
 | Deviations | Multi-select | validator_rejected · api_error · retry_needed · gate_reasked · comm_missing · lane_fallback_inline · manual_intervention · instruction_unfollowable · workaround_invented |
@@ -102,8 +102,12 @@ surface. A stalled run leaves a row with no Beat 2, which is the signal.
 
 ## Rules
 
-- **Never write the triage columns from a run.** They belong to review. A run
-  that could write them could also silently destroy them.
+- **Never write the triage columns from a run**, with one exception. They
+  belong to review, and a run that could write them could also silently
+  destroy them. The exception is `Triage status`, set to `Untriaged` at row
+  creation (stage `committed`) only, so unreviewed rows are findable by value
+  rather than by querying for empty. `beat1` and `beat2` do not emit it — an
+  update that re-sent it would reset whatever the reviewer had chosen.
 - **Never write credentials, tokens, or customer data.** Demo customers are
   synthetic; account id and brand URL are internal-only.
 - **`/pl-setup` sets `PL_RUN_TELEMETRY_DB` automatically, without asking.**
