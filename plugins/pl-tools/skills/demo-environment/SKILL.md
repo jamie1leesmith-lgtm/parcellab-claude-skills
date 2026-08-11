@@ -6,7 +6,8 @@ argument-hint: <prospect-url>
 
 # parcelLab — Unified Demo Environment Builder
 
-One interview, one browser pass, one template checkpoint → a complete demo:
+One interview, a background scrape lane, and at most one template
+checkpoint (none when a repeat brand's layout verifies live) → a complete demo:
 published branded layout, 1–5 fraud-tagged orders running their journeys,
 (if Shopify) a seeded dev store with real orders on the real integration,
 and one CDC demo request linking those orders.
@@ -36,7 +37,10 @@ Ask **"Are returns in scope for this demo?"** first.
    needed to know what to collect.
 3. **Dispatch the scrape agent immediately.** Use the Agent tool
    (general-purpose subagent, background) with exactly this brief, filling
-   the placeholders:
+   the placeholders. **Resolve `${CLAUDE_PLUGIN_ROOT}` to its absolute path
+   and paste the three real file paths into the dispatched brief** — a
+   subagent does not reliably inherit that variable, and an unexpanded one
+   hands it three unusable paths:
 
    > Execute the demo-environment scrape pass for the run directory
    > `<run dir>`, prospect `<url>`, path `<engage|retain|retain-shopify>`.
@@ -138,7 +142,8 @@ Ask **"Are returns in scope for this demo?"** first.
    the ★ checkpoint; Phase 1 then has no template work.
 6. **Pre-build everything sendable**, once the interview and
    `results/scrape.json` (status ok) are both in: the template HTML from the
-   tokens (branded-template Step 7 — build only, no push), every order's
+   tokens (branded-template Step 7 — build only, no push; skip when the
+   repeat-brand shortcut was taken), every order's
    `create.json` + `track.json` + `NN-<status>.json` event files (fraud
    fragments included, order-lifecycle's payload rules verbatim, no POSTs and
    no PUTs), and the proposed plan itself.
@@ -147,8 +152,9 @@ Ask **"Are returns in scope for this demo?"** first.
    pool, image validation, exactly as the scrape brief specifies — and carry
    on. The agent is an accelerator, never load-bearing.
 7. **Propose the plan** and gate on approval (✋ — the intake's one gate;
-   one yes releases the sends, and nothing before this step has touched
-   parcelLab, Shopify or the CDC):
+   one yes releases the sends, and nothing before this step has *sent
+   anything to* parcelLab, Shopify or the CDC — the only prior calls are
+   read-only lookups plus the edit-mode guard):
    core 4 (four distinct product types) · per-order product distribution ·
    (retain-shopify) the seed set = core 4 + extras at distinct price points ·
    the order/scenario/fraud matrix with expected comm per event (mark
