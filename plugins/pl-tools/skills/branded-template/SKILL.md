@@ -253,7 +253,7 @@ From the extracted data, derive these values:
 | Token | Source / Rule |
 |---|---|
 | `BRAND_NAME` | Brand display name (infer from domain or page title) |
-| `FONT_STACK` | `bodyFont` — strip quotes if needed, add `Helvetica, Arial, sans-serif` fallback |
+| `FONT_STACK` | `bodyFont` — add `Helvetica, Arial, sans-serif` fallback, and **replace every double quote with a single quote** (`"Segoe UI"` → `'Segoe UI'`). Not optional: this value is substituted into `style="…"` attributes, and one double quote closes the attribute early, silently breaking everything after it. Live 2026-08-11 this rule read "strip quotes **if needed**", the scraper returned UNIQLO's quoted stack, and the hedge made it skippable — the layout shipped a default-blue link on a black button and both of Step 7's greps passed |
 | `BODY_BG` | Usually `#f2f2f2` (light grey canvas) regardless of site body bg; use `#f5f5f5` minimum |
 | `HEADER_BG` | If site header is dark → `#000000`. If coloured → that colour. If transparent/white → use the brand's primary CTA colour or `#000000` |
 | `CARD_BG` | Always `#ffffff` |
@@ -313,13 +313,28 @@ Substitute all `__BRAND_X__` tokens. Key structural rules for the final HTML:
   brand/style value from Step 6 (colours, fonts, radii, logo URLs, footer copy and address) and
   takes a real value. After substitution, grep the output for `{{preview}}` and for a leftover
   `__BRAND_` to confirm both.
-- **Then check the markup is well-formed — the greps above do not.** Removing the
-  soft transition band is a multi-element deletion, and a non-greedy regex that
-  stops at the first `</tr>` leaves an orphaned `</table></td></tr>` behind.
-  Browsers silently auto-correct it, so the preview looks perfect while the
-  broken markup is what gets pushed to parcelLab (hit live 2026-08-11; both greps
-  passed). Confirm open/close counts match for `<table>`, `<tr>` and `<td>`, and
-  that nothing is left unclosed at EOF, before Step 8.
+- **No substituted value may contain a double quote.** Every `__BRAND_*__` token lands inside a
+  `style="…"` attribute, so one `"` in a value ends the attribute and everything after it becomes
+  stray markup. Normalise quotes when building the substitution map — do not rely on spotting it
+  in the render, because browsers auto-correct it and the preview looks fine.
+
+**Then validate the built file mechanically — the greps above do not catch structural damage.**
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/check_layout_html.py \
+  "$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html"
+```
+
+Exit 0 means clean. Any `PROBLEM:` line must be fixed before Step 8 — a layout that fails this
+check must never reach Step 9's push. The script verifies all six parcelLab tokens are present,
+no `__BRAND_` token survived, no `style="…"` attribute was closed early by a quoted value, and
+that `<table>`/`<tr>`/`<td>` open and close counts match.
+
+Two of those were prose instructions that conductors passed while shipping broken markup. Removing
+the soft transition band is a multi-element deletion, and a non-greedy regex that stops at the
+first `</tr>` leaves an orphaned `</table></td></tr>` behind; browsers silently auto-correct it,
+so the preview looks perfect while the broken markup is what gets pushed to parcelLab (hit live
+2026-08-11, both greps passing). Checking by eye did not work twice, so it is now a script.
 
 Write to: `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html` — where `$HOME` is the current user's home directory. Create the folder if missing. **Do NOT write under `~/Documents`** — the preview server cannot read it (macOS TCC protection).
 
