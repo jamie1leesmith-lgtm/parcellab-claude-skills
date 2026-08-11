@@ -5,7 +5,11 @@ query across users instead of by anecdote.
 
 ## One-time setup (the database owner)
 
-Create a Notion **database, table view**, then share it with the team. Columns,
+Create a Notion **database, table view**, then share it with the team.
+
+**Created 2026-08-11:** https://app.notion.com/p/67609211a22643bfaa6bf94ccbd3f391
+(private, personal area for now — share it with the team, or recreate it under
+a shared page, before other people set `PL_RUN_TELEMETRY_DB`). Columns,
 exactly:
 
 | Column | Type | Options |
@@ -32,7 +36,7 @@ exactly:
 | Deviations | Multi-select | validator_rejected · api_error · retry_needed · gate_reasked · comm_missing · lane_fallback_inline · manual_intervention · instruction_unfollowable · workaround_invented |
 | Error detail | Text | |
 | Issue key | Text | |
-| Triage status | Select | Untriaged · Reviewed, no action · Fix planned · Fix shipped · Can't reproduce |
+| Triage status | Select | Untriaged · Reviewed - no action · Fix planned · Fix shipped · Can't reproduce |
 | Reviewed at | Date | |
 | Reviewed by | Text | |
 | Action taken | Text | |
