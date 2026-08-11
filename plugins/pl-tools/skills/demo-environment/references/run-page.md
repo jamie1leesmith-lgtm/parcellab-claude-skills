@@ -9,9 +9,10 @@ no phase blocks on it.
 
 Rules baked into every publish: self-contained HTML (no external requests —
 the artifact CSP blocks them; product images ARE external, so render each
-product card with its name/price/type and link the image URL rather than
-embedding `<img>` tags that may be blocked — test on the first smoke run
-and, if remote images render, switch to `<img>`), light/dark via
+product card with its name/price/type and link the image URL. **Never use
+`<img>` with a remote `src`** — measured on the 2026-08-11 Pets at Home smoke
+run, a remote product image renders as a broken-image icon, which reads as a
+failed run rather than a styling choice), light/dark via
 `@media (prefers-color-scheme: dark)` plus `:root[data-theme="…"]`
 overrides, favicon `📦` (never changes mid-run), title
 `<brand> demo — <run id>`. Keep the URL returned by the first publish and

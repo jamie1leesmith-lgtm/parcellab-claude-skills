@@ -26,6 +26,37 @@ Ask **"Are returns in scope for this demo?"** first.
   **retain-shopify**. An Engage-only run never asks the Shopify question;
   Retain covers the Engage story automatically.
 
+## Write permissions — settle these BEFORE the gate
+
+A run is read-only until the ✋ gate, then fires a dense burst of writes. If write
+permissions are not settled first, the run stalls at its first write with the
+environment half-built and the operator answering prompts one at a time.
+
+**Check during Phase 0 step 4**, in the same round that verifies `edit-mode` —
+it is the natural place, and it is still cheap to fix there. Read the user's
+`~/.claude/settings.json`; if `permissions.allow` does not cover the writes
+below, say so at the gate and let the user add them (they must edit that file
+themselves — an agent cannot widen its own permissions, and any attempt is
+correctly refused).
+
+| Write | Rule |
+|---|---|
+| Push the layout | `mcp__<parcellab-mcp-server>__journey_write_layout` |
+| Publish the layout | `Bash(parcellab --env prod journey layout publish *)` |
+| Shopify seed + orders | `Bash(shopify store execute *)` |
+
+`<parcellab-mcp-server>` is **per-install** — the parcelLab connector registers
+under a different id for every user, so these rules cannot be copied between
+teammates verbatim. Resolve it by reading the name of any parcelLab MCP tool
+available in the session (the segment between `mcp__` and the tool name) and
+substitute it before offering the snippet.
+
+Order creation and the CDC submit run through scripts, not these tools, and are
+covered by whatever Bash rules the user already has. Do not propose
+`Bash(parcellab *)`: `pl-setup` installs a `PreToolUse` hook that auto-approves
+read-only `parcellab` commands and refuses every write verb, and a blanket rule
+would retire that distinction.
+
 ## The run page
 
 Every run keeps one progress artifact — see
@@ -105,7 +136,7 @@ next republish. Publishing is never load-bearing.
      retain paths offer #4 manual_return and #5 return_tracking (both
      happy → Delivered). Scenario vocabulary: happy · stuck-delay ·
      recovered (`InTransit → WarehouseDelay → OutForDelivery → Delivered`,
-     label: chain unproven) · locker (`… → Delivered-ParcelLocker`, label:
+     proven live 2026-08-11 — no unproven label) · locker (`… → Delivered-ParcelLocker`, label:
      status unproven) · custom (user-specified sequence, label per
      order-lifecycle's confidence rules). Runs of 2+ orders need at least
      one split-shipment order. Every order gets a distinct synthetic
@@ -133,7 +164,9 @@ next republish. Publishing is never load-bearing.
      `parcellab settings edit-mode show` says `account-restricted` for that
      same account, offering the fix if not. **If the guard was repointed for
      this run** (e.g. at parcelfashion), note it — Beat 1 offers to restore it
-     to the user's own account.
+     to the user's own account. In the same round, check write permissions per
+     *Write permissions* above — a missing rule is cheap to fix here and stalls
+     the run mid-build if it surfaces after the gate.
    - **CDC config:** read the key matching the target (process env, then
      `~/.claude/parcellab-demo-request.env`): own account →
      `CDC_ACCOUNT_CONFIG_DEFAULT` · parcelfashion →
