@@ -4,7 +4,12 @@
 Reads the canned CDC payloads, repoints every occurrence of the source demo
 domain at the active store, and rewrites prediction timestamps so the risk
 data reads as recent rather than months old. Output goes on the order as
-top-level `tags` plus `additional_attributes.riskAssessment`.
+top-level `tags` plus `additional_attributes`.
+
+The v4 orders API requires `additional_attributes` to be a LIST of
+`{"key", "value"}` objects — an object keyed by attribute name is rejected
+with 400 "Input should be a valid list" (live-verified 2026-08-11; shape
+matches parcelLab's own custom-demo-creator `main.py`).
 """
 
 import argparse
@@ -53,10 +58,13 @@ def main():
 
     fragment = {
         "tags": entry["tags"],
-        "additional_attributes": {
-            "riskAssessment": [freshen(p, now, i)
-                               for i, p in enumerate(entry["riskAssessment"])],
-        },
+        "additional_attributes": [
+            {
+                "key": "riskAssessment",
+                "value": [freshen(p, now, i)
+                          for i, p in enumerate(entry["riskAssessment"])],
+            },
+        ],
     }
     json.dump(fragment, sys.stdout, indent=2)
     print()

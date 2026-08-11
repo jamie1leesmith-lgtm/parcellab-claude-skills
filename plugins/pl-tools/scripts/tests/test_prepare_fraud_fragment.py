@@ -31,9 +31,17 @@ class TestPrepareFraudFragment(unittest.TestCase):
         self.assertEqual(self.fragment("low")["tags"], ["FraudRiskLow"])
 
     def test_output_shape(self):
+        # v4 API contract: additional_attributes is a LIST of {key, value}
+        # objects (an object keyed by name gets 400 "Input should be a valid
+        # list" — live-verified 2026-08-11).
         out = self.fragment("medium")
         self.assertEqual(set(out), {"tags", "additional_attributes"})
-        ra = out["additional_attributes"]["riskAssessment"]
+        attrs = out["additional_attributes"]
+        self.assertIsInstance(attrs, list)
+        self.assertEqual(len(attrs), 1)
+        self.assertEqual(set(attrs[0]), {"key", "value"})
+        self.assertEqual(attrs[0]["key"], "riskAssessment")
+        ra = attrs[0]["value"]
         self.assertIsInstance(ra, list)
         self.assertGreater(len(ra), 0)
 
@@ -44,7 +52,7 @@ class TestPrepareFraudFragment(unittest.TestCase):
 
     def test_timestamps_freshened(self):
         now = datetime.fromisoformat(NOW)
-        for pred in self.fragment("high")["additional_attributes"]["riskAssessment"]:
+        for pred in self.fragment("high")["additional_attributes"][0]["value"]:
             for key in ("created_at", "updated_at", "prediction_date"):
                 if key in pred and pred[key]:
                     ts = datetime.fromisoformat(pred[key])
