@@ -111,3 +111,65 @@ Ask **"Are returns in scope for this demo?"** first.
    `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py <run>/demo-manifest.json`
    — on `MANIFEST INVALID`, fix the named gaps (re-asking if needed) and
    re-validate. **Never start Phase 1 on an invalid manifest.**
+
+## Phase 1 — Template ∥ seed
+
+**Dispatch the seed agent first (retain-shopify only)**, so it runs while
+you build the template. Use the Agent tool (general-purpose subagent,
+background) with exactly this brief, filling the placeholders:
+
+> Invoke the pl-tools:shopify-seed skill and execute its "Orchestrated runs
+> (demo-environment)" contract for the run directory `<run dir>`. The
+> manifest and `seed/seed-products.json` are already there. Ground rules,
+> non-negotiable: never open the Browser pane; never ask the user anything —
+> a gap is a failure report; write your outcome to
+> `<run dir>/results/shopify-seed.json` exactly as the contract specifies,
+> and return a one-paragraph summary plus the product/demo tables.
+
+**Then run branded-template inline** (main session): invoke the
+pl-tools:branded-template skill; its "Orchestrated runs (demo-environment)"
+contract consumes the manifest's `brand_tokens` and account. Its Step 8
+preview question is ★ the run's one checkpoint — wait for the user there as
+that skill specifies. It finishes by writing
+`results/branded-template.json`.
+
+## The publish gate
+
+Phase 2 must not start until `results/branded-template.json` shows
+`"release_status": "published"` — order creation fires the
+order-confirmation comm immediately on every path, and an unpublished
+template means that first email goes out unbranded. If it says
+`not published`, offer exactly three ways forward and wait:
+1. fix and re-publish (follow branded-template Step 9a's failure table);
+2. the user publishes manually in the portal, then confirms here;
+3. explicitly proceed accepting unbranded comms (record the choice in the
+   report).
+
+**retain-shopify additionally waits for the seed**: `results/shopify-seed.json`
+must show `"status": "ok"` before Shopify orders are created (their line
+items reference seeded variants). A failed seed lane stops only the order
+stage of the Shopify path: report it, offer to re-run the seed inline from
+the same manifest (the fallback), and leave every other lane alone.
+
+## Phase 2 — Orders (direct engine: engage and retain paths)
+
+For each manifest order, in its `orders/<nn>-<label>/` directory, follow
+order-lifecycle's "Orchestrated runs (demo-environment)" contract:
+
+1. Fraud fragment: run `prepare_fraud_fragment.py` for the order's level and
+   merge `tags` + `additional_attributes` into `create.json`.
+2. Build `create.json` + the single PUT with all `add_tracking` mutations
+   (order-lifecycle's payload rules verbatim: randomised format-correct
+   tracking numbers, courier per shipment, `tracking.articles` mirrored,
+   split rules for 2-shipment orders).
+3. Write the `NN-<status>.json` event files from the shipment's `events`.
+4. `DRYRUN=1` pass; then launch `run-lifecycle.sh` detached
+   (`run_in_background`, `GAP_SECONDS` default 180) — one driver per order,
+   all orders concurrent.
+5. Write `order.json` per the contract.
+
+When every order's `order.json` exists, build
+`results/linked-orders.json`: every order with a non-null `cdc_slot` becomes
+`{"order_number": <order.json order_number>, "order_type": <cdc_slot>}`.
+An order whose creation failed is excluded (and reported); one order's
+failure never stops another's driver.
