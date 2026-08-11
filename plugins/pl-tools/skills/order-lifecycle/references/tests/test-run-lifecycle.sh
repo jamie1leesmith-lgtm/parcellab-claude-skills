@@ -87,4 +87,26 @@ env -u PARCELLAB_ACCOUNT_ID PARCELLAB_USER_ID=1626718 \
   EVENTS_DIR="$TMP" GAP_SECONDS=0 LOG_FILE="$LOG" DRYRUN=1 bash "$SCRIPT"
 grep -q "EVENT 1/3 .*(account=1626718)" "$LOG" || fail "G: legacy alias must resolve as account"
 
+# Test H: STATE_FILE is opt-in — unset means the driver behaves exactly as
+# before and writes no state anywhere.
+LOG="$TMP/h.log"
+STATE_DIR="$(mktemp -d)"
+EVENTS_DIR="$TMP" GAP_SECONDS=0 LOG_FILE="$LOG" DRYRUN=1 bash "$SCRIPT"
+ls "$STATE_DIR"/*.jsonl >/dev/null 2>&1 && fail "H: state written when STATE_FILE unset"
+
+# Test I: with STATE_FILE set, one JSON line per event, carrying the status and
+# tracking number the demo-environment watcher needs.
+echo '{"event_status":"InTransit","courier":"dpd-uk","tracking_number":"TN1"}' \
+  > "$STATE_DIR/01-InTransit.json"
+echo '{"event_status":"Delivered","courier":"dpd-uk","tracking_number":"TN1"}' \
+  > "$STATE_DIR/02-Delivered.json"
+LOG="$TMP/i.log"
+EVENTS_DIR="$STATE_DIR" GAP_SECONDS=0 LOG_FILE="$LOG" DRYRUN=1 \
+  STATE_FILE="$STATE_DIR/events.jsonl" bash "$SCRIPT"
+lines="$(wc -l < "$STATE_DIR/events.jsonl" | tr -d ' ')"
+[ "$lines" = "2" ] || fail "I: expected 2 state lines, got $lines"
+grep -q '"tracking_number": "TN1"' "$STATE_DIR/events.jsonl" || fail "I: tracking number missing"
+grep -q '"status": "InTransit"' "$STATE_DIR/events.jsonl" || fail "I: status missing"
+rm -rf "$STATE_DIR"
+
 echo "ALL TESTS PASSED"

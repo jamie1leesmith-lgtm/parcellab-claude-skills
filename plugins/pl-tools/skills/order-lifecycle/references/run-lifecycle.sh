@@ -19,6 +19,11 @@
 # (every write then fails with a misleading 404 about child accounts).
 # Env: EVENTS_DIR (required), GAP_SECONDS (default 180), LOG_FILE
 #      (default $EVENTS_DIR/run.log), DRYRUN (default 0).
+#      STATE_FILE (optional; unset = off). When set, one JSON object per line
+#      is appended after each event: {"status","tracking_number","at","http"}.
+#      The demo-environment conductor sets this so its watcher can turn event
+#      progress into run-page updates without polling the log. Standalone runs
+#      leave it unset and behave exactly as before.
 # Live mode also needs PARCELLAB_ACCOUNT_ID (or legacy PARCELLAB_USER_ID)
 # and the parcellab CLI on PATH, authenticated (parcellab auth login).
 set -euo pipefail
@@ -27,6 +32,7 @@ EVENTS_DIR="${EVENTS_DIR:?EVENTS_DIR required}"
 GAP_SECONDS="${GAP_SECONDS:-180}"
 LOG_FILE="${LOG_FILE:-$EVENTS_DIR/run.log}"
 DRYRUN="${DRYRUN:-0}"
+STATE_FILE="${STATE_FILE:-}"
 # CLI request path. Trailing slash is required; without it the API
 # 301-redirects and drops the body.
 API_PATH="/v4/track/events/"
@@ -80,16 +86,35 @@ if sys.argv[3]:
 print(json.dumps(d))
 " "$f" "$now" "$ACCOUNT_ID")
   log "EVENT $i/${#FILES[@]} -> $name (event_timestamp=$now) (account=${ACCOUNT_ID:-unset})"
+  outcome="dryrun"
   if [ "$DRYRUN" = "1" ]; then
     log "[dry-run] would POST $name to $API_PATH"
   else
     if resp=$(parcellab api request POST "$API_PATH" --data "$body" -o json 2>&1); then
       # HTTP 204 -> empty output; anything else the API returned gets logged.
       log "RESPONSE $name: OK${resp:+ $resp}"
+      outcome="OK"
     else
       rc=$?
       log "RESPONSE $name: CLI_ERROR exit=$rc ${resp}"
+      outcome="CLI_ERROR"
     fi
+  fi
+  # Machine-readable progress for the demo-environment watcher. Opt-in: with
+  # STATE_FILE unset this block never runs and the driver is unchanged.
+  if [ -n "$STATE_FILE" ]; then
+    python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+line = {
+    'status': d.get('event_status'),
+    'tracking_number': d.get('tracking_number'),
+    'at': sys.argv[2],
+    'http': sys.argv[3],
+}
+with open(sys.argv[4], 'a') as fh:
+    fh.write(json.dumps(line) + '\n')
+" "$f" "$now" "$outcome" "$STATE_FILE"
   fi
 done
 log "DONE sequence complete"
