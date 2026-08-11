@@ -72,9 +72,21 @@ next republish. Publishing is never load-bearing.
 1. **Create the run directory** `$HOME/parcellab-demo-runs/<handle>-<ts>/`
    (handle derived from the prospect URL exactly as shopify-seed Step 3
    derives `prospect_handle`; ts = YYYYMMDD-HHMM). Create `results/`,
-   `orders/` and `scrape/` inside it. Update `run-page.html` (state 1 per
-   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
-   and republish — non-fatal.
+   `orders/` and `scrape/` inside it. Initialise run state:
+
+   ```bash
+   python3 -c "import sys; sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/scripts'); \
+   import run_state; run_state.init('<run dir>', '<run id>', '<path>', '<account name>')"
+   ```
+
+   then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and
+   republish the artifact — non-fatal. Path and account are still unanswered
+   here and render as `—`; they fill in at the next render.
+
+   **Never hand-edit `run-page.html`.** It is derived from `run-state.json`, so
+   an edit is overwritten by the next render. Record facts through
+   `run_state.py` and re-render — that is what makes republishing cheap enough
+   to do a dozen times per run.
 2. **Path + brand round:** take the prospect URL and ask ONLY the path
    questions (returns in scope? · Shopify opp? — per *Paths*) plus, when one
    applies, the reuse offer below — the minimum needed to know what to
@@ -130,9 +142,7 @@ next republish. Publishing is never load-bearing.
    `{"status": "ok", "error": null}`. Without that file the pre-build at
    step 6 waits on a precondition nothing else will ever satisfy. Once
    `results/scrape.json` shows
-   `ok`: Update `run-page.html` (state 2 per
-   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
-   and republish — non-fatal.
+   `ok`: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py`, then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and republish the artifact — non-fatal. **Never hand-edit `run-page.html`;** it is derived, and the next render overwrites it.
 4. **Interview concurrently, in chat** (batch with AskUserQuestion where
    possible) — the remaining rounds, while the scrape agent runs:
    - destination country — **never assume it**
@@ -233,6 +243,11 @@ next republish. Publishing is never load-bearing.
      (that path, not the run dir: Step 8's preview server serves from there
      and cannot read `~/Documents`). Skip when the repeat-brand shortcut was
      taken.
+   - **The run's images, inlined** so the page can actually show them:
+     `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/inline_assets.py <run dir>`. The
+     artifact CSP blocks external requests, so a remote `<img src>` renders as
+     a broken-image icon — this is what makes product shots, the brand logo and
+     the hero visible on the run page at all.
    - **The fraud fragment** for every order, on every path — it depends on
      nothing the engines produce.
    - **Direct engine only** (engage and retain paths): every order's
@@ -278,12 +293,7 @@ next republish. Publishing is never load-bearing.
    the order/scenario/fraud matrix with expected comm per event (mark
    unproven items) · CDC region/category/config source · CDC synthetic
    generation on/off (+ which slots) · the account by name. One explicit yes
-   covers all of it; any tweak loops back here. When the gate opens: Update
-   `run-page.html` (state 3 per
-   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
-   and republish — non-fatal. Once approved: Update `run-page.html` (state 4
-   per `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
-   and republish — non-fatal.
+   covers all of it; any tweak loops back here. When the gate opens, and again once approved: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py`, then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and republish the artifact — non-fatal. **Never hand-edit `run-page.html`;** it is derived, and the next render overwrites it.
 9. **Write the manifest** to `demo-manifest.json` (schema:
    `run{…, pace: "standard"|"fast" — absent means standard, page_url —
    recorded after the first run-page publish}`, `path`,
@@ -389,19 +399,42 @@ files.)
    tracking numbers, courier per shipment, `tracking.articles` mirrored,
    split rules for 2-shipment orders).
 3. Write the `NN-<status>.json` event files from the shipment's `events`.
-4. `DRYRUN=1` pass; then launch `run-lifecycle.sh` detached
-   (`run_in_background`) — one driver per order, all orders concurrent.
+4. `DRYRUN=1` pass; then launch `run-lifecycle.sh` as a **tracked background
+   task — one Bash call per order with `run_in_background: true`, and NO
+   `nohup`, `&`, or `disown`** — all orders concurrent.
+
+   **Those are two different mechanisms and mixing them defeats both.**
+   `run_in_background` keeps the process attached to a task the user can see,
+   and notifies you when it exits. `nohup … &` detaches it from that task
+   entirely: live 2026-08-11 a conductor wrapped the launch in `nohup`, so the
+   tracked task was the *launcher* — it exited in about two seconds while three
+   drivers ran for fifteen minutes with nothing in the user's task list. The
+   user had to ask "I don't see any background tasks running?" to find out the
+   run was fine.
+
+   Set `STATE_FILE="<run dir>/orders/<nn>-<label>/events.jsonl"` on every launch
+   so the watcher in step 5 can see progress.
+
    `GAP_SECONDS` comes from the manifest's `run.pace`: 180 for standard (the
    default), 60 for fast. When pace is fast, Beat 2's report must note that
    comm ordering was not guaranteed at this pace. Pass `PARCELLAB_ACCOUNT_ID=<manifest account.id>`
    inline on every launch: `create.json`'s `account` field and the driver's
    account both come from the manifest, never from the ambient
    `$PARCELLAB_ACCOUNT_ID`, which may point at a different account than the
-   one confirmed at intake. Once drivers are launched: Update
-   `run-page.html` (state 5 per
-   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
-   and republish — non-fatal.
-5. Write `order.json` per the contract.
+   one confirmed at intake. Once drivers are launched: record it via
+   `run_state.py` (including `set_schedule`, which the page's clock needs),
+   re-render with `render_run_page.py <run dir>` and republish — non-fatal.
+5. **Watch and republish.** After launching every driver, run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/wait_for_event.sh <run dir>` as a tracked
+   background task. When it returns, ingest each order's new `events.jsonl`
+   lines with `run_state.confirm_event(...)`, re-render, republish, and start
+   the watcher again. Repeat until every driver's task has reported completion.
+
+   This is what makes the page live rather than frozen for the fifteen minutes
+   that matter most. Expect roughly 8–12 republishes per run; that cost was
+   chosen deliberately over a cheaper animation-only page. If it proves too
+   expensive, widen the watcher's settle window rather than abandoning the loop.
+6. Write `order.json` per the contract.
 
 When every order's `order.json` exists, build
 `results/linked-orders.json`: every order with a non-null `cdc_slot` becomes
@@ -427,8 +460,11 @@ fresh at Part 6c, never reused from Phase 0**: only after 6b has read the
 and `tracking_number` knowable at all. This includes that `GAP_SECONDS` comes from the manifest's
 `run.pace`: 180 for standard (the default), 60 for fast. When pace is fast,
 Beat 2's report must note that comm ordering was not guaranteed at this
-pace. Once drivers are launched: Update `run-page.html` (state 5 per
-`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
+pace. It also includes the launch mechanics in full: a **tracked background task
+per order (`run_in_background: true`, never `nohup`)** with `STATE_FILE` set,
+followed by the same `wait_for_event.sh` watch-and-republish loop as the direct
+engine's step 5. Once drivers are launched: record it via `run_state.py`
+(including `set_schedule`), re-render with `render_run_page.py <run dir>` and
 republish — non-fatal. Then write `order.json` (order_number = the Shopify
 order name, e.g. "#1001") and, once all orders are processed, build
 `results/linked-orders.json` the same way as the direct engine.
@@ -460,10 +496,7 @@ config" when `config_source` is `none`), and `generate_orders`/`orders`
 (say plainly whether the CDC was also asked to generate synthetic orders,
 and for which slots). No currency symbols. **If the edit-mode guard was
 repointed for this run** (per Phase 0 step 4's note), offer here to restore
-it to the user's own account. Once Beat 1 is posted: Update `run-page.html`
-(state 6 per
-`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
-republish — non-fatal.
+it to the user's own account. Once Beat 1 is posted: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 
 **Beat 2 — verified** (after each order's driver finishes AND **≥15 minutes**
 after its final event — comms lag, and delivered comms the longest: measured
@@ -475,9 +508,7 @@ attached vs planned and `contacted_with_messages` vs the expected comms —
 explicitly covering the good AND bad arcs the run promised. For every
 unproven event or chain that fired correctly, offer to record it in
 `${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/status-codes.md`.
-Once Beat 2 is posted: Update `run-page.html` (state 7 per
-`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
-republish — non-fatal.
+Once Beat 2 is posted: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 
 ## Failure handling
 
@@ -489,9 +520,7 @@ republish — non-fatal.
 | one order (any engine) | nothing else | mark partial in its order.json; report the exact step |
 | CDC call | nothing | report; 500 = request exists, retry manually in-app |
 
-On any failure above: Update `run-page.html` (state 8 per
-`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
-republish — non-fatal.
+On any failure above: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 
 Fallback rule (Approach B): any agent lane can be re-run inline in the main
 session from the same manifest — the brief and the contract are identical.
