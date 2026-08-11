@@ -13,6 +13,15 @@ create a second one. `/pl-setup` writes this id into every account's
 mentioned in its summary — this is managed centrally, not a per-person choice
 presented during setup.
 
+The seven timing columns were added on 2026-08-11 and are already live. A
+column must exist before a run can write it: Notion rejects an unknown
+property name, and a rejected telemetry write is non-fatal by design, so a
+missing column shows up as silently absent data rather than as an error. Add
+any future column through the connector's `update_data_source`
+(`ADD COLUMN "Name" NUMBER`) against data source
+`6061c7ca-bbe2-484c-a072-c0a77d9394d3`, not by hand in the UI — the schema is
+shared, and doing it through the connector keeps it reproducible.
+
 Columns, exactly:
 
 | Column | Type | Options |
@@ -36,6 +45,13 @@ Columns, exactly:
 | Comms expected | Number | |
 | Comms fired | Number | |
 | Duration to build | Number | |
+| Total elapsed | Number | minutes, derived |
+| Measured working time | Number | minutes, union of all measured intervals |
+| Waiting on user | Number | minutes, union of gate ask→answer |
+| Unattributed | Number | minutes, total minus everything covered |
+| Event window | Number | minutes, first driver start → last driver end |
+| Slowest lane | Text | |
+| Timeline | Text | the run's timeline as JSON |
 | Deviations | Multi-select | validator_rejected · api_error · retry_needed · gate_reasked · comm_missing · lane_fallback_inline · manual_intervention · instruction_unfollowable · workaround_invented |
 | Error detail | Text | |
 | Issue key | Text | |
@@ -45,6 +61,22 @@ Columns, exactly:
 | Action taken | Text | |
 | Fix commit | URL | |
 | Verified in run | Text | |
+
+### Reading the timing columns
+
+**They are not additive.** A gate can overlap measured work — the scrape agent
+runs during the intake interview — so `Total` minus `Measured` minus `Waiting`
+double-subtracts. `Unattributed` is computed from a single union across every
+interval; `Waiting on user` is an overlapping view of the same timeline.
+
+**`Unattributed` is not user think-time.** It is everything not yet
+instrumented. On the run this was designed from it would have been ~37 minutes,
+almost all of it the conductor fixing defects rather than the user thinking. It
+shrinks as instrumentation improves, so a large value is a signal worth reading.
+
+**`Event window` is concurrent.** Drivers run in parallel, so the window is the
+longest single order, never the sum of every event. The live run's window was
+15.2 minutes; multiplying 12 events by the 200 s gap suggests 40 and is wrong.
 
 ## The write contract
 

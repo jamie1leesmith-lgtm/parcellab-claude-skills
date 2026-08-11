@@ -57,6 +57,29 @@ covered by whatever Bash rules the user already has. Do not propose
 read-only `parcellab` commands and refuses every write verb, and a blanket rule
 would retire that distinction.
 
+## Timing marks — one line each, and the run is measurable
+
+Durations are only ever the difference between two recorded stamps, so a phase
+nobody marked is a phase nobody can measure. Call `run_state.mark()` at each
+boundary below; each is one line beside work you are already doing.
+
+| Boundary | Call |
+|---|---|
+| Dispatching an agent (scrape, seed) | `mark(d, "agent", "<name>", "start")` |
+| Its results file lands | `mark(d, "agent", "<name>", "end")` |
+| Starting a lane's own work | `mark(d, "lane", "<lane>", "start")` |
+| That lane finishing | `mark(d, "lane", "<lane>", "end")` |
+| Posing the ★ template question or the ✋ plan gate | `mark(d, "gate", "<template\|plan>", "asked")` |
+| Recording the answer | `mark(d, "gate", "<template\|plan>", "answered")` |
+| Posting Beat 1 | `mark(d, "gate", "beat1", "end")` |
+
+Drivers are **not** marked — they stamp their own `run.log`, and three
+concurrent drivers amending `run-state.json` would lose updates.
+
+A missing mark yields a null, never a wrong number. Never reconstruct a mark
+after the fact: a stamp written later records when you remembered, not when it
+happened.
+
 ## The run page
 
 Every run keeps one progress artifact — see
