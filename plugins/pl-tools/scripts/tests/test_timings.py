@@ -111,5 +111,126 @@ class TestUnionSeconds(unittest.TestCase):
                                    (dt(10, 5), dt(10, 10))]), 600)
 
 
+
+import json  # noqa: E402
+import tempfile  # noqa: E402
+
+
+def a_run_dir(timeline=None, logs=None):
+    """A run dir with a timeline and optional per-order run.log files."""
+    d = pathlib.Path(tempfile.mkdtemp())
+    (d / "orders").mkdir()
+    (d / "run-state.json").write_text(json.dumps(
+        {"run_id": "currys-1", "timeline": timeline or []}))
+    for name, lines in (logs or {}).items():
+        (d / "orders" / name).mkdir(parents=True, exist_ok=True)
+        (d / "orders" / name / "run.log").write_text("\n".join(lines) + "\n")
+    return str(d)
+
+
+DRIVER_LOGS = {
+    # Concurrent: 3, 5 and 4 events, all launched together. The window is the
+    # longest order, not the total — this is the 2026-08-11 miscalculation.
+    "01-clean-low": ["2026-08-11T21:35:56Z START sequence: 3 events",
+                     "2026-08-11T21:45:00Z DONE sequence complete"],
+    "02-split-medium": ["2026-08-11T21:36:01Z START sequence: 5 events",
+                        "2026-08-11T21:51:06Z DONE sequence complete"],
+    "03-recovered-high": ["2026-08-11T21:36:06Z START sequence: 4 events",
+                          "2026-08-11T21:48:09Z DONE sequence complete"],
+}
+
+
+class TestDriverIntervals(unittest.TestCase):
+    def test_reads_start_and_end_from_run_log(self):
+        spans = timings.driver_intervals(a_run_dir(logs=DRIVER_LOGS))
+        by_name = {s["name"]: s for s in spans}
+        self.assertEqual(by_name["01-clean-low"]["start"], dt(21, 35, 56))
+        self.assertEqual(by_name["01-clean-low"]["end"], dt(21, 45, 0))
+
+    def test_unfinished_driver_has_no_end(self):
+        logs = {"01-clean-low": ["2026-08-11T21:35:56Z START sequence: 3 events",
+                                 "2026-08-11T21:38:56Z EVENT 1/3"]}
+        spans = timings.driver_intervals(a_run_dir(logs=logs))
+        self.assertIsNone(spans[0]["end"])
+
+    def test_no_orders_gives_no_intervals(self):
+        self.assertEqual(timings.driver_intervals(a_run_dir()), [])
+
+
+class TestSummarise(unittest.TestCase):
+    def test_event_window_is_the_longest_order_not_the_total(self):
+        # 12 events x 180s sequential would be 36 min. Concurrent: 15.2.
+        out = timings.summarise(a_run_dir(logs=DRIVER_LOGS))
+        self.assertEqual(out["event_window_min"], 15.2)
+
+    def test_gate_overlapping_an_agent_keeps_unattributed_non_negative(self):
+        # The four headline metrics are NOT additive. total - measured -
+        # waiting would go negative here; a single union must not.
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:50:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "end",
+             "at": "2026-08-11T21:00:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "asked",
+             "at": "2026-08-11T20:52:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-11T20:58:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertEqual(out["total_elapsed_min"], 10.0)
+        self.assertEqual(out["measured_min"], 10.0)
+        self.assertEqual(out["waiting_on_user_min"], 6.0)
+        self.assertGreaterEqual(out["unattributed_min"], 0)
+        self.assertEqual(out["unattributed_min"], 0.0)
+
+    def test_unattributed_counts_time_nothing_covered(self):
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:50:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "end",
+             "at": "2026-08-11T20:55:00Z"},
+            {"kind": "lane", "name": "cdc", "phase": "start",
+             "at": "2026-08-11T21:05:00Z"},
+            {"kind": "lane", "name": "cdc", "phase": "end",
+             "at": "2026-08-11T21:10:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertEqual(out["total_elapsed_min"], 20.0)
+        self.assertEqual(out["measured_min"], 10.0)
+        self.assertEqual(out["unattributed_min"], 10.0)
+
+    def test_no_gate_marks_gives_null_waiting(self):
+        timeline = [
+            {"kind": "lane", "name": "cdc", "phase": "start",
+             "at": "2026-08-11T21:05:00Z"},
+            {"kind": "lane", "name": "cdc", "phase": "end",
+             "at": "2026-08-11T21:10:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertIsNone(out["waiting_on_user_min"])
+
+    def test_slowest_lane_is_named(self):
+        timeline = [
+            {"kind": "lane", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:50:00Z"},
+            {"kind": "lane", "name": "scrape", "phase": "end",
+             "at": "2026-08-11T21:00:00Z"},
+            {"kind": "lane", "name": "cdc", "phase": "start",
+             "at": "2026-08-11T21:05:00Z"},
+            {"kind": "lane", "name": "cdc", "phase": "end",
+             "at": "2026-08-11T21:06:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertEqual(out["slowest_lane"], "scrape")
+        self.assertEqual(out["per_lane"]["scrape"], 10.0)
+        self.assertEqual(out["per_lane"]["cdc"], 1.0)
+
+    def test_empty_run_reports_nulls_not_zeros(self):
+        out = timings.summarise(a_run_dir())
+        self.assertIsNone(out["total_elapsed_min"])
+        self.assertIsNone(out["event_window_min"])
+        self.assertIsNone(out["slowest_lane"])
+
+
 if __name__ == "__main__":
     unittest.main()

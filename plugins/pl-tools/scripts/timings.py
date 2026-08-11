@@ -12,6 +12,8 @@ the scrape agent runs while the intake interview is happening — so summing
 durations counts the same wall-clock minutes twice.
 """
 import datetime
+import json
+import pathlib
 
 TS_FORMATS = ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S")
 OPEN_PHASES = ("start", "asked")
@@ -71,3 +73,86 @@ def union_seconds(spans):
             cur_end = max(cur_end, end)
     total += (cur_end - cur_start).total_seconds()
     return int(total)
+
+
+def _minutes(seconds):
+    return None if seconds is None else round(seconds / 60.0, 1)
+
+
+def driver_intervals(run_dir):
+    """Driver spans, read from each order's run.log.
+
+    Drivers deliberately do not write run-state.json: three concurrent
+    processes doing read-amend-write would lose updates. They already stamp
+    their own log, so the interval is read from there.
+    """
+    spans = []
+    orders = pathlib.Path(run_dir) / "orders"
+    for log in sorted(orders.glob("*/run.log")):
+        lines = [l for l in log.read_text().splitlines() if l.strip()]
+        if not lines:
+            continue
+        start = parse_ts(lines[0].split()[0])
+        end = None
+        for line in reversed(lines):
+            if "DONE sequence complete" in line:
+                end = parse_ts(line.split()[0])
+                break
+        spans.append({"kind": "driver", "name": log.parent.name,
+                      "start": start, "end": end})
+    return spans
+
+
+def summarise(run_dir):
+    """Every headline metric, derived from recorded stamps only.
+
+    total, measured, waiting and unattributed are NOT additive: a gate can
+    overlap measured work, so unattributed comes from one union across every
+    interval including gates, and waiting is an overlapping view of it.
+    """
+    run_dir = pathlib.Path(run_dir)
+    state = json.loads((run_dir / "run-state.json").read_text())
+    timeline = state.get("timeline", [])
+
+    marked = pair_intervals(timeline)
+    drivers = driver_intervals(run_dir)
+    everything = marked + drivers
+
+    gates = [s for s in everything if s["kind"] == "gate"]
+    work = [s for s in everything if s["kind"] != "gate"]
+
+    stamps = [t for s in everything for t in (s["start"], s["end"]) if t]
+    total = (max(stamps) - min(stamps)).total_seconds() if stamps else None
+
+    covered = union_seconds((s["start"], s["end"]) for s in everything)
+    measured = union_seconds((s["start"], s["end"]) for s in work)
+    waiting = (union_seconds((s["start"], s["end"]) for s in gates)
+               if gates else None)
+
+    driver_stamps = [t for s in drivers for t in (s["start"], s["end"]) if t]
+    window = ((max(driver_stamps) - min(driver_stamps)).total_seconds()
+              if driver_stamps else None)
+
+    def by_kind(kind):
+        out = {}
+        for s in everything:
+            if s["kind"] == kind and s["start"] and s["end"]:
+                out[s["name"]] = _minutes(
+                    (s["end"] - s["start"]).total_seconds())
+        return out
+
+    per_lane = by_kind("lane")
+    slowest = max(per_lane, key=per_lane.get) if per_lane else None
+
+    return {
+        "total_elapsed_min": _minutes(total),
+        "measured_min": _minutes(measured) if stamps else None,
+        "waiting_on_user_min": _minutes(waiting),
+        "unattributed_min": (_minutes(max(0, total - covered))
+                             if total is not None else None),
+        "event_window_min": _minutes(window),
+        "per_lane": per_lane,
+        "per_agent": by_kind("agent"),
+        "slowest_lane": slowest,
+        "timeline": timeline,
+    }
