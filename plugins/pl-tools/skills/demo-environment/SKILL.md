@@ -191,3 +191,45 @@ Per-order failure isolation: ingestion timeout, enrichment failure or
 fulfilment failure marks THAT order partial in `order.json`
 (`"status": "partial", "failed_at": "<step>"`) — its events are not pushed,
 other orders continue, and the report says exactly which step failed.
+
+## Phase 3 — The one CDC call
+
+Exactly one CDC interaction per run, after Phase 2 — with a `cdc_live_`
+token, linking existing orders is only possible on the creation call.
+Invoke the pl-tools:demo-request skill's "Orchestrated runs
+(demo-environment)" contract against the run dir: it builds the payload
+from the manifest + `results/linked-orders.json` and submits once. Do not
+retry a 500 (the request already exists — the results file records it).
+
+## Phase 4 — Report
+
+**Beat 1 — environment built** (immediately after Phase 3): layout id +
+release status + store assignment (+ any 9b country-override warning,
+repeated verbatim) · per order: number, customer, fraud level, slot,
+courier(s) + tracking number(s), scenario, and the expected comm per event
+with confidence labels · (retain-shopify) the seed table + demos +
+adjustments from `results/shopify-seed.json` · CDC request id/URL, which
+orders were submitted for linking, and the config source (say "caller's
+default config" when `config_source` is `none`). No currency symbols.
+
+**Beat 2 — verified** (after each order's driver finishes AND ≥5 minutes
+after its final event — comms lag, delivered comms the longest): per order,
+public order-info lookup by courier + tracking_number; report checkpoints
+attached vs planned and `contacted_with_messages` vs the expected comms —
+explicitly covering the good AND bad arcs the run promised. For every
+unproven event or chain that fired correctly, offer to record it in
+`${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/status-codes.md`.
+
+## Failure handling
+
+| Lane fails | Blocks | Response |
+|---|---|---|
+| seed agent | Shopify orders only | report, offer inline re-run from the same manifest |
+| template publish | Phase 2 (all orders) | the three-way publish-gate offer |
+| one order (any engine) | nothing else | mark partial in its order.json; report the exact step |
+| CDC call | nothing | report; 500 = request exists, retry manually in-app |
+
+Fallback rule (Approach B): any agent lane can be re-run inline in the main
+session from the same manifest — the brief and the contract are identical.
+Never silently continue past a failed lane; every lane ends in a results
+file or a reported failure, and Beat 1 lists any lane still outstanding.
