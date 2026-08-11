@@ -16,6 +16,8 @@ import pathlib
 FILENAME = "run-state.json"
 LANES = ("scrape", "template", "seed", "orders", "cdc")
 STATUSES = ("pending", "running", "ok", "published", "skipped", "failed")
+KINDS = ("lane", "agent", "gate")
+PHASES = ("start", "end", "asked", "answered")
 
 
 def _path(run_dir):
@@ -50,6 +52,7 @@ def init(run_dir, run_id, path, account_name):
         "updated_at": _now(),
         "finished": False,
         "lanes": {lane: {"status": "pending"} for lane in LANES},
+        "timeline": [],
         "orders": [],
         "schedule": {},
         "failures": [],
@@ -73,6 +76,25 @@ def set_meta(run_dir, path=None, account_name=None):
             state["path"] = path
         if account_name is not None:
             state["account_name"] = account_name
+
+    return _amend(run_dir, apply)
+
+
+def mark(run_dir, kind, name, phase):
+    """Append one timeline entry. Never replaces an existing one.
+
+    This is the record durations are derived from. `set_lane` keeps only the
+    latest transition — correct for the run page's status pills, useless for
+    measuring how long anything took.
+    """
+    if kind not in KINDS:
+        raise ValueError(f"unknown kind {kind!r}; expected one of {KINDS}")
+    if phase not in PHASES:
+        raise ValueError(f"unknown phase {phase!r}; expected one of {PHASES}")
+
+    def apply(state):
+        state.setdefault("timeline", []).append(
+            {"kind": kind, "name": name, "phase": phase, "at": _now()})
 
     return _amend(run_dir, apply)
 

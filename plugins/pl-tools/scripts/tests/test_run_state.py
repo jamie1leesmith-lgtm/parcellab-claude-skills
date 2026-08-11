@@ -105,3 +105,48 @@ class TestSetMeta(unittest.TestCase):
         state = run_state.load(d)
         self.assertEqual(state["path"], "retain-shopify")
         self.assertEqual(state["account_name"], "Renamed")
+
+
+class TestTimeline(unittest.TestCase):
+    """Durations were unrecoverable because set_lane overwrites: template and
+    seed both read 21:31:05 on the live Currys run, the moment each was marked
+    done. The timeline is append-only so this cannot recur."""
+
+    def test_init_creates_an_empty_timeline(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", None, None)
+        self.assertEqual(run_state.load(d)["timeline"], [])
+
+    def test_mark_appends_without_replacing(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", None, None)
+        run_state.mark(d, "lane", "scrape", "start")
+        run_state.mark(d, "lane", "scrape", "end")
+        timeline = run_state.load(d)["timeline"]
+        self.assertEqual(len(timeline), 2)
+        self.assertEqual([e["phase"] for e in timeline], ["start", "end"])
+        self.assertEqual(timeline[0]["kind"], "lane")
+        self.assertEqual(timeline[0]["name"], "scrape")
+        self.assertTrue(timeline[0]["at"].endswith("Z"))
+
+    def test_mark_rejects_an_unknown_kind(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", None, None)
+        with self.assertRaises(ValueError):
+            run_state.mark(d, "sandwich", "scrape", "start")
+
+    def test_mark_rejects_an_unknown_phase(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", None, None)
+        with self.assertRaises(ValueError):
+            run_state.mark(d, "lane", "scrape", "middle")
+
+    def test_mark_works_on_a_state_predating_the_timeline(self):
+        # Runs already on disk have no timeline key.
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", None, None)
+        state = run_state.load(d)
+        del state["timeline"]
+        run_state._write(d, state)
+        run_state.mark(d, "gate", "plan", "asked")
+        self.assertEqual(len(run_state.load(d)["timeline"]), 1)
