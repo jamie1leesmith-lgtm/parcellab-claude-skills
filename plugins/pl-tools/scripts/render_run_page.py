@@ -49,8 +49,57 @@ td,th { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); 
 """
 
 
+CLOCK_JS = """
+<script>
+(() => {
+  const S = RUN_SCHEDULE;
+  if (!S || !S.started_at || !S.gap_seconds) return;
+  const started = Date.parse(S.started_at);
+  const tick = () => {
+    const elapsed = (Date.now() - started) / 1000;
+    // Events fire after a leading gap, then one per gap.
+    const due = Math.floor(elapsed / S.gap_seconds);
+    document.querySelectorAll('[data-tracking]').forEach(box => {
+      let seen = 0;
+      box.querySelectorAll('.pill').forEach(pill => {
+        seen += 1;
+        // Only ever soften pending -> expected. Confirmation is the server's
+        // job; the clock must never claim it.
+        if (pill.classList.contains('s-pending') && seen <= due) {
+          pill.classList.remove('s-pending');
+          pill.classList.add('s-expected');
+        }
+      });
+    });
+    const next = S.gap_seconds - (elapsed % S.gap_seconds);
+    const el = document.getElementById('countdown');
+    if (el) el.textContent = 'next event in ' +
+      Math.max(0, Math.floor(next)) + 's';
+  };
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+"""
+
+
 def e(value):
     return html_mod.escape(str(value), quote=True)
+
+
+def _clock(state):
+    """The page's own clock, or nothing.
+
+    Omitted entirely once the run is finished, so opening the page tomorrow
+    shows the real end state rather than an animation that ran off the end.
+    """
+    if state.get("finished"):
+        return ""
+    schedule = state.get("schedule") or {}
+    if not schedule:
+        return ""
+    return ("<script>const RUN_SCHEDULE = "
+            + json.dumps(schedule) + ";</script>" + CLOCK_JS)
 
 
 def state_of(planned_status, confirmed):
@@ -175,13 +224,30 @@ def _products(assets):
             + "".join(cards) + "</div></div>")
 
 
+def _readable_on(hex_colour):
+    """Pick black or white text for a swatch.
+
+    A light swatch with white text is invisible: two of UNIQLO's were, live.
+    """
+    value = hex_colour.lstrip("#")
+    if len(value) == 3:
+        value = "".join(c * 2 for c in value)
+    try:
+        r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
+    except (ValueError, IndexError):
+        return "#111"
+    # Perceived brightness, ITU-R BT.601.
+    return "#111" if (r * 299 + g * 587 + b * 114) / 1000 > 140 else "#fff"
+
+
 def _brand_header(assets):
     if not assets:
         return ""
     logo = assets.get("logo_svg") or ""
     swatches = "".join(
-        f'<span class="pill" style="background:{e(v)};color:#fff;'
-        f'border:1px solid var(--line)">{e(k)}</span>'
+        f'<span class="pill" style="background:{e(v)};'
+        f'color:{_readable_on(v)};border:1px solid var(--line)">'
+        f'{e(k)} {e(v)}</span>'
         for k, v in (assets.get("tokens") or {}).items()
         if isinstance(v, str) and v.startswith("#"))
     return (f'<div class="card" style="text-align:center">{logo}'
@@ -218,8 +284,10 @@ def render(state, manifest=None, assets=None, template_html=None):
         '<div class="show">',
         _showcase(state, manifest, assets, template_html),
         "</div></div>",
+        _clock(state),
     ]
-    return (f"<title>{e(title)}</title><style>{CSS}</style>" + "".join(body))
+    return (f'<meta charset="utf-8">'
+            f"<title>{e(title)}</title><style>{CSS}</style>" + "".join(body))
 
 
 def main():

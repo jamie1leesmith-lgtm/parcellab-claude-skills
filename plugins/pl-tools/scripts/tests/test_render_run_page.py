@@ -81,6 +81,12 @@ class TestRenderRunPage(unittest.TestCase):
     def test_wide_tables_scroll_inside_themselves(self):
         self.assertIn("overflow-x", render_run_page.render(a_state()))
 
+    def test_declares_utf8_charset(self):
+        # Without this the em dashes and middle dots in the page render as
+        # mojibake ("â€"", "Â·") when served without a charset header.
+        self.assertIn('<meta charset="utf-8">',
+                      render_run_page.render(a_state()))
+
 
 ASSETS = {
     "logo_svg": "<svg><title>UNIQLO</title></svg>",
@@ -103,6 +109,23 @@ ASSETS = {
 
 
 class TestShowcase(unittest.TestCase):
+    def test_light_swatches_get_dark_text(self):
+        # A white swatch with white text is invisible — two were, live.
+        assets = dict(ASSETS, tokens={"BODY_BG": "#FFFFFF"})
+        html = render_run_page.render(a_state(), assets=assets)
+        swatch = html[html.index("BODY_BG") - 200:html.index("BODY_BG")]
+        self.assertIn("#111", swatch)
+
+    def test_dark_swatches_get_light_text(self):
+        assets = dict(ASSETS, tokens={"CTA_BG": "#000000"})
+        html = render_run_page.render(a_state(), assets=assets)
+        swatch = html[html.index("CTA_BG") - 200:html.index("CTA_BG")]
+        self.assertIn("#fff", swatch)
+
+    def test_swatch_shows_its_hex_value(self):
+        html = render_run_page.render(a_state(), assets=ASSETS)
+        self.assertIn("#000000", html)
+
     def test_logo_svg_is_inlined(self):
         html = render_run_page.render(a_state(), assets=ASSETS)
         self.assertIn("<svg><title>UNIQLO</title></svg>", html)
@@ -138,6 +161,24 @@ class TestShowcase(unittest.TestCase):
             '<img src="https://unknown.example/z.jpg"/>', {"products": {},
                                                            "hero": {}})
         self.assertNotIn("https://unknown.example/z.jpg", out)
+
+
+class TestClock(unittest.TestCase):
+    def test_running_run_embeds_the_schedule_and_clock(self):
+        html = render_run_page.render(a_state())
+        self.assertIn("RUN_SCHEDULE", html)
+        self.assertIn("gap_seconds", html)
+
+    def test_finished_run_has_no_clock(self):
+        html = render_run_page.render(a_state(finished=True))
+        self.assertNotIn("setInterval", html)
+
+    def test_clock_only_ever_promotes_to_expected(self):
+        # Contract guard: the script must not be able to write s-confirmed.
+        html = render_run_page.render(a_state())
+        script = html[html.index("<script>"):]
+        self.assertIn("s-expected", script)
+        self.assertNotIn("s-confirmed", script)
 
 
 if __name__ == "__main__":
