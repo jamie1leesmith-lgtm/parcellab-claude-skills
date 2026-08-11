@@ -19,6 +19,9 @@ PACES = {"standard", "fast"}
 PROVEN_SEQUENCES = (
     ("InTransit", "OutForDelivery", "Delivered"),
     ("InTransit", "WarehouseDelay"),
+    # recovered — proven live 2026-08-11 (order STU-1786455234, account
+    # 1626718); see order-lifecycle/references/status-codes.md
+    ("InTransit", "WarehouseDelay", "OutForDelivery", "Delivered"),
 )
 
 

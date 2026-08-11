@@ -162,12 +162,22 @@ class TestValidateManifest(unittest.TestCase):
         self.assertTrue(any("brand.name" in e for e in validate(m)))
 
     def test_unproven_sequence_needs_chain_label(self):
+        # happy-with-delay: every event is individually proven, but the chain
+        # is not (status-codes.md) — so it still needs the label.
         m = valid_manifest()
-        m["orders"][0]["shipments"][0]["events"] = ["InTransit", "WarehouseDelay", "OutForDelivery", "Delivered"]
-        m["orders"][0]["shipments"][0]["scenario"] = "recovered"
+        m["orders"][0]["shipments"][0]["events"] = ["WarehouseDelay", "InTransit", "OutForDelivery", "Delivered"]
+        m["orders"][0]["shipments"][0]["scenario"] = "custom"
         errs = validate(m)
         self.assertTrue(any("unproven_chain" in e for e in errs))
         m["orders"][0]["shipments"][0]["unproven_chain"] = True
+        self.assertEqual(validate(m), [])
+
+    def test_recovered_chain_is_proven(self):
+        # Proven live 2026-08-11 (order STU-1786455234, account 1626718);
+        # validating it clean is what keeps Beat 1 from labelling it unproven.
+        m = valid_manifest()
+        m["orders"][0]["shipments"][0]["events"] = ["InTransit", "WarehouseDelay", "OutForDelivery", "Delivered"]
+        m["orders"][0]["shipments"][0]["scenario"] = "recovered"
         self.assertEqual(validate(m), [])
 
     def test_pace_optional_and_enum(self):
