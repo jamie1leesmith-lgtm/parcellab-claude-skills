@@ -121,18 +121,23 @@ It's a single value, nothing to decode. The base URL is filled in automatically.
 ### Optional: CDC account-config UUIDs (for demo-environment)
 
 The `demo-environment` skill selects a CDC account configuration matching the
-run's target account. Each user has up to three (visible in the CDC UI when
-editing an account config — there is no API to list them). If the user has
-them, append to `~/.claude/parcellab-demo-request.env`:
+run's target account. **The API value is a UUID** — a bare parcelLab account
+id is rejected (400 "invalid input syntax for type uuid", live-verified
+2026-08-11). **Most users need no key here at all**: set your CDC *default*
+config (in the CDC UI) to target your own demo account, and the skill's
+omit-the-field behaviour links correctly — verified live. Store a UUID only
+for runs that must target a non-default config:
 
-    CDC_ACCOUNT_CONFIG_DEFAULT=<uuid>        # their own demo account (the default target)
+    CDC_ACCOUNT_CONFIG_DEFAULT=<uuid>        # own demo account, if not the CDC default
     CDC_ACCOUNT_CONFIG_PARCELFASHION=<uuid>  # the shared parcelfashion account
     CDC_ACCOUNT_CONFIG_SHOPIFY=<uuid>        # Shopify demos
 
 All optional — demo-environment also captures a missing one on its first run
 and offers to store it here. With none stored, the CDC uses the caller's
-default config and demo-environment says so in its report. They are ids, not
-credentials, but they still belong in the env file, not the transcript.
+default config and demo-environment says so in its report — linked orders are
+then looked up in whatever account that default config targets, so it must
+match where the run wrote its orders. They are ids, not credentials, but they
+still belong in the env file, not the transcript.
 
 ### Optional: Shopify CLI (for Shopify demos)
 
@@ -159,7 +164,13 @@ everything else in pl-tools works without it.
    mid-demo:
 
        shopify store auth -s <store>.myshopify.com \
-         --scopes write_products,write_inventory,read_orders,write_orders,write_fulfillments
+         --scopes write_products,write_inventory,read_orders,write_orders,write_fulfillments,write_draft_orders,write_merchant_managed_fulfillment_orders
+
+   (Seven scopes, live-verified 2026-08-11: `write_draft_orders` because the
+   CLI can only create orders via draft orders — `orderCreate` is
+   offline-token-only — and `write_merchant_managed_fulfillment_orders`
+   because reading fulfillment orders needs it even with
+   `write_fulfillments` granted.)
 
    Substitute the real subdomain — never write the literal text `<store>`.
 4. Persist the store so skills stop asking:

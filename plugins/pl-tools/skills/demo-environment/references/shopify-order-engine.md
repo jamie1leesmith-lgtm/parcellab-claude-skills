@@ -10,15 +10,27 @@ engine built an order.
 Every relative path in this doc (`orders/<nn>-<label>/`, `results/…`) resolves against the
 run directory — `cd` there first, or use absolute paths.
 
-> **Both GraphQL mutations below are CANDIDATES, not confirmed shapes.** Shopify's Admin
-> GraphQL schema is versioned and drifts store to store (see `shopify-seed`'s
-> `references/mutation-template.md`, verified against a specific `2026-07` schema — this
-> file has not had that live pass yet). **Introspect the target store's schema before the
-> first `orderCreate` call and before the first `fulfillmentCreate` call in every run** —
-> never assume either mutation exists just because it is documented here. If introspection
-> shows the field is missing, fall back per the note in that part and **write the
-> substitution into this file** so the next run starts from what actually worked, not from
-> what was guessed.
+> **LIVE-VERIFIED 2026-08-11** (retain-shopify Run 2, store parcellab-demo-jls, one order
+> end-to-end). The substitutions and corrections from that run are folded in below; the
+> headline ones:
+>
+> 1. **`orderCreate` cannot be used from the Shopify CLI at all** — it exists in the
+>    schema and passes introspection, but is restricted to apps with OFFLINE tokens and
+>    the CLI authenticates with session tokens (`ACCESS_DENIED … only accessible to apps
+>    authenticated using offline tokens`). **Always use the draft-order path in Part 2.**
+> 2. The draft path needs the **`write_draft_orders`** scope, and Part 5a's
+>    fulfillment-order read needs **`write_merchant_managed_fulfillment_orders`** — the
+>    full working scope set is in Part 1.
+> 3. The order-info lookup parameter is **`order_number`**, not `orderNo` (the API's 400
+>    helpfully lists every accepted lookup mode).
+> 4. The enrichment PUT **requires core order fields** (`recipient_email`,
+>    `destination_country_iso3`, …) but **merges** — it did not blank the
+>    integration-written articles (details in Part 4).
+> 5. Shopify tracking company `DPD` maps to pL courier **`dpd`** (not `dpd-uk`) — 6b's
+>    read-the-courier-back rule is mandatory, the mapping genuinely differs.
+>
+> Still introspect before the first mutation call of each run (schema drift), but start
+> from the shapes below — they are what actually worked.
 
 `$SHOPIFY_DEMO_STORE` in every command below is the manifest's `shopify.store` — already
 resolved and confirmed at intake (see the conductor's *Shopify resolution* step). Export it
@@ -52,42 +64,43 @@ Read-only, so **no `--allow-mutations`**.
 
   ```bash
   shopify store auth -s "$SHOPIFY_DEMO_STORE" \
-    --scopes write_products,write_inventory,read_orders,write_orders,write_fulfillments
+    --scopes write_products,write_inventory,read_orders,write_orders,write_fulfillments,write_draft_orders,write_merchant_managed_fulfillment_orders
   ```
 
   **This opens a browser consent window — warn the user before running it**, the same way
   `shopify-seed` Step 1 warns before its own first-time auth.
 
-**Record a finding here once this has run live**: which of the five scopes above the
-store's auth actually needed (a store already seeded via `shopify-seed` already has
-`write_products,write_inventory` — this run may only add `read_orders,write_orders,
-write_fulfillments`). Unverified as of this writing; confirm on the retain-shopify run in
-the staged live verification pass and replace this paragraph with the real answer.
+**Live-verified scope set (2026-08-11):** the five scopes above are NOT sufficient. The
+full working set for this engine is:
+
+```
+write_products,write_inventory,read_orders,write_orders,write_fulfillments,write_draft_orders,write_merchant_managed_fulfillment_orders
+```
+
+- `write_draft_orders` — required by Part 2's draft-order path (the only path that works
+  from the CLI; the access error names a "manage draft orders" requirement).
+- `write_merchant_managed_fulfillment_orders` — required just to READ
+  `order.fulfillmentOrders` in Part 5a; `write_fulfillments` alone gets `ACCESS_DENIED`.
+
+Expect up to two extra browser re-consents when upgrading an existing seed-only auth —
+run the full string above once instead.
 
 ---
 
-## Part 2 — Create order (candidate mutation)
+## Part 2 — Create order (draft-order path — live-verified 2026-08-11)
 
-**Verify before first use.** Introspect the store's `Mutation` type and check `orderCreate`
-is in the field list:
+**Do not use `orderCreate` from the CLI.** It introspects as present and the scope can be
+granted, but the call fails with `ACCESS_DENIED: … This mutation is only accessible to
+apps authenticated using offline tokens` — and `shopify store execute` always uses a
+session token. The working path is a draft order completed into a real order (two calls;
+everything downstream only needs the final `order.id` / `order.name`).
 
-```bash
-shopify store execute -s "$SHOPIFY_DEMO_STORE" \
-  --query '{ __type(name: "Mutation") { fields { name } } }'
-```
-
-- **`orderCreate` present** → use it, below.
-- **`orderCreate` absent** → fall back to `draftOrderCreate` (build the draft with the same
-  line items and addresses) followed by `draftOrderComplete` (which converts it to a real
-  order and returns the same `order { id name email }` shape). **Record this substitution
-  in this file** — it changes the mutation name and adds a second call, but the rest of
-  this reference (polling, enrichment, fulfilment) is unaffected since it only depends on
-  `order.id` and `order.name`.
+**Call 1 — create the draft:**
 
 ```graphql
-mutation CreateDemoOrder($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-  orderCreate(order: $order, options: $options) {
-    order { id name email }
+mutation CreateDemoDraft($input: DraftOrderInput!) {
+  draftOrderCreate(input: $input) {
+    draftOrder { id name }
     userErrors { field message }
   }
 }
@@ -103,37 +116,52 @@ for, or the first listed variant if the order didn't specify size/colour):
 
 ```json
 {
-  "order": {
+  "input": {
     "email": "<customer.email>",
     "lineItems": [{ "variantId": "<gid from results/shopify-seed.json>", "quantity": 1 }],
     "shippingAddress": {
       "firstName": "<first>", "lastName": "<last>",
       "address1": "<region-appropriate street>", "city": "<city>",
       "zip": "<zip>", "countryCode": "<GB|US|DE from destination_country>"
-    },
-    "financialStatus": "PAID"
-  },
-  "options": { "sendReceipt": false, "sendFulfillmentReceipt": false }
+    }
+  }
 }
 ```
 
-Write the mutation above to `/tmp/create-order.graphql` and the variables to
-`orders/<nn>-<label>/create-order-vars.json`, then:
+**Call 2 — complete it into a real, paid order:**
+
+```graphql
+mutation CompleteDraft($id: ID!, $paymentPending: Boolean) {
+  draftOrderComplete(id: $id, paymentPending: $paymentPending) {
+    draftOrder { order { id name email } }
+    userErrors { field message }
+  }
+}
+```
+
+with `{"id": "<draftOrder.id from call 1>", "paymentPending": false}` —
+`paymentPending: false` marks the order paid, replacing the old shape's
+`financialStatus: "PAID"` (there is no receipt option on this path; drafts don't send
+Shopify receipts).
+
+Write each mutation to a scratch `.graphql` file and the variables to
+`orders/<nn>-<label>/draft-create-vars.json`, then run each with:
 
 ```bash
 shopify store execute -s "$SHOPIFY_DEMO_STORE" \
-  --query-file /tmp/create-order.graphql \
-  --variable-file orders/<nn>-<label>/create-order-vars.json \
+  --query-file <mutation>.graphql \
+  --variable-file <vars>.json \
   --allow-mutations
 ```
 
 **`--allow-mutations` is required** — the CLI refuses the write without it.
 
-**Check `userErrors` on this call, and on every call in this reference** — an empty array
+**Check `userErrors` on both calls, and on every call in this reference** — an empty array
 is the only success signal; a non-empty one means the order was not created and this
 order's remaining steps must not run.
 
-**Record `order.name`** (e.g. `#1001`) — **this is the `order_number` pL will know.** It is
+**Record `order.name` from call 2** — **this is the `order_number` pL will know.** Note
+the store's order-name prefix applies (live run produced `pl-1020`, not `#1001`). It is
 also what `orders/<nn>-<label>/order.json` reports as `order_number` for this engine (the
 direct engine instead uses `<XXX>-<ts>`; both are the same field, different shapes, and
 Phase 3/4 treat them identically).
@@ -149,21 +177,21 @@ exists on the pL side. Poll for it rather than assuming it landed:
 ```bash
 for i in $(seq 1 12); do
   sleep 10
-  parcellab api request GET "/v4/track/orders/info/?account=<account-id>&orderNo=<order.name>" -o json \
+  parcellab api request GET "/v4/track/orders/info/?account=<account-id>&order_number=<order.name>" -o json \
     | tee /tmp/order-info.json \
-    | grep -q "<order.name, digits only e.g. 1001>" && break
+    | grep -q "<order.name>" && break
 done
 ```
 
-`<account-id>` is the manifest's `account.id`; `<order.name>` is the value Part 2 recorded
-(URL-encode the leading `#` as `%23` if the CLI does not do this automatically — check the
-literal request the CLI sends before assuming it needs manual encoding).
+`<account-id>` is the manifest's `account.id`; `<order.name>` is the value Part 2 recorded.
 
-This is the same identifier pattern (account + order number) order-lifecycle's own
-Reporting section describes for a public order-info lookup — **it does not pin an exact
-query-parameter spelling**, so treat the parameter names above as the current best guess,
-not a confirmed contract. Confirm them on the first live retain-shopify run and correct this
-paragraph (and the command above) to match whatever the CLI actually accepts if it differs.
+**Parameter names live-verified 2026-08-11:** the lookup is `order_number` + `account`
+(`orderNo` gets a 400 whose error message helpfully lists every accepted lookup mode:
+`order_number + account`, `external_reference + account`, `tracking_number + courier`, …).
+Ingestion was near-instant on the live run (first 10 s poll hit). Note for anything
+beyond this poll: **integration-ingested orders do NOT appear in `GET /v4/track/orders/`**
+(the list endpoint only returns API-created orders) — order-info is the only read that
+sees them.
 
 **Success** = the response body actually contains the order document — grepped for the
 order number, mirroring Part 6a's pattern below — not merely that the CLI call exited 0. A
@@ -188,14 +216,18 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_fraud_fragment.py \
 ```
 
 Build `orders/<nn>-<label>/enrich.json` from it — the fragment's `tags` and
-`additional_attributes` become top-level fields alongside the account and order identifier:
+`additional_attributes` (already in the API's list-of-`{key,value}` shape) are copied
+verbatim as top-level fields, alongside the identifiers **and the required core fields**:
 
 ```json
 {
   "account": <account-id>,
   "order_number": "<order.name>",
+  "destination_country_iso3": "<from manifest>",
+  "recipient_email": "<customer.email>",
+  "recipient_name": "<customer.name>",
   "tags": ["<from fraud.json>"],
-  "additional_attributes": { "riskAssessment": ["<from fraud.json>"] }
+  "additional_attributes": ["<from fraud.json — list of {key, value}>"]
 }
 ```
 
@@ -205,13 +237,15 @@ Send it:
 parcellab api request PUT /v4/track/orders/ --data @orders/<nn>-<label>/enrich.json -o json
 ```
 
-**This call is assumed to be an upsert** — merging `tags`/`additional_attributes` onto the
-order pL already ingested in Part 3, leaving every other field (address, line items,
-tracking) untouched. That assumption is **unverified as of this writing**; it is scheduled
-to be confirmed on Run 3 of the staged live verification pass. **If it turns out to replace
-rather than merge**: before sending, read the order back (the same GET as Part 3) and fold
-its existing fields into this payload so the PUT doesn't blank them out — then record
-which behaviour was actually observed, here, so this stops being an open question.
+**Live-verified 2026-08-11:** the PUT is *not* a bare patch — omitting
+`recipient_email`/`destination_country_iso3` gets a 400 naming them required, so include
+the core fields above (the conductor knows them all from the manifest; no read-back
+needed). With those present the call **merges**: the integration-written articles,
+address, and tracking placeholder all survived untouched, with `tags` +
+`additional_attributes` added on top. One cosmetic note: the write echo shows
+`client_key: ""` while the integration order belongs to the Shopify store's client —
+the order-info readback confirmed a single merged document, but eyeball the portal's
+order view on a first run against a new store.
 
 **On enrichment failure** (non-2xx, or `userErrors`-equivalent rejection): report this order
 as **enrichment-failed**, skip Parts 5–6 for it, continue with the next order. This is the
@@ -244,12 +278,12 @@ shopify store execute -s "$SHOPIFY_DEMO_STORE" \
 `lineItems` ids are what Part 5b's `fulfillmentOrderLineItems` needs — Shopify assigns
 these itself; do not construct them.
 
-### 5b. Fulfil — verify before first use
+### 5b. Fulfil — live-verified 2026-08-11
 
-Introspect (same query as Part 2) and check `fulfillmentCreate` is present. **If it is
-absent**, introspect for `fulfillmentCreateV2` instead, use it in its place, and **record
-the substitution in this file** — the field name changes but the variable shape below is
-expected to carry over unchanged.
+`fulfillmentCreate` exists and works exactly as below (no V2 substitution needed on the
+`2026-07`-era schema). Two live gotchas already folded into Part 1's scope set: Part 5a's
+read needs `write_merchant_managed_fulfillment_orders`, and the `company` string sent here
+is NOT what pL stores (see 6b — live run: sent `DPD`, pL stored courier `dpd`).
 
 ```graphql
 mutation Fulfil($fulfillment: FulfillmentInput!) {
@@ -315,11 +349,13 @@ response rather than until the order document merely exists:
 ```bash
 for i in $(seq 1 12); do
   sleep 10
-  parcellab api request GET "/v4/track/orders/info/?account=<account-id>&orderNo=<order.name>" -o json \
+  parcellab api request GET "/v4/track/orders/info/?account=<account-id>&order_number=<order.name>" -o json \
     | tee /tmp/order-info.json \
     | grep -q "<tracking number from Part 5b>" && break
 done
 ```
+
+(Live run: the tracking appeared on the first 10 s poll.)
 
 On timeout: same as Part 3 — report not-ingested-for-tracking, skip pushing events for this
 shipment, continue with the run's other orders/shipments.
@@ -331,6 +367,10 @@ the courier code parcelLab's integration stores against the tracking. **Read the
 `courier` value out of the order-info response fetched in 6a** and use that exact string —
 this is the identifier order-lifecycle's own `status-codes.md` requires (`courier` +
 `tracking_number`, never `account` + `order_number`) for every event push.
+
+**Live-verified mapping (2026-08-11):** company `DPD` → pL courier **`dpd`** — NOT the
+`dpd-uk` code the direct engine uses for the same carrier. Guessing would have pushed
+every event at a tracking that doesn't exist; this step is not optional.
 
 ### 6c. Build and push events exactly as the direct engine's driver does
 

@@ -120,12 +120,19 @@ verify attachment via a lookup before trusting a new sequence.
 
 ## Sequences
 
-The three the skill offers at **Gate B**:
+The sequences the skill offers at **Gate B**:
 
 - **happy** (proven, no delay): `InTransit`, `OutForDelivery`, `Delivered`
 - **unhappy** (proven, ends stuck): `InTransit`, `WarehouseDelay` — then stop.
   The parcel is delayed and never arrives; the last event stands as the live state
   indefinitely and `is_delayed` becomes `true`.
+- **recovered** (PROVEN live 2026-08-11, order STU-1786455234 on account
+  1626718): `InTransit`, `WarehouseDelay`, `OutForDelivery`, `Delivered` —
+  delayed but found and delivered. All four checkpoints attached in order and
+  all four shipment comms fired in order: `shipping_confirmation`,
+  `delay_update`, `out_for_delivery`, `package_delivered` (plus the order
+  confirmation at creation). This is the delayed-but-recovered story the
+  `demo-environment` default matrix uses for its high-fraud order.
 - **custom**: derived from the account's Journey config — see *Custom path —
   journey introspection* in `SKILL.md`.
 
@@ -144,7 +151,8 @@ attachment with a lookup before trusting any of them:
 
 - **happy-with-delay**: `WarehouseDelay`, `InTransit`, `OutForDelivery`, `Delivered`
   — all four statuses are individually proven, but this ends *delivered*, so it
-  demonstrates recovery rather than failure.
+  demonstrates recovery rather than failure. (For the delay-mid-transit variant,
+  use **recovered** above — proven live.)
 - **failed-attempt**: `InTransit`, `OutForDelivery`, `FailedAttempt-NewAttemptNextDay`, `OutForDelivery`, `Delivered`
 - **exception**: `InTransit`, `Exception-Notified`, `InTransit`, `OutForDelivery`, `Delivered`
 - **return**: `InTransit`, `OutForDelivery`, `FailedAttempt-NewAttemptNextDay`, `ReturnToSender-NotCollected`, `ReturnDelivered`
