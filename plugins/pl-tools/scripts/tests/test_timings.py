@@ -156,6 +156,18 @@ class TestDriverIntervals(unittest.TestCase):
     def test_no_orders_gives_no_intervals(self):
         self.assertEqual(timings.driver_intervals(a_run_dir()), [])
 
+    def test_malformed_first_line_skips_that_driver_only(self):
+        # A partial write or truncated flush in one order's log must not take
+        # down the whole report — only that driver is skipped.
+        logs = {
+            "01-garbled": ["not-a-timestamp START sequence: 1 events"],
+            "02-clean-low": DRIVER_LOGS["01-clean-low"],
+        }
+        spans = timings.driver_intervals(a_run_dir(logs=logs))
+        names = {s["name"] for s in spans}
+        self.assertNotIn("01-garbled", names)
+        self.assertIn("02-clean-low", names)
+
 
 class TestSummarise(unittest.TestCase):
     def test_event_window_is_the_longest_order_not_the_total(self):
@@ -230,6 +242,39 @@ class TestSummarise(unittest.TestCase):
         self.assertIsNone(out["total_elapsed_min"])
         self.assertIsNone(out["event_window_min"])
         self.assertIsNone(out["slowest_lane"])
+
+    def test_unclosed_gate_gives_null_waiting_not_zero(self):
+        # A gate that was asked but never answered is a real, ongoing wait —
+        # not "the user was never asked anything". A missing mark yields a
+        # null, never a wrong number.
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:50:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "end",
+             "at": "2026-08-11T21:00:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "asked",
+             "at": "2026-08-11T20:52:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertIsNone(out["waiting_on_user_min"])
+
+    def test_unclosed_work_gives_null_measured_not_zero(self):
+        # An agent or lane that started but never ended must not read as
+        # zero measured work.
+        timeline = [
+            {"kind": "lane", "name": "cdc", "phase": "start",
+             "at": "2026-08-11T21:05:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertIsNone(out["measured_min"])
+
+    def test_malformed_driver_log_does_not_break_summarise(self):
+        # A garbled run.log in one order must degrade to skipping that
+        # driver, not raise out of summarise() and kill the whole report.
+        logs = dict(DRIVER_LOGS)
+        logs["04-garbled"] = ["not-a-timestamp START sequence: 1 events"]
+        out = timings.summarise(a_run_dir(logs=logs))
+        self.assertEqual(out["event_window_min"], 15.2)
 
 
 if __name__ == "__main__":

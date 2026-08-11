@@ -89,10 +89,16 @@ def driver_intervals(run_dir):
     spans = []
     orders = pathlib.Path(run_dir) / "orders"
     for log in sorted(orders.glob("*/run.log")):
-        lines = [l for l in log.read_text().splitlines() if l.strip()]
+        lines = [raw_line for raw_line in log.read_text().splitlines()
+                 if raw_line.strip()]
         if not lines:
             continue
-        start = parse_ts(lines[0].split()[0])
+        try:
+            start = parse_ts(lines[0].split()[0])
+        except ValueError:
+            # A partial write or truncated flush must not take down the
+            # whole report — skip this driver, keep the others.
+            continue
         end = None
         for line in reversed(lines):
             if "DONE sequence complete" in line:
@@ -121,13 +127,16 @@ def summarise(run_dir):
     gates = [s for s in everything if s["kind"] == "gate"]
     work = [s for s in everything if s["kind"] != "gate"]
 
+    def has_closed(spans):
+        return any(s["start"] and s["end"] for s in spans)
+
     stamps = [t for s in everything for t in (s["start"], s["end"]) if t]
     total = (max(stamps) - min(stamps)).total_seconds() if stamps else None
 
     covered = union_seconds((s["start"], s["end"]) for s in everything)
     measured = union_seconds((s["start"], s["end"]) for s in work)
     waiting = (union_seconds((s["start"], s["end"]) for s in gates)
-               if gates else None)
+               if has_closed(gates) else None)
 
     driver_stamps = [t for s in drivers for t in (s["start"], s["end"]) if t]
     window = ((max(driver_stamps) - min(driver_stamps)).total_seconds()
@@ -146,7 +155,7 @@ def summarise(run_dir):
 
     return {
         "total_elapsed_min": _minutes(total),
-        "measured_min": _minutes(measured) if stamps else None,
+        "measured_min": _minutes(measured) if has_closed(work) else None,
         "waiting_on_user_min": _minutes(waiting),
         "unattributed_min": (_minutes(max(0, total - covered))
                              if total is not None else None),
