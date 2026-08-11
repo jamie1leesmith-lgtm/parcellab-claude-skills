@@ -137,6 +137,41 @@ class TestTimingColumns(unittest.TestCase):
             {"brand": {"name": "Currys"}, "orders": []}))
         return str(d)
 
+    def _corrupt_run_dir(self):
+        """A run whose lane marks are reversed — an impossible duration."""
+        import json
+        import pathlib
+        d = pathlib.Path(self._run_dir())
+        state = json.loads((d / "run-state.json").read_text())
+        state["timeline"] = [
+            {"kind": "lane", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T21:00:00Z"},
+            {"kind": "lane", "name": "scrape", "phase": "end",
+             "at": "2026-08-11T20:50:00Z"},
+        ]
+        (d / "run-state.json").write_text(json.dumps(state))
+        return str(d)
+
+    def test_a_corrupt_span_costs_its_durations_not_the_whole_row(self):
+        # Telemetry is an observer, never a dependency: one reversed pair of
+        # marks must not take out the ~20 columns that are not durations.
+        row = btr.build_row(self._corrupt_run_dir(), "beat1")
+        self.assertEqual(row["Run ID"], "currys-1")
+        self.assertEqual(row["Brand"], "Currys")
+        self.assertIsNone(row["Total elapsed"])
+        self.assertIsNone(row["Measured working time"])
+
+    def test_a_corrupt_span_is_named_in_error_detail(self):
+        # Silently nulling five columns would hide the corruption; the row
+        # must say why the numbers are missing.
+        row = btr.build_row(self._corrupt_run_dir(), "beat1")
+        self.assertIn("timing", row["Error detail"])
+        self.assertIn("before it starts", row["Error detail"])
+
+    def test_a_clean_run_leaves_error_detail_alone(self):
+        self.assertEqual(btr.build_row(self._run_dir(), "beat1")["Error detail"],
+                         "")
+
     def test_timing_columns_are_present_and_derived(self):
         row = btr.build_row(self._run_dir(), "beat1")
         self.assertEqual(row["Total elapsed"], 15.0)

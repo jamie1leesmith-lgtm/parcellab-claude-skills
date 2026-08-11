@@ -227,47 +227,75 @@ def summarise(run_dir):
     total = ((max(stamps) - min(stamps)).total_seconds()
              if len(stamps) >= 2 else None)
 
-    covered = union_seconds((s["start"], s["end"]) for s in everything)
-    measured = union_seconds((s["start"], s["end"]) for s in work)
-    waiting = (union_seconds((s["start"], s["end"]) for s in gates)
-               if has_closed(gates) else None)
+    # An impossible span (end before start) is real corruption, and
+    # union_seconds is right to raise on it. But telemetry is an observer,
+    # never a dependency: letting that escape cost the whole row, including
+    # the ~20 columns that are not durations. Null the durations it touches,
+    # keep everything else, and say so in `timing_error`.
+    timing_error = None
+    try:
+        covered = union_seconds((s["start"], s["end"]) for s in everything)
+        measured = union_seconds((s["start"], s["end"]) for s in work)
+        waiting = (union_seconds((s["start"], s["end"]) for s in gates)
+                   if has_closed(gates) else None)
 
-    # The window is not known until every driver has finished: falling back
-    # to the other drivers' stamps silently shortens it.
-    if drivers and all(s["start"] and s["end"] for s in drivers):
-        window = (max(s["end"] for s in drivers)
-                  - min(s["start"] for s in drivers)).total_seconds()
-    else:
-        window = None
+        # The window is not known until every driver has finished: falling
+        # back to the other drivers' stamps silently shortens it.
+        if drivers and all(s["start"] and s["end"] for s in drivers):
+            window = (max(s["end"] for s in drivers)
+                      - min(s["start"] for s in drivers)).total_seconds()
+        else:
+            window = None
+
+        elapsed_min = _minutes(total)
+        measured_min = _minutes(measured) if has_closed(work) else None
+        waiting_min = _minutes(waiting)
+        unattributed_min = (_minutes(max(0, total - covered))
+                            if total is not None else None)
+        window_min = _minutes(window)
+    except ValueError as exc:
+        timing_error = str(exc)
+        elapsed_min = measured_min = waiting_min = None
+        unattributed_min = window_min = None
 
     def by_kind(kind):
         """Minutes per name, unioned across every closed span for that name.
 
         `pair_intervals` emits one span per open/close pair, so a lane marked
         twice has several. Keying by name alone let the last one overwrite the
-        rest — 52 minutes of work reported as 2.0. A name with no closed span
-        stays absent.
+        rest — 52 minutes of work reported as 2.0. A name whose spans are
+        corrupt reports None; a name with no closed span stays absent.
         """
+        nonlocal timing_error
         grouped = {}
         for s in everything:
             if s["kind"] == kind and s["start"] and s["end"]:
                 grouped.setdefault(s["name"], []).append((s["start"], s["end"]))
-        return {name: _minutes(union_seconds(spans))
-                for name, spans in grouped.items()}
+        out = {}
+        for name, spans in grouped.items():
+            try:
+                out[name] = _minutes(union_seconds(spans))
+            except ValueError as exc:
+                timing_error = timing_error or str(exc)
+                out[name] = None
+        return out
 
     per_lane = by_kind("lane")
-    slowest = max(per_lane, key=per_lane.get) if per_lane else None
+    timed_lanes = {k: v for k, v in per_lane.items() if v is not None}
+    slowest = max(timed_lanes, key=timed_lanes.get) if timed_lanes else None
 
     return {
-        "total_elapsed_min": _minutes(total),
-        "measured_min": _minutes(measured) if has_closed(work) else None,
-        "waiting_on_user_min": _minutes(waiting),
-        "unattributed_min": (_minutes(max(0, total - covered))
-                             if total is not None else None),
-        "event_window_min": _minutes(window),
+        "total_elapsed_min": elapsed_min,
+        "measured_min": measured_min,
+        "waiting_on_user_min": waiting_min,
+        "unattributed_min": unattributed_min,
+        "event_window_min": window_min,
         "duration_to_build_min": _minutes(duration_to_build(timeline)),
         "per_lane": per_lane,
         "per_agent": by_kind("agent"),
         "slowest_lane": slowest,
         "timeline": timeline,
+        # Why a duration is missing, so nulled columns are not read as "this
+        # run was simply not instrumented".
+        "timing_error": timing_error,
     }

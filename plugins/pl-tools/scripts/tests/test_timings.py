@@ -493,6 +493,56 @@ class TestSummarise(unittest.TestCase):
         self.assertEqual(out["timeline"], [])
 
 
+class TestCorruptSpanDoesNotDestroyTheRow(unittest.TestCase):
+    """A reversed pair of marks costs its durations, not the whole report.
+
+    Telemetry is an observer, never a dependency: a ValueError escaping
+    summarise() took out ~20 columns that have nothing to do with durations.
+    """
+
+    TIMELINE = [
+        {"kind": "lane", "name": "orders", "phase": "start",
+         "at": "2026-08-11T21:00:00Z"},
+        {"kind": "lane", "name": "orders", "phase": "end",
+         "at": "2026-08-11T20:00:00Z"},
+        {"kind": "lane", "name": "cdc", "phase": "start",
+         "at": "2026-08-11T21:10:00Z"},
+        {"kind": "lane", "name": "cdc", "phase": "end",
+         "at": "2026-08-11T21:15:00Z"},
+        {"kind": "gate", "name": "plan", "phase": "asked",
+         "at": "2026-08-11T20:30:00Z"},
+        {"kind": "gate", "name": "plan", "phase": "answered",
+         "at": "2026-08-11T20:35:00Z"},
+    ]
+
+    def test_summarise_returns_a_dict_not_an_exception(self):
+        out = timings.summarise(a_run_dir(timeline=self.TIMELINE,
+                                          logs=DRIVER_LOGS))
+        for key in ("total_elapsed_min", "measured_min", "waiting_on_user_min",
+                    "unattributed_min", "event_window_min"):
+            self.assertIsNone(out[key], key)
+
+    def test_the_non_duration_metrics_survive(self):
+        out = timings.summarise(a_run_dir(timeline=self.TIMELINE))
+        self.assertEqual(out["per_lane"]["cdc"], 5.0)
+        self.assertEqual(out["slowest_lane"], "cdc")
+        self.assertEqual(len(out["timeline"]), 6)
+
+    def test_the_corrupt_name_is_null_not_a_number(self):
+        out = timings.summarise(a_run_dir(timeline=self.TIMELINE))
+        self.assertIn("orders", out["per_lane"])
+        self.assertIsNone(out["per_lane"]["orders"])
+
+    def test_the_corruption_is_reported_not_swallowed(self):
+        out = timings.summarise(a_run_dir(timeline=self.TIMELINE))
+        self.assertIsInstance(out["timing_error"], str)
+        self.assertIn("before it starts", out["timing_error"])
+
+    def test_a_clean_run_reports_no_timing_error(self):
+        out = timings.summarise(a_run_dir(logs=DRIVER_LOGS))
+        self.assertIsNone(out["timing_error"])
+
+
 class TestDurationToBuild(unittest.TestCase):
     def test_plan_answered_to_beat1_end(self):
         timeline = [

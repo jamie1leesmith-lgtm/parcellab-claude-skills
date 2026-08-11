@@ -84,6 +84,12 @@ def build_row(run_dir, stage, skill_version=""):
                     if lane.get("status") == "failed"]
     timing = timings.summarise(run_dir)
 
+    # A corrupt pair of marks nulls its durations rather than killing the row.
+    # Say so here, or five empty columns read as "never instrumented".
+    errors = [f["detail"] for f in state.get("failures", [])]
+    if timing["timing_error"]:
+        errors.append(f"timing: {timing['timing_error']}")
+
     outcome = STAGE_OUTCOME.get(stage, "Committed")
     if stage == "beat2" and not state.get("finished"):
         outcome = "Stalled"
@@ -106,8 +112,7 @@ def build_row(run_dir, stage, skill_version=""):
         "Events pushed": pushed,
         "Events planned": planned,
         "Deviations": derive_deviations(state, results),
-        "Error detail": "; ".join(f["detail"]
-                                  for f in state.get("failures", [])),
+        "Error detail": "; ".join(errors),
         "Total elapsed": timing["total_elapsed_min"],
         "Measured working time": timing["measured_min"],
         "Waiting on user": timing["waiting_on_user_min"],
