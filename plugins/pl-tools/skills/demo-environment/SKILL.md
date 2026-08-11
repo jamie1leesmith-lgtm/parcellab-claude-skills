@@ -290,7 +290,15 @@ next republish. Publishing is never load-bearing.
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
    edit_mode_verified}`, `cdc{selected_account_config_id,config_source,
    generate_orders,orders}`, `shopify{enabled,store?,location_id?}`,
-   `destination_country`, `products[]`, `selection{core4,shopify_extra}`,
+   `destination_country`, `products[]` (each in scrape shape, carrying both its
+   own `id` and `sku`), `selection{core4,shopify_extra}` — **these hold product
+   `id` values, not SKUs, and so do every order's `products` and every
+   shipment's `products`.** A product's `id` is its goods code (`E491096-000`);
+   its `sku` is the variant (`E491096-000-57`). Payload files use SKUs for
+   `line_item_id`; the manifest never does. `validate_manifest.py` rejects SKUs
+   with `unknown product <sku>` — live 2026-08-11 that cost a full
+   validate-fix-revalidate cycle because the rule existed only in the validator
+   and nowhere a conductor would read first,
    `brand_tokens{tokens,logo,hero}`, `orders[]` with per-order
    `{label,dir,cdc_slot,fraud_level,customer{name,email},products,
    shipments[{label,scenario,courier,products,events,unproven_events?,
@@ -457,8 +465,11 @@ it to the user's own account. Once Beat 1 is posted: Update `run-page.html`
 `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
 republish — non-fatal.
 
-**Beat 2 — verified** (after each order's driver finishes AND ≥5 minutes
-after its final event — comms lag, delivered comms the longest): per order,
+**Beat 2 — verified** (after each order's driver finishes AND **≥15 minutes**
+after its final event — comms lag, and delivered comms the longest: measured
+2026-08-11 at 3-4 minutes on single-parcel orders but over 10 minutes on a split
+order's parcel. Reporting at 6 minutes put a wrong defect hypothesis in front of
+the user): per order,
 public order-info lookup by courier + tracking_number; report checkpoints
 attached vs planned and `contacted_with_messages` vs the expected comms —
 explicitly covering the good AND bad arcs the run promised. For every
