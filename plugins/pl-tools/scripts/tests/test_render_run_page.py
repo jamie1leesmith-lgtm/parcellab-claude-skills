@@ -82,5 +82,63 @@ class TestRenderRunPage(unittest.TestCase):
         self.assertIn("overflow-x", render_run_page.render(a_state()))
 
 
+ASSETS = {
+    "logo_svg": "<svg><title>UNIQLO</title></svg>",
+    "hero": {"alt": "hero", "data_uri": "data:image/jpeg;base64,aGVybw=="},
+    "tokens": {"BRAND_NAME": "UNIQLO", "CTA_BG": "#000000"},
+    "products": {
+        "E491096-000-57": {"name": "Zip-Up Blouson", "price": "49.90",
+                           "product_type": "Jackets",
+                           "pdp_url": "https://example/a",
+                           "image_url": "https://img.example/a.jpg",
+                           "data_uri": "data:image/jpeg;base64,aW1n"},
+        "E481610-000-58": {"name": "Shoulder Bag", "price": "14.90",
+                           "product_type": "Bags",
+                           "pdp_url": "https://example/b",
+                           "image_url": "https://img.example/b.jpg",
+                           "data_uri": None},
+    },
+    "skipped": [{"asset": "E481610-000-58", "reason": "too big"}],
+}
+
+
+class TestShowcase(unittest.TestCase):
+    def test_logo_svg_is_inlined(self):
+        html = render_run_page.render(a_state(), assets=ASSETS)
+        self.assertIn("<svg><title>UNIQLO</title></svg>", html)
+
+    def test_product_with_data_uri_renders_an_image(self):
+        html = render_run_page.render(a_state(), assets=ASSETS)
+        self.assertIn('src="data:image/jpeg;base64,aW1n"', html)
+        self.assertIn("Zip-Up Blouson", html)
+
+    def test_product_without_data_uri_renders_text_card_not_broken_image(self):
+        html = render_run_page.render(a_state(), assets=ASSETS)
+        self.assertIn("Shoulder Bag", html)
+        self.assertNotIn("https://img.example/b.jpg", html)
+        self.assertNotIn('<img src="http', html)
+
+    def test_template_is_embedded_as_iframe_srcdoc(self):
+        html = render_run_page.render(
+            a_state(), assets=ASSETS,
+            template_html='<html><body><img src="https://img.example/a.jpg"/>'
+                          '</body></html>')
+        self.assertIn("<iframe", html)
+        self.assertIn("srcdoc=", html)
+
+    def test_preview_template_swaps_remote_images_for_data_uris(self):
+        out = render_run_page.preview_template(
+            '<img src="https://img.example/a.jpg" width="600"/>', ASSETS)
+        self.assertIn('src="data:image/jpeg;base64,aW1n"', out)
+        self.assertNotIn("https://img.example/a.jpg", out)
+
+    def test_preview_template_strips_unknown_remote_images(self):
+        # Anything left pointing at http would render as a broken icon.
+        out = render_run_page.preview_template(
+            '<img src="https://unknown.example/z.jpg"/>', {"products": {},
+                                                           "hero": {}})
+        self.assertNotIn("https://unknown.example/z.jpg", out)
+
+
 if __name__ == "__main__":
     unittest.main()

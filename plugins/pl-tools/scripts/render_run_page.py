@@ -8,6 +8,7 @@ the previous hand-edited page froze for the fifteen minutes that mattered most.
 import html as html_mod
 import json
 import pathlib
+import re
 import sys
 
 CSS = """
@@ -122,9 +123,85 @@ def _failures(state):
     return f'<div class="card fail"><h2>Failures</h2>{rows}</div>'
 
 
+def preview_template(template_html, assets):
+    """The artifact copy of the email: identical markup, data: URIs for images.
+
+    The canonical file on disk keeps remote URLs and is what gets pushed to
+    parcelLab — pushing this variant would be both wrong and enormous.
+    """
+    by_url = {}
+    for entry in (assets or {}).get("products", {}).values():
+        if entry.get("image_url") and entry.get("data_uri"):
+            by_url[entry["image_url"]] = entry["data_uri"]
+    hero = (assets or {}).get("hero") or {}
+
+    def swap(match):
+        url = match.group(1)
+        if url in by_url:
+            return f'src="{by_url[url]}"'
+        if hero.get("data_uri"):
+            return f'src="{hero["data_uri"]}"'
+        # Nothing to substitute: drop the reference rather than ship a request
+        # the CSP will block and render as a broken icon.
+        return 'src="" data-stripped="1"'
+
+    return re.sub(r'src="(https?://[^"]+)"', swap, template_html)
+
+
+def _products(assets):
+    products = (assets or {}).get("products") or {}
+    if not products:
+        return ""
+    cards = []
+    for sku, p in products.items():
+        if p.get("data_uri"):
+            visual = (f'<img src="{p["data_uri"]}" alt="{e(p.get("name", ""))}" '
+                      f'style="width:100%;height:140px;object-fit:cover;'
+                      f'border-radius:8px" />')
+        else:
+            visual = ('<div style="height:140px;border-radius:8px;'
+                      'background:var(--line);display:flex;align-items:center;'
+                      'justify-content:center;color:var(--muted);'
+                      'font-size:12px">image unavailable</div>')
+        cards.append(
+            f'<div style="flex:1 1 160px;min-width:160px">{visual}'
+            f'<div style="font-size:13px;margin-top:6px">'
+            f'{e(p.get("name", ""))}</div>'
+            f'<div style="font-size:12px;color:var(--muted)">'
+            f'{e(p.get("product_type", ""))} · {e(p.get("price", ""))}</div>'
+            f'</div>')
+    return ('<div class="card"><h2>Products</h2>'
+            '<div style="display:flex;gap:12px;flex-wrap:wrap">'
+            + "".join(cards) + "</div></div>")
+
+
+def _brand_header(assets):
+    if not assets:
+        return ""
+    logo = assets.get("logo_svg") or ""
+    swatches = "".join(
+        f'<span class="pill" style="background:{e(v)};color:#fff;'
+        f'border:1px solid var(--line)">{e(k)}</span>'
+        for k, v in (assets.get("tokens") or {}).items()
+        if isinstance(v, str) and v.startswith("#"))
+    return (f'<div class="card" style="text-align:center">{logo}'
+            f'<div style="margin-top:10px">{swatches}</div></div>')
+
+
+def _template_card(template_html, assets):
+    if not template_html:
+        return ""
+    srcdoc = e(preview_template(template_html, assets))
+    return ('<div class="card"><h2>Email template</h2>'
+            f'<iframe srcdoc="{srcdoc}" '
+            'style="width:100%;height:520px;border:1px solid var(--line);'
+            'border-radius:8px;background:#fff"></iframe></div>')
+
+
 def _showcase(state, manifest, assets, template_html):
-    """Placeholder — brand, products and the template arrive in LV4."""
-    return ""
+    return (_brand_header(assets)
+            + _template_card(template_html, assets)
+            + _products(assets))
 
 
 def render(state, manifest=None, assets=None, template_html=None):
@@ -162,7 +239,16 @@ def main():
     if assets_path.exists():
         assets = json.loads(assets_path.read_text())
 
-    (run_dir / "run-page.html").write_text(render(state, manifest, assets))
+    template_html = None
+    if manifest:
+        brand = (manifest.get("brand", {}).get("name") or "").lower()
+        candidate = (pathlib.Path.home() / "parcellab-previews"
+                     / f"{brand}-parcellab-layout.html")
+        if candidate.exists():
+            template_html = candidate.read_text()
+
+    (run_dir / "run-page.html").write_text(
+        render(state, manifest, assets, template_html))
     print(f"rendered {run_dir / 'run-page.html'}")
     return 0
 
