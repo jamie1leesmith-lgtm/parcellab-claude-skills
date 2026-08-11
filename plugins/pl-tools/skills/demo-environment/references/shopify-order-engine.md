@@ -433,7 +433,19 @@ confirmed target account, not whatever the ambient env var happens to hold.
 absent `run.pace`) → 180, `fast` → 60. At `fast`, Beat 2's report must note
 that comm ordering was not guaranteed.
 
-Run it with the Bash tool's `run_in_background`; do a `DRYRUN=1` pass first. All orders'
+**Watching the drivers:** match on `bash .*run-lifecycle.sh`, not on
+`run-lifecycle.sh` alone — a `pgrep -f run-lifecycle.sh` in a waiter loop also matches
+the waiter's own shell command line, so it counts itself and never reaches zero
+(observed 2026-08-11: the wait never returned). Note also that a driver started in a
+Bash-tool foreground call can outlive that call's timeout and keep running detached —
+a timed-out driver is not necessarily a stopped one; check before relaunching.
+
+Run it with the Bash tool's `run_in_background`; do a `DRYRUN=1` pass first — **with
+`GAP_SECONDS=0`**. The driver sleeps before *every* event including the first, and honours
+that sleep in dry-run too, so a dry pass at standard pace costs the same wall clock as the
+real run (a 5-event order = 15 minutes; it timed out live on 2026-08-11). `GAP_SECONDS=0`
+here does not violate the standard-pace rule: a dry run sends nothing, so comm ordering is
+not in play. All orders'
 drivers run concurrently once each has reached this point — a failure earlier in one
 order's Parts 2–5 must never block another order's driver from launching.
 

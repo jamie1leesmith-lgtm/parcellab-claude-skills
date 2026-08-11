@@ -313,6 +313,13 @@ Substitute all `__BRAND_X__` tokens. Key structural rules for the final HTML:
   brand/style value from Step 6 (colours, fonts, radii, logo URLs, footer copy and address) and
   takes a real value. After substitution, grep the output for `{{preview}}` and for a leftover
   `__BRAND_` to confirm both.
+- **Then check the markup is well-formed — the greps above do not.** Removing the
+  soft transition band is a multi-element deletion, and a non-greedy regex that
+  stops at the first `</tr>` leaves an orphaned `</table></td></tr>` behind.
+  Browsers silently auto-correct it, so the preview looks perfect while the
+  broken markup is what gets pushed to parcelLab (hit live 2026-08-11; both greps
+  passed). Confirm open/close counts match for `<table>`, `<tr>` and `<td>`, and
+  that nothing is left unclosed at EOF, before Step 8.
 
 Write to: `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html` — where `$HOME` is the current user's home directory. Create the folder if missing. **Do NOT write under `~/Documents`** — the preview server cannot read it (macOS TCC protection).
 
@@ -324,7 +331,7 @@ Serve the HTML file from disk and open it in the built-in Browser pane. This kee
 
 **Serving directory — TCC warning:** the preview server's spawned process **cannot read `~/Documents`** (macOS TCC protection → 404 "No permission to list directory"). Always serve from `$HOME/parcellab-previews/`.
 
-1. Ensure the launch config exists at `{project}/.claude/launch.json`, substituting the current user's real home path for `{HOME}`:
+1. Ensure the launch config exists at `{project}/.claude/launch.json`, substituting the current user's real home path for `{HOME}`. **It usually will not exist** — it is per-machine (the path is absolute) and must not be committed, so create it on first use in each checkout and leave it untracked:
 
 ```json
 {
@@ -508,7 +515,18 @@ If the user picks `None`, skip to Step 10 and report the layout as unassigned.
 
 ### 9b.3 — Record the target layout's own mappings, and find any layout holding a stale one
 
-One call: the tool ending in `__journey_list_journey_layouts` with `{ "account": [{ACCOUNT_ID}] }`.
+One call — but **not the bare MCP list**: it returns every layout's full HTML
+`content` and overflows the tool-result limit (live 2026-08-11: 148,778
+characters, unusable). Use the CLI with a projection instead, which returns only
+what this step needs:
+
+```bash
+parcellab --env prod journey layout list --account {ACCOUNT_ID} --all -o json \
+  --jmes 'results[].{id:id,name:prettyName,auto:autoLayout}'
+```
+
+(If you must use the MCP tool, no argument suppresses `content` — the projection
+above is the only reliable form.)
 
 **First, record the target layout.** Find the entry whose `id` is `{NEW_LAYOUT_ID}` — the layout
 Step 9 just wrote, whether it created it or updated an existing one — and record its **full
@@ -557,8 +575,21 @@ single-store path or its multi-store path, no write has happened yet — it happ
 
 > **⚠️ Every `journey_write_layout` call echoes the full layout HTML back in its response.** This
 > step makes at least two such writes (9b.4a, plus one per layout cleared in 9b.4b) — the same
-> cost as the list call in 9b.3, repeated per write. Read only `autoLayout` (and `id`) from each
-> response and do not echo the `content` field into the conversation.
+> cost as the list call in 9b.3, repeated per write. Do not echo the `content` field into the
+> conversation.
+>
+> **The write response does NOT contain `autoLayout`** (live-verified 2026-08-11) — it returns
+> `id`, `prettyName`, `name`, `language`, `content` and `liquid` only, so the mapping cannot be
+> confirmed from it. Verify with a separate read instead, which is cheap and projects away the
+> HTML:
+>
+> ```bash
+> parcellab --env prod journey layout show {LAYOUT_ID} -o json \
+>   --jmes '{id:id,name:prettyName,rel:releaseStatus,auto:autoLayout}'
+> ```
+>
+> Note the API regenerates the remaining entries' ids when one is removed (observed
+> `24712` → `24715`), so compare entries by `client`, never by entry `id`.
 
 **Order matters.** Clearing the old mapping first leaves a window where the store has no
 template at all, which can break outbound emails. Setting the new one first means the worst

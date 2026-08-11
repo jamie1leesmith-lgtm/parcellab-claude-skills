@@ -108,6 +108,13 @@ next. Prefix each such block with:
 source ~/.claude/parcellab-shopify-seed.env
 ```
 
+> **On an orchestrated run, pass the store literally instead of sourcing.** A permission
+> rule like `Bash(shopify store execute *)` matches on the command's leading text, so a
+> `source …env && shopify store execute …` compound starts with `source` and fails to
+> match — every Shopify write then prompts, mid-run (hit live 2026-08-11). The conductor
+> already knows the store from the manifest, so write
+> `shopify store execute -s <store>.myshopify.com …` with the value substituted.
+
 **Dev stores only.** Never a production merchant store. Say the store name out loud at
 the confirmation so a wrong target is caught before any write.
 
