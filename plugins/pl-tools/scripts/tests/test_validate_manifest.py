@@ -172,6 +172,20 @@ class TestValidateManifest(unittest.TestCase):
         m["orders"][0]["shipments"][0]["unproven_chain"] = True
         self.assertEqual(validate(m), [])
 
+    def test_order_products_must_be_ids_not_indices(self):
+        # selection[] and orders[].products must use the same reference style.
+        # An integer index resolves to a real-but-wrong product for a careless
+        # consumer, so it has to fail loudly rather than validate clean.
+        m = valid_manifest()
+        m["orders"][0]["products"] = [0]
+        errs = validate(m)
+        self.assertTrue(any("not indices" in e for e in errs), errs)
+
+    def test_order_products_reject_unknown_id(self):
+        m = valid_manifest()
+        m["orders"][0]["products"] = ["p99"]
+        self.assertTrue(any("unknown product p99" in e for e in validate(m)))
+
     def test_recovered_chain_is_proven(self):
         # Proven live 2026-08-11 (order STU-1786455234, account 1626718);
         # validating it clean is what keeps Beat 1 from labelling it unproven.

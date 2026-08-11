@@ -91,6 +91,16 @@ def validate(m):
             need(slot in CDC_SLOTS, f"order {label}: unknown cdc_slot {slot}")
             need(slot not in seen_slots, f"order {label}: duplicate cdc_slot {slot}")
             seen_slots.add(slot)
+        # Product references are product ids, the same style selection uses.
+        # Integer indices into products[] also "work" for a careless consumer
+        # and silently resolve to the wrong product, so reject them here.
+        for pid in o.get("products", []):
+            need(not isinstance(pid, bool) and not isinstance(pid, int),
+                 f"order {label}: products must reference product ids, not indices "
+                 f"(got {pid!r})")
+            if isinstance(pid, str):
+                need(pid in products,
+                     f"order {label}: unknown product {pid}")
         need(bool(o.get("shipments")), f"order {label}: needs at least one shipment")
         for s in o.get("shipments", []):
             events = s.get("events", [])
