@@ -295,7 +295,9 @@ fulfil per shipment with tracking → poll the pL tracking → build the
 engine's steps 3–4 — including that `GAP_SECONDS` comes from the manifest's
 `run.pace`: 180 for standard (the default), 60 for fast. When pace is fast,
 Beat 2's report must note that comm ordering was not guaranteed at this
-pace. Then write `order.json` (order_number = the Shopify
+pace. Once drivers are launched: Update `run-page.html` (state 5 per
+`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
+republish — non-fatal. Then write `order.json` (order_number = the Shopify
 order name, e.g. "#1001") and, once all orders are processed, build
 `results/linked-orders.json` the same way as the direct engine.
 
@@ -326,7 +328,8 @@ config" when `config_source` is `none`), and `generate_orders`/`orders`
 (say plainly whether the CDC was also asked to generate synthetic orders,
 and for which slots). No currency symbols. **If the edit-mode guard was
 repointed for this run** (per Phase 0 step 4's note), offer here to restore
-it to the user's own account. Update `run-page.html` (state 6 per
+it to the user's own account. Once Beat 1 is posted: Update `run-page.html`
+(state 6 per
 `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
 republish — non-fatal.
 
@@ -337,7 +340,7 @@ attached vs planned and `contacted_with_messages` vs the expected comms —
 explicitly covering the good AND bad arcs the run promised. For every
 unproven event or chain that fired correctly, offer to record it in
 `${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/status-codes.md`.
-Update `run-page.html` (state 7 per
+Once Beat 2 is posted: Update `run-page.html` (state 7 per
 `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
 republish — non-fatal.
 
