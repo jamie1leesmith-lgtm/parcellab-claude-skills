@@ -173,3 +173,21 @@ When every order's `order.json` exists, build
 `{"order_number": <order.json order_number>, "order_type": <cdc_slot>}`.
 An order whose creation failed is excluded (and reported); one order's
 failure never stops another's driver.
+
+## Phase 2 — Orders (Shopify engine: retain-shopify path)
+
+Gate: publish gate passed AND `results/shopify-seed.json` status ok.
+For each manifest order, in its `orders/<nn>-<label>/` directory, follow
+`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/shopify-order-engine.md`:
+create the order in Shopify (line items = the order's `products` mapped to
+seeded variant gids) → poll pL ingestion → enrich with the fraud fragment →
+fulfil per shipment with tracking → poll the pL tracking → build the
+`NN-<status>.json` files and launch the driver, exactly as the direct
+engine's steps 3–4. Then write `order.json` (order_number = the Shopify
+order name, e.g. "#1001") and, once all orders are processed, build
+`results/linked-orders.json` the same way as the direct engine.
+
+Per-order failure isolation: ingestion timeout, enrichment failure or
+fulfilment failure marks THAT order partial in `order.json`
+(`"status": "partial", "failed_at": "<step>"`) — its events are not pushed,
+other orders continue, and the report says exactly which step failed.
