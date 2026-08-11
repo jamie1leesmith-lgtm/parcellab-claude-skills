@@ -69,6 +69,10 @@ if [ "${#FILES[@]}" -eq 0 ]; then
   exit 1
 fi
 
+# PARSED BY scripts/timings.py (_live_start_index): it anchors the driver's
+# interval on the LAST "START sequence" line carrying dryrun=0, to skip the
+# mandated dry-run pass. Keep both "START sequence" and the dryrun= token, or
+# every driver interval silently disappears from telemetry.
 log "START sequence: ${#FILES[@]} events, gap=${GAP_SECONDS}s, dryrun=${DRYRUN}, endpoint=${API_PATH}, account=${ACCOUNT_ID:-unset}"
 i=0
 for f in "${FILES[@]}"; do

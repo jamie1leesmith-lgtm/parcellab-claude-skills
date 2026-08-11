@@ -107,22 +107,20 @@ def _live_start_index(lines):
     therefore measured from the dry run: a real 3.0-minute order read as 6.7.
     Anchor on the LAST `START sequence` carrying `dryrun=0`.
 
-    A log whose START lines carry no `dryrun=` token at all predates the flag;
-    fall back to the first line. A log with only dry-run passes has no live
-    driver interval — the caller skips it.
+    The guard fails CLOSED. A log with no `dryrun=0` START — whether it holds
+    only dry-run passes, or the line was reworded and lost the flag — has no
+    identifiable live driver, so it has no driver interval. Falling back to
+    lines[0] would re-admit exactly the dry-run inflation this guard exists to
+    stop, and a wrong number is worse than a null.
+
+    This parses `run-lifecycle.sh`'s START line; that line carries a comment
+    naming this function, and a test pins the `dryrun=` token.
     """
     live = None
-    saw_flag = False
     for i, line in enumerate(lines):
-        if "START sequence" not in line:
-            continue
-        if "dryrun=" in line:
-            saw_flag = True
-            if "dryrun=0" in line:
-                live = i
-    if live is not None:
-        return live
-    return None if saw_flag else 0
+        if "START sequence" in line and "dryrun=0" in line:
+            live = i
+    return live
 
 
 def _stamp_of(line):

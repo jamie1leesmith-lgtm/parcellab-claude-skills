@@ -169,14 +169,24 @@ def a_run_dir(timeline=None, logs=None):
     return str(d)
 
 
+def start_line(stamp, events, dryrun=0):
+    """A START line in exactly the shape `run-lifecycle.sh:72` emits.
+
+    Fixtures that drop the `dryrun=` token do not exercise the live path,
+    so a regression in the guard would leave the suite green.
+    """
+    return (f"{stamp} START sequence: {events} events, gap=180s, "
+            f"dryrun={dryrun}, endpoint=/v4/track/events/, account=1626718")
+
+
 DRIVER_LOGS = {
     # Concurrent: 3, 5 and 4 events, all launched together. The window is the
     # longest order, not the total — this is the 2026-08-11 miscalculation.
-    "01-clean-low": ["2026-08-11T21:35:56Z START sequence: 3 events",
+    "01-clean-low": [start_line("2026-08-11T21:35:56Z", 3),
                      "2026-08-11T21:45:00Z DONE sequence complete"],
-    "02-split-medium": ["2026-08-11T21:36:01Z START sequence: 5 events",
+    "02-split-medium": [start_line("2026-08-11T21:36:01Z", 5),
                         "2026-08-11T21:51:06Z DONE sequence complete"],
-    "03-recovered-high": ["2026-08-11T21:36:06Z START sequence: 4 events",
+    "03-recovered-high": [start_line("2026-08-11T21:36:06Z", 4),
                           "2026-08-11T21:48:09Z DONE sequence complete"],
 }
 
@@ -189,7 +199,7 @@ class TestDriverIntervals(unittest.TestCase):
         self.assertEqual(by_name["01-clean-low"]["end"], dt(21, 45, 0))
 
     def test_unfinished_driver_has_no_end(self):
-        logs = {"01-clean-low": ["2026-08-11T21:35:56Z START sequence: 3 events",
+        logs = {"01-clean-low": [start_line("2026-08-11T21:35:56Z", 3),
                                  "2026-08-11T21:38:56Z EVENT 1/3"]}
         spans = timings.driver_intervals(a_run_dir(logs=logs))
         self.assertIsNone(spans[0]["end"])
@@ -224,7 +234,7 @@ class TestDriverIntervals(unittest.TestCase):
 
     def test_malformed_done_line_leaves_the_driver_unfinished(self):
         logs = {"01-clean-low": [
-            "2026-08-11T21:35:56Z START sequence: 3 events",
+            start_line("2026-08-11T21:35:56Z", 3),
             "not-a-timestamp DONE sequence complete",
         ]}
         spans = timings.driver_intervals(a_run_dir(logs=logs))
@@ -235,13 +245,40 @@ class TestDriverIntervals(unittest.TestCase):
         # A partial write or truncated flush in one order's log must not take
         # down the whole report — only that driver is skipped.
         logs = {
-            "01-garbled": ["not-a-timestamp START sequence: 1 events"],
+            "01-garbled": [start_line("not-a-timestamp", 1)],
             "02-clean-low": DRIVER_LOGS["01-clean-low"],
         }
         spans = timings.driver_intervals(a_run_dir(logs=logs))
         names = {s["name"] for s in spans}
         self.assertNotIn("01-garbled", names)
         self.assertIn("02-clean-low", names)
+
+    def test_log_with_no_dryrun_token_has_no_driver_interval(self):
+        # The guard must fail CLOSED. If the driver's START line is ever
+        # reworded or loses the flag, there is no way to tell a dry-run pass
+        # from the live one — and a dry run's stamp inflates the window.
+        # A missing mark yields a null, never a wrong number.
+        logs = {"01-clean-low": [
+            "2026-08-11T21:35:56Z START sequence: 3 events",
+            "2026-08-11T21:45:00Z DONE sequence complete",
+        ]}
+        self.assertEqual(timings.driver_intervals(a_run_dir(logs=logs)), [])
+
+
+class TestDriverLogFormatContract(unittest.TestCase):
+    """`timings` parses a line another file emits. Pin the coupling."""
+
+    SCRIPT = (pathlib.Path(__file__).resolve().parent.parent.parent
+              / "skills" / "order-lifecycle" / "references" / "run-lifecycle.sh")
+
+    def test_run_lifecycle_start_line_still_emits_a_dryrun_token(self):
+        # _live_start_index anchors on `dryrun=0`. Reword this line without
+        # the flag and every driver interval silently disappears.
+        self.assertTrue(self.SCRIPT.exists(), f"missing {self.SCRIPT}")
+        starts = [ln for ln in self.SCRIPT.read_text().splitlines()
+                  if ln.lstrip().startswith("log ") and "START sequence" in ln]
+        self.assertEqual(len(starts), 1, "expected exactly one START log line")
+        self.assertIn("dryrun=", starts[0])
 
 
 class TestSummarise(unittest.TestCase):
@@ -347,7 +384,7 @@ class TestSummarise(unittest.TestCase):
         # A garbled run.log in one order must degrade to skipping that
         # driver, not raise out of summarise() and kill the whole report.
         logs = dict(DRIVER_LOGS)
-        logs["04-garbled"] = ["not-a-timestamp START sequence: 1 events"]
+        logs["04-garbled"] = [start_line("not-a-timestamp", 1)]
         out = timings.summarise(a_run_dir(logs=logs))
         self.assertEqual(out["event_window_min"], 15.2)
 
@@ -356,7 +393,7 @@ class TestSummarise(unittest.TestCase):
         # The driver is simply unfinished, so the window is not yet known.
         logs = dict(DRIVER_LOGS)
         logs["04-garbled-done"] = [
-            "2026-08-11T21:36:00Z START sequence: 1 events",
+            start_line("2026-08-11T21:36:00Z", 1),
             "not-a-timestamp DONE sequence complete",
         ]
         out = timings.summarise(a_run_dir(logs=logs))
@@ -366,8 +403,7 @@ class TestSummarise(unittest.TestCase):
         # Falling back to the other drivers' stamps silently shortens the
         # window; it genuinely is not known until every driver finishes.
         logs = dict(DRIVER_LOGS)
-        logs["04-still-running"] = [
-            "2026-08-11T21:36:00Z START sequence: 2 events"]
+        logs["04-still-running"] = [start_line("2026-08-11T21:36:00Z", 2)]
         out = timings.summarise(a_run_dir(logs=logs))
         self.assertIsNone(out["event_window_min"])
 
