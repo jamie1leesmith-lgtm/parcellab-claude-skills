@@ -180,6 +180,26 @@ everything else in pl-tools works without it.
    (A config file, not an env var in settings.json — env vars are only read
    at app startup, and this one is read fresh from the file by each run.)
 
+### Optional: run telemetry (for demo-environment)
+
+Only relevant if your team keeps a shared run-telemetry database — see
+`demo-environment/references/telemetry.md`. Skip freely otherwise; nothing else
+in pl-tools depends on this.
+
+If your team has one, set its id in the **global** `~/.claude/settings.json`
+env block:
+
+    "env": {
+      "PL_RUN_TELEMETRY_DB": "<notion database id>"
+    }
+
+**Setting this is the opt-in.** Each demo-environment run then posts (via
+*your own* Notion connector — no shared credential is distributed) what it
+built, what broke, and what deviated, attributed to you. Leave it unset and no
+telemetry is sent, silently; nothing prompts mid-run either way.
+
+Never point this at a database you do not own or have not been invited to.
+
 ## 7. Tell me to restart
 
 I must fully quit Claude Code (**Cmd-Q**, not just closing the window) and reopen
