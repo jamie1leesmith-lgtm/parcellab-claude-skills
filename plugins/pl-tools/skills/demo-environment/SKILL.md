@@ -26,12 +26,22 @@ Ask **"Are returns in scope for this demo?"** first.
   **retain-shopify**. An Engage-only run never asks the Shopify question;
   Retain covers the Engage story automatically.
 
+## The run page
+
+Every run keeps one progress artifact — see
+`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md` for
+the states and skeleton. Publish state 1 right after creating the run dir;
+republish at each numbered state; record the URL as `run.page_url` in the
+manifest after the first publish. Publishing is never load-bearing.
+
 ## Phase 0 — Intake (front-loaded)
 
 1. **Create the run directory** `$HOME/parcellab-demo-runs/<handle>-<ts>/`
    (handle derived from the prospect URL exactly as shopify-seed Step 3
    derives `prospect_handle`; ts = YYYYMMDD-HHMM). Create `results/`,
-   `orders/` and `scrape/` inside it.
+   `orders/` and `scrape/` inside it. Update `run-page.html` (state 1 per
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
+   and republish — non-fatal.
 2. **Path + brand round:** take the prospect URL and ask ONLY the path
    questions (returns in scope? · Shopify opp? — per *Paths*) — the minimum
    needed to know what to collect.
@@ -68,7 +78,10 @@ Ask **"Are returns in scope for this demo?"** first.
    the ★ template preview naturally starts after it, since it needs the
    scraped tokens. **Reused pool:** when a prior run's pool for this brand
    is being reused (offer this whenever one exists), skip the dispatch and
-   copy the prior `scrape/` files instead.
+   copy the prior `scrape/` files instead. Once `results/scrape.json` shows
+   `ok`: Update `run-page.html` (state 2 per
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
+   and republish — non-fatal.
 4. **Interview concurrently, in chat** (batch with AskUserQuestion where
    possible) — the remaining rounds, while the scrape agent runs:
    - destination country — **never assume it**
@@ -160,9 +173,15 @@ Ask **"Are returns in scope for this demo?"** first.
    the order/scenario/fraud matrix with expected comm per event (mark
    unproven items) · CDC region/category/config source · CDC synthetic
    generation on/off (+ which slots) · the account by name. One explicit yes
-   covers all of it; any tweak loops back here.
+   covers all of it; any tweak loops back here. When the gate opens: Update
+   `run-page.html` (state 3 per
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
+   and republish — non-fatal. Once approved: Update `run-page.html` (state 4
+   per `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
+   and republish — non-fatal.
 8. **Write the manifest** to `demo-manifest.json` (schema:
-   `run{…, pace: "standard"|"fast" — absent means standard}`, `path`,
+   `run{…, pace: "standard"|"fast" — absent means standard, page_url —
+   recorded after the first run-page publish}`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
    edit_mode_verified}`, `cdc{selected_account_config_id,config_source,
    generate_orders,orders}`, `shopify{enabled,store?,location_id?}`,
@@ -249,7 +268,10 @@ only if the approved plan changed at the gate:
    inline on every launch: `create.json`'s `account` field and the driver's
    account both come from the manifest, never from the ambient
    `$PARCELLAB_ACCOUNT_ID`, which may point at a different account than the
-   one confirmed at intake.
+   one confirmed at intake. Once drivers are launched: Update
+   `run-page.html` (state 5 per
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
+   and republish — non-fatal.
 5. Write `order.json` per the contract.
 
 When every order's `order.json` exists, build
@@ -304,7 +326,9 @@ config" when `config_source` is `none`), and `generate_orders`/`orders`
 (say plainly whether the CDC was also asked to generate synthetic orders,
 and for which slots). No currency symbols. **If the edit-mode guard was
 repointed for this run** (per Phase 0 step 4's note), offer here to restore
-it to the user's own account.
+it to the user's own account. Update `run-page.html` (state 6 per
+`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
+republish — non-fatal.
 
 **Beat 2 — verified** (after each order's driver finishes AND ≥5 minutes
 after its final event — comms lag, delivered comms the longest): per order,
@@ -313,6 +337,9 @@ attached vs planned and `contacted_with_messages` vs the expected comms —
 explicitly covering the good AND bad arcs the run promised. For every
 unproven event or chain that fired correctly, offer to record it in
 `${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/status-codes.md`.
+Update `run-page.html` (state 7 per
+`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
+republish — non-fatal.
 
 ## Failure handling
 
@@ -323,6 +350,10 @@ unproven event or chain that fired correctly, offer to record it in
 | template publish | Phase 2 (all orders) | the three-way publish-gate offer |
 | one order (any engine) | nothing else | mark partial in its order.json; report the exact step |
 | CDC call | nothing | report; 500 = request exists, retry manually in-app |
+
+On any failure above: Update `run-page.html` (state 8 per
+`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`) and
+republish — non-fatal.
 
 Fallback rule (Approach B): any agent lane can be re-run inline in the main
 session from the same manifest — the brief and the contract are identical.
