@@ -1,0 +1,38 @@
+/* deck-extensions.css — new slide-type styles for parcellab-deck-builder.
+   Loaded after deck.css (same <head>); reuses its :root tokens from
+   colors_and_type.css / deck.css, defines no new tokens of its own. This
+   file is authored by this skill, never fetched from Deck Builder, and
+   must be copied + pushed alongside deck.css on every deck. */
+
+/* ── Company at a glance ───────────────────────────────────────── */
+.glance-trust { text-align: center; margin-bottom: 40px; }
+.glance-trust .num { font-size: 96px; font-weight: 400; font-style: italic; color: var(--blue); line-height: 1; }
+.glance-trust .num .unit { font-size: 0.5em; }
+.glance-trust .glance-label { margin-top: 12px; font-size: 22px; color: var(--pl-grey-700); max-width: 44ch; margin-left: auto; margin-right: auto; }
+
+.glance-pills { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+.glance-pills.products { margin-bottom: 40px; }
+.glance-pill { padding: 10px 24px; border-radius: 999px; border: 1px solid var(--pl-grey-200); font-size: 18px; color: var(--ink); background: var(--bg-soft); }
+
+/* ── Customer journey / outcome matrix ─────────────────────────── */
+.journey-matrix { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--pl-grey-100); border-radius: var(--r-xl); overflow: hidden; }
+.journey-matrix .phase { display: flex; flex-direction: column; border-right: 1px solid var(--pl-grey-100); }
+.journey-matrix .phase:last-child { border-right: none; }
+.journey-matrix .phase-name { font-size: 16px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pl-grey-600); padding: 16px 20px; border-bottom: 1px solid var(--pl-grey-100); background: var(--bg-soft); }
+.journey-matrix .phase-product { padding: 20px 20px 8px; font-size: 20px; font-weight: 400; margin: 0; }
+.journey-matrix .phase-product.c-convert { color: var(--blue); }
+.journey-matrix .phase-product.c-engage { color: var(--green); }
+.journey-matrix .phase-product.c-retain { color: var(--orange); }
+.journey-matrix .phase-requirement { padding: 0 20px 16px; font-size: 16px; color: var(--pl-grey-700); line-height: 1.4; margin: 0; }
+.journey-matrix .phase-outcome { padding: 16px 20px; font-size: 15px; color: var(--pl-grey-600); border-top: 1px solid var(--pl-grey-100); margin: auto 0 0; }
+
+/* ── Maturity curve (reuses .timeline; 5-column modifier + impact line) ── */
+.timeline.cols-5 { grid-template-columns: repeat(5, 1fr); }
+.timeline.cols-5 .step:nth-child(1) .dot { background: var(--b-200); }
+.timeline.cols-5 .step:nth-child(2) .dot { background: var(--b-300); }
+.timeline.cols-5 .step:nth-child(3) .dot { background: var(--b-400); }
+.timeline.cols-5 .step:nth-child(4) .dot { background: var(--b-500); }
+.timeline.cols-5 .step:nth-child(5) .dot { background: var(--b-700); }
+.timeline .step .mini { display: flex; gap: 24px; margin-top: 16px; }
+.timeline .step .mini .mv { font-size: 28px; font-weight: 400; color: var(--ink); line-height: 1; }
+.timeline .step .mini .ml { font-size: 14px; color: var(--pl-grey-600); margin-top: 4px; max-width: 20ch; }

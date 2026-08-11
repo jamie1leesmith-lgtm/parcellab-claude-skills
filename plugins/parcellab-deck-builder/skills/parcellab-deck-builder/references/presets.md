@@ -9,7 +9,7 @@ draft a new slide type (see "New slide types" below).
 ## 1. Post-discovery recap
 No commercials. Sent standalone, not presented live.
 
-Slides: Cover, Big stat, Three pillars, Quote, Next steps.
+Slides: Cover, Company at a glance, Customer journey matrix, Big stat, Three pillars, Quote, Next steps.
 
 - **Big stat**: lead with the single most striking Onyx/industry stat matching
   the customer's stated pain (not always the deck's default 68% stat).
@@ -25,7 +25,7 @@ Presented live with narration — built to support a presenter, not to be read
 standalone. Only becomes a Demo follow-up if the customer asks to keep it
 afterwards.
 
-Slides: Cover, Agenda, Platform showcase, Three pillars, Table · Compare (only
+Slides: Cover, Company at a glance, Customer journey matrix, Agenda, Platform showcase, Three pillars, Table · Compare (only
 if a competitor was named on the call), Next steps.
 
 - **Agenda**: replace the default 6-topic agenda with the actual demo flow.
@@ -36,15 +36,17 @@ if a competitor was named on the call), Next steps.
 ## 3. Demo follow-up
 Sent after the demo call. Recaps what was shown against what was asked.
 
-Slides: Cover, Agenda (relabelled "What we covered"), Platform showcase, Proof
+Slides: Cover, Company at a glance, Customer journey matrix, Agenda (relabelled "What we covered"), Platform showcase, Proof
 in numbers, Quote or Spotlight (whichever fits the story better), Table ·
 Compare (if raised on the call), Next steps.
 
 ## 4. Business case / proposal
 The only preset that reaches Phase 3 (Pricing). Sent to the buying committee.
 
-Slides: Cover, Section 01, Big stat, Three pillars, Proof in numbers, Revenue
+Slides: Cover, Company at a glance, Customer journey matrix, Section 01, Big stat, Three pillars, Proof in numbers, Revenue
 uplift, 6 Benefits, Rollout, Pricing, Contract summary, Team, Next steps.
+
+Company at a glance and the journey matrix come before `Section 01` (which introduces the customer's specific problem) — they're general 'who we are' framing, not part of that problem narrative.
 
 - **Revenue uplift**: this slide's own "Assumption inputs" / "parcelLab
   benchmark inputs" panels are structurally what the pricing calculators
@@ -58,7 +60,11 @@ uplift, 6 Benefits, Rollout, Pricing, Contract summary, Team, Next steps.
 ## 5. Exec summary
 Short, senior audience. Sent standalone.
 
-Slides: Cover, Big stat, Proof in numbers, Customers, Next steps.
+Slides: Cover, Company at a glance, Customer journey matrix, Big stat, Proof in numbers, Customers, Next steps.
+
+- **Company at a glance (condensed)**: use only the trust line ("1,000+ leading
+  global brands") and the five-product pill row from `company-facts.md`. Drop the
+  office markers and scale stats — this preset is explicitly short, senior-audience.
 
 ## 6. Scoping deck
 Technical/integration fit. Commonly needs a new slide type this system doesn't
@@ -68,9 +74,19 @@ supported). Draft this live at Gate 2 using the brand tokens and `StatusPill`
 component per the design system README's rules — don't force an existing
 table layout to carry per-row status when a purpose-built layout is clearer.
 
-Slides: Cover, Agenda, Platform showcase, Table · Zebra or Tables · Two-up
+Slides: Cover, Company at a glance, Customer journey matrix, Agenda, Platform showcase, Table · Zebra or Tables · Two-up
 (carrier/technical coverage data), Table · Compare (if evaluating a named
 competitor's tech), [new] Requirements-fit matrix.
+
+## Maturity curve (optional)
+
+Not a default slide in any preset. Offer it at Gate 2 only for **post-discovery
+recap** and **business case**, and only when the sourced brief (Gong call or manual
+context) actually shows a signal about the customer's current operational maturity —
+ad hoc/reactive processes, established-but-manual processes, data-driven processes,
+etc. Never offer it by default, and never force it into a deck without that signal.
+
+Content and both variants (Post-Purchase, Returns) are in `company-facts.md`.
 
 ## New slide types
 

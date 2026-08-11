@@ -54,6 +54,10 @@ user; a human must create its replacement via the claude.ai UI and share its
 - Look up the preset's starting slide list in `references/presets.md`.
 - Map brief content onto those slide types. Where nothing fits, draft a new
   slide type per `references/presets.md`'s "New slide types" section.
+- **Check `references/company-facts.md`'s confirmed-dates** whenever a slide uses a
+  fact from that file (Company at a glance, Customer journey matrix, Maturity curve).
+  If a fact hasn't been reconfirmed in over two quarters, flag it at Gate 2 as
+  unverified rather than using it silently.
 - **Gate 2:** present the slide list — each slide's type, key message, and
   source (which Onyx fact or Gong quote it's drawn from) — and any new slide
   type flagged explicitly. Wait for approval before rendering anything.
@@ -93,8 +97,13 @@ user; a human must create its replacement via the claude.ai UI and share its
    every customer's decks and never needs re-pushing.
 3. **Assemble the deck locally** in `decks/<customer>/<preset>-<date>/`,
    built from the cached blueprint: copy `deck.css` and `deck-stage.js` from
-   the cache into that folder unchanged. Write `ds-base.js` with its `base`
-   line set to exactly `../../../_ds/deck-builder-12117415-e8b6-4e02-a3ef-f9f3498d65b6`
+   the cache into that folder unchanged. Also copy
+   `references/deck-extensions.css` (this skill's own file, never fetched
+   from Deck Builder) into the same folder unchanged, and link it in
+   `index.html`'s `<head>` right after `deck.css`:
+   `<link rel="stylesheet" href="./deck-extensions.css">`. Write `ds-base.js`
+   with its `base` line set to exactly
+   `../../../_ds/deck-builder-12117415-e8b6-4e02-a3ef-f9f3498d65b6`
    — three `..` (this deck's folder is 3 levels below the shared project's
    root) then into the platform's own design-system-binding folder, which
    already holds `colors_and_type.css`, `_ds_bundle.js`, and the fonts. Write
@@ -104,10 +113,12 @@ user; a human must create its replacement via the claude.ai UI and share its
 4. **Push.** `DesignSync finalize_plan` against
    `c6f23cde-c20a-4916-a8b3-468df1929762`, writes covering
    `decks/<customer>/<preset>-<date>/{index.html,deck.css,ds-base.js,
-   deck-stage.js}` (all four — omitting `ds-base.js`/`deck-stage.js` produces
-   a deck with no tokens, no fonts, and no working `<deck-stage>` component)
-   plus `assets/logo_horizontal*.svg` only if step 2 found it missing. Then
-   `write_files`.
+   deck-stage.js,deck-extensions.css}` (all five — omitting `ds-base.js`/
+   `deck-stage.js` produces a deck with no tokens, no fonts, and no working
+   `<deck-stage>` component; omitting `deck-extensions.css` breaks the
+   company-at-a-glance, journey-matrix, and maturity-curve slide types
+   specifically) plus `assets/logo_horizontal*.svg` only if step 2 found it
+   missing. Then `write_files`.
 5. Tell the user the deck is live in the shared "Customer decks project",
    under `decks/<customer>/<preset>-<date>/`, and that further edits happen
    there directly — this skill's job ends at the initial build.
@@ -139,3 +150,8 @@ user; a human must create its replacement via the claude.ai UI and share its
 - **Pricing extraction** must use the allowlist in `references/pricing-fields.md`
   exactly — this is a correctness requirement (the internal/customer
   boundary), not just an implementation detail.
+- **A `references/company-facts.md` figure hasn't been reconfirmed in over two
+  quarters** → flagged at Gate 2 as unverified; never used silently.
+- **The maturity curve has no automated refresh mechanism** — it doesn't come from
+  Onyx, Gong, or DesignSync, only a human periodically re-checking parcelLab's
+  SharePoint sales collateral. State this plainly if asked; do not imply it self-updates.
