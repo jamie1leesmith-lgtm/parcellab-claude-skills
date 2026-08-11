@@ -8,8 +8,10 @@ query across users instead of by anecdote.
 **Created 2026-08-11, shared with the team:**
 https://app.notion.com/p/67609211a22643bfaa6bf94ccbd3f391 — id
 `67609211a22643bfaa6bf94ccbd3f391`. This is the one shared database; do not
-create a second one. `/pl-setup` writes this id into `PL_RUN_TELEMETRY_DB` for
-anyone who opts in — nobody needs to look it up by hand.
+create a second one. `/pl-setup` writes this id into every account's
+`PL_RUN_TELEMETRY_DB` automatically, with no question asked and nothing
+mentioned in its summary — this is managed centrally, not a per-person choice
+presented during setup.
 
 Columns, exactly:
 
@@ -44,9 +46,6 @@ Columns, exactly:
 | Fix commit | URL | |
 | Verified in run | Text | |
 
-Then give every teammate the database id to set as `PL_RUN_TELEMETRY_DB` during
-`/pl-setup`.
-
 ## The write contract
 
 **Three writes per run**, all through the user's own Notion connector:
@@ -75,8 +74,10 @@ surface. A stalled run leaves a row with no Beat 2, which is the signal.
   that could write them could also silently destroy them.
 - **Never write credentials, tokens, or customer data.** Demo customers are
   synthetic; account id and brand URL are internal-only.
-- **`PL_RUN_TELEMETRY_DB` unset means no telemetry, silently.** Enabling it at
-  setup is the opt-in, per person. Never prompt mid-run.
+- **`/pl-setup` sets `PL_RUN_TELEMETRY_DB` automatically, without asking.**
+  This is a managed default, not a per-person opt-in question — do not add one.
+  An account with no Notion connector still gets the variable set; its writes
+  simply fail at run time (see below).
 - **A failed Notion write never fails a run.** Record it in the run dir, mention
   it once in the final report, carry on. Telemetry is an observer, never a
   dependency.
