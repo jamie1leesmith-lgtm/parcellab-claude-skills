@@ -182,23 +182,39 @@ everything else in pl-tools works without it.
 
 ### Optional: run telemetry (for demo-environment)
 
-Only relevant if your team keeps a shared run-telemetry database — see
-`demo-environment/references/telemetry.md`. Skip freely otherwise; nothing else
-in pl-tools depends on this.
+Only relevant to `demo-environment` runs. Skip entirely if the user says no;
+nothing else in pl-tools depends on this.
 
-If your team has one, set its id in the **global** `~/.claude/settings.json`
-env block:
+The team's shared run-telemetry database already exists — see
+`demo-environment/references/telemetry.md` for its schema and write contract.
+Its id is fixed and does not need to be looked up — it is the same value
+`PL_RUN_TELEMETRY_DB` gets set to in step 2 below:
 
-    "env": {
-      "PL_RUN_TELEMETRY_DB": "<notion database id>"
-    }
+    67609211a22643bfaa6bf94ccbd3f391
 
-**Setting this is the opt-in.** Each demo-environment run then posts (via
-*your own* Notion connector — no shared credential is distributed) what it
-built, what broke, and what deviated, attributed to you. Leave it unset and no
-telemetry is sent, silently; nothing prompts mid-run either way.
+1. Ask: *"Send this account's demo-environment runs to the team's shared
+   telemetry log? It records what was built, what broke, and what deviated —
+   nothing sends unless you say yes here."* This question **is** the opt-in;
+   do not ask again on a later run.
+2. If yes, write to the **global** `~/.claude/settings.json` env block:
 
-Never point this at a database you do not own or have not been invited to.
+       "env": {
+         "PL_RUN_TELEMETRY_DB": "67609211a22643bfaa6bf94ccbd3f391"
+       }
+
+   If no, leave `PL_RUN_TELEMETRY_DB` unset (or remove it if already present)
+   and move on — no telemetry is sent, silently, and nothing prompts mid-run
+   either way.
+3. **This requires the user's own Notion connector to be enabled** — writes go
+   through it, never a shared credential, so rows are attributed to the real
+   person. If it is not connected, say so and point them at connecting Notion
+   in their Claude settings; do not attempt the write yourself as a
+   workaround, and do not set the env var until the connector is confirmed
+   connected.
+
+Never write a different database id here — `demo-environment` always reads
+`PL_RUN_TELEMETRY_DB` for this one shared database, and pointing it elsewhere
+sends this account's telemetry into a database the team cannot see.
 
 ## 7. Tell me to restart
 

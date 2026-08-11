@@ -3,14 +3,15 @@
 Every run deposits one row in a shared Notion database, so defects are found by
 query across users instead of by anecdote.
 
-## One-time setup (the database owner)
+## The live database
 
-Create a Notion **database, table view**, then share it with the team.
+**Created 2026-08-11, shared with the team:**
+https://app.notion.com/p/67609211a22643bfaa6bf94ccbd3f391 — id
+`67609211a22643bfaa6bf94ccbd3f391`. This is the one shared database; do not
+create a second one. `/pl-setup` writes this id into `PL_RUN_TELEMETRY_DB` for
+anyone who opts in — nobody needs to look it up by hand.
 
-**Created 2026-08-11:** https://app.notion.com/p/67609211a22643bfaa6bf94ccbd3f391
-(private, personal area for now — share it with the team, or recreate it under
-a shared page, before other people set `PL_RUN_TELEMETRY_DB`). Columns,
-exactly:
+Columns, exactly:
 
 | Column | Type | Options |
 |---|---|---|
