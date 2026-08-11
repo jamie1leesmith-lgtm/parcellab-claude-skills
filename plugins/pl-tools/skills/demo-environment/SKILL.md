@@ -101,9 +101,10 @@ Ask **"Are returns in scope for this demo?"** first.
      following `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/product-scrape.md`
      — variant axes are required only on retain-shopify; elsewhere capture
      what the PDP shows without extra navigation.
-   - Validate every candidate image:
+   - Validate every candidate image by running
      `node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/check_images.mjs`
-     semantics (200 + image/*; ranged-GET retry). Mark `image_verified`.
+     over the whole pool (accepts 1–N products; 200 + image/*,
+     ranged-GET retry). Mark `image_verified` from its per-product `ok` flags.
 7. **Propose the plan** and gate on approval (✋ — the intake's one gate):
    core 4 (four distinct product types) · per-order product distribution ·
    (retain-shopify) the seed set = core 4 + extras at distinct price points ·

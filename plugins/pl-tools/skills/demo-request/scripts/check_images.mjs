@@ -82,8 +82,8 @@ async function main() {
   const payload = JSON.parse(readInput());
   const products = extractProducts(payload);
 
-  if (products.length !== 4) {
-    throw new Error(`Expected exactly 4 products, received ${products.length}.`);
+  if (products.length < 1) {
+    throw new Error(`Expected at least 1 product, received ${products.length}.`);
   }
 
   const results = await Promise.all(products.map(checkImage));
