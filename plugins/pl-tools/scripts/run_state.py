@@ -61,6 +61,22 @@ def load(run_dir):
     return json.loads(_path(run_dir).read_text())
 
 
+def set_meta(run_dir, path=None, account_name=None):
+    """Fill in run facts that were unknown at init().
+
+    The path and the account are both settled partway through intake, after
+    the run dir already exists — without this they stayed None for the whole
+    run and the page titled itself "None".
+    """
+    def apply(state):
+        if path is not None:
+            state["path"] = path
+        if account_name is not None:
+            state["account_name"] = account_name
+
+    return _amend(run_dir, apply)
+
+
 def set_lane(run_dir, lane, status, **extra):
     if lane not in LANES:
         raise ValueError(f"unknown lane {lane!r}; expected one of {LANES}")

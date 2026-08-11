@@ -182,6 +182,11 @@ def preview_template(template_html, assets):
     for entry in (assets or {}).get("products", {}).values():
         if entry.get("image_url") and entry.get("data_uri"):
             by_url[entry["image_url"]] = entry["data_uri"]
+    # The logo is not a product, so the loop above can never supply it. Without
+    # this entry it falls through to the strip branch and the preview shows an
+    # unbranded email — the one thing the preview exists to confirm.
+    if (assets or {}).get("logo_url") and (assets or {}).get("logo_data_uri"):
+        by_url[assets["logo_url"]] = assets["logo_data_uri"]
     hero = (assets or {}).get("hero") or {}
 
     def swap(match):
@@ -197,10 +202,139 @@ def preview_template(template_html, assets):
     return re.sub(r'src="(https?://[^"]+)"', swap, template_html)
 
 
-def _products(assets):
+def _plan_facts(manifest):
+    """The run's own parameters, stated once.
+
+    Everything here was settled at intake and is invisible in the rail, which
+    only tracks lane status — so without this the page cannot answer "what is
+    this run actually going to do?".
+    """
+    brand = manifest.get("brand", {})
+    shopify = manifest.get("shopify", {})
+    cdc = manifest.get("cdc", {})
+    account = manifest.get("account", {})
+    pace = (manifest.get("run") or {}).get("pace") or "standard"
+    facts = [
+        ("Path", manifest.get("path")),
+        ("Account", f'{account.get("name", "—")} ({account.get("id", "—")})'),
+        ("Destination", manifest.get("destination_country")),
+        ("Pace", f'{pace} ({180 if pace == "standard" else 60}s between events)'),
+        ("Brand", f'{brand.get("name", "—")} · {brand.get("region", "—")} · '
+                  f'{brand.get("category", "—")}'),
+    ]
+    if shopify.get("enabled"):
+        facts.append(("Shopify store", shopify.get("store")))
+    facts.append(("CDC", f'{brand.get("region", "—")} / '
+                         f'{brand.get("category", "—")} · config: '
+                         f'{cdc.get("config_source", "none")} · synthetic '
+                         f'orders: {"yes" if cdc.get("generate_orders") else "no"}'))
+    rows = "".join(
+        f'<tr><td style="color:var(--muted);width:150px">{e(k)}</td>'
+        f'<td>{e(v if v is not None else "—")}</td></tr>'
+        for k, v in facts)
+    return f'<div class="overflow"><table>{rows}</table></div>'
+
+
+def _plan_orders(manifest):
+    names = {p.get("id"): p.get("name") for p in manifest.get("products", [])}
+    rows = []
+    for order in manifest.get("orders", []):
+        ships = order.get("shipments", []) or []
+        for i, ship in enumerate(ships):
+            parcel = ("single" if len(ships) == 1
+                      else f'{ship.get("label", "?")} ({i + 1} of {len(ships)})')
+            items = ", ".join(names.get(p, p) for p in ship.get("products", []))
+            chain = " → ".join(ship.get("events", []))
+            if ship.get("unproven_events") or ship.get("unproven_chain"):
+                chain += ' <span class="pill s-expected">unproven</span>'
+            rows.append(
+                f'<tr><td>{e(order.get("label", "—"))}</td>'
+                f'<td>{e(order.get("customer", {}).get("name", "—"))}</td>'
+                f'<td>{e(order.get("fraud_level", "—"))}</td>'
+                f'<td>{e(parcel)}</td><td>{e(items)}</td>'
+                f'<td>{e(ship.get("scenario", "—"))}</td>'
+                f'<td style="font-size:12px">{chain}</td></tr>')
+    if not rows:
+        return ""
+    head = ("<tr><th>Order</th><th>Customer</th><th>Fraud</th><th>Parcel</th>"
+            "<th>Items</th><th>Scenario</th><th>Events</th></tr>")
+    return (f'<div class="overflow"><table>{head}{"".join(rows)}</table></div>')
+
+
+def _plan_products(manifest):
+    """The chosen products as a table, read straight from the manifest.
+
+    Deliberately independent of the inlined assets: the plan must be legible
+    before — or without — any image fetch, which is precisely the state a
+    reader is in while deciding whether to approve the run.
+    """
+    selection = manifest.get("selection") or {}
+    roles = {}
+    for role, ids in (("core", selection.get("core4", [])),
+                      ("extra", selection.get("shopify_extra", []))):
+        for pid in ids:
+            roles[pid] = role
+    rows = []
+    for product in manifest.get("products", []):
+        role = roles.get(product.get("id"))
+        if selection and role is None:
+            continue
+        variants = ", ".join(
+            f'{o.get("name")}: {"/".join(o.get("values", []))}'
+            for o in product.get("options", []) or []) or "—"
+        rows.append(
+            f'<tr><td>{e(product.get("name", "—"))}</td>'
+            f'<td>{e(product.get("product_type", "—"))}</td>'
+            f'<td>{e(product.get("price", "—"))}</td>'
+            f'<td><span class="pill s-expected">{e(role or "—")}</span></td>'
+            f'<td style="font-size:12px">{e(variants)}</td></tr>')
+    if not rows:
+        return ""
+    head = ("<tr><th>Product</th><th>Type</th><th>Price</th><th>Role</th>"
+            "<th>Variants</th></tr>")
+    return f'<div class="overflow"><table>{head}{"".join(rows)}</table></div>'
+
+
+def _plan(manifest):
+    if not manifest:
+        return ""
+    return ('<div class="card"><h2>Run plan</h2>'
+            + _plan_facts(manifest)
+            + '<div class="lbl">Products</div>'
+            + _plan_products(manifest)
+            + '<div class="lbl">Orders</div>'
+            + _plan_orders(manifest) + "</div>")
+
+
+def _selected(manifest):
+    """sku -> role, for the products this run actually uses.
+
+    The scrape pool holds every candidate found; showing all of them invites
+    the reader to plan around a product the run will never touch.
+    """
+    if not manifest:
+        return None
+    selection = manifest.get("selection") or {}
+    if not selection:
+        return None
+    by_id = {p.get("id"): p for p in manifest.get("products", [])}
+    roles = {}
+    for role, ids in (("core", selection.get("core4", [])),
+                      ("extra", selection.get("shopify_extra", []))):
+        for pid in ids:
+            product = by_id.get(pid)
+            if product:
+                roles[product.get("sku") or pid] = role
+    return roles or None
+
+
+def _products(assets, manifest=None):
     products = (assets or {}).get("products") or {}
     if not products:
         return ""
+    roles = _selected(manifest)
+    if roles is not None:
+        products = {sku: p for sku, p in products.items() if sku in roles}
     cards = []
     for sku, p in products.items():
         if p.get("data_uri"):
@@ -212,13 +346,16 @@ def _products(assets):
                       'background:var(--line);display:flex;align-items:center;'
                       'justify-content:center;color:var(--muted);'
                       'font-size:12px">image unavailable</div>')
+        role = ""
+        if roles:
+            role = (f'<span class="pill s-expected">{e(roles[sku])}</span>')
         cards.append(
             f'<div style="flex:1 1 160px;min-width:160px">{visual}'
             f'<div style="font-size:13px;margin-top:6px">'
             f'{e(p.get("name", ""))}</div>'
             f'<div style="font-size:12px;color:var(--muted)">'
             f'{e(p.get("product_type", ""))} · {e(p.get("price", ""))}</div>'
-            f'</div>')
+            f'{role}</div>')
     return ('<div class="card"><h2>Products</h2>'
             '<div style="display:flex;gap:12px;flex-wrap:wrap">'
             + "".join(cards) + "</div></div>")
@@ -244,6 +381,9 @@ def _brand_header(assets):
     if not assets:
         return ""
     logo = assets.get("logo_svg") or ""
+    if not logo and assets.get("logo_data_uri"):
+        logo = (f'<img src="{assets["logo_data_uri"]}" alt="brand logo" '
+                f'style="max-width:220px;max-height:64px;height:auto" />')
     swatches = "".join(
         f'<span class="pill" style="background:{e(v)};'
         f'color:{_readable_on(v)};border:1px solid var(--line)">'
@@ -266,18 +406,21 @@ def _template_card(template_html, assets):
 
 def _showcase(state, manifest, assets, template_html):
     return (_brand_header(assets)
+            + _plan(manifest)
             + _template_card(template_html, assets)
-            + _products(assets))
+            + _products(assets, manifest))
 
 
 def render(state, manifest=None, assets=None, template_html=None):
     """Return the complete run page as a self-contained HTML string."""
     title = f'{state.get("run_id", "run")}'
+    # `or` rather than a .get default: these keys are present-but-None until
+    # intake resolves them, which a default never catches.
     body = [
-        f'<h1>{e(state.get("account_name", "—"))} '
+        f'<h1>{e(state.get("account_name") or "—")} '
         f'<span style="color:var(--muted);font-size:16px">— {e(title)}</span>'
         f'</h1>',
-        f'<p style="color:var(--muted)">{e(state.get("path", "—"))} path</p>',
+        f'<p style="color:var(--muted)">{e(state.get("path") or "—")} path</p>',
         _failures(state),
         '<div class="layout">',
         _rail(state),

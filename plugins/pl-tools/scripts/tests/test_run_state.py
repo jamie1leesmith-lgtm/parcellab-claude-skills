@@ -83,3 +83,25 @@ class TestRunState(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSetMeta(unittest.TestCase):
+    """The run page promises path and account name 'fill in at the next
+    republish' — which needs an API to fill them in with."""
+
+    def test_set_meta_fills_in_account_and_path(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", None, None)
+        run_state.set_meta(d, path="retain-shopify",
+                           account_name="Demo - JLS")
+        state = run_state.load(d)
+        self.assertEqual(state["account_name"], "Demo - JLS")
+        self.assertEqual(state["path"], "retain-shopify")
+
+    def test_set_meta_leaves_omitted_fields_alone(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", "retain-shopify", "Demo - JLS")
+        run_state.set_meta(d, account_name="Renamed")
+        state = run_state.load(d)
+        self.assertEqual(state["path"], "retain-shopify")
+        self.assertEqual(state["account_name"], "Renamed")

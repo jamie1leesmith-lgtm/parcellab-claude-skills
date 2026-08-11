@@ -163,6 +163,97 @@ class TestShowcase(unittest.TestCase):
         self.assertNotIn("https://unknown.example/z.jpg", out)
 
 
+IMAGE_LOGO_ASSETS = dict(
+    ASSETS, logo_svg=None, logo_url="https://cdn.example/logo.svg",
+    logo_data_uri="data:image/svg+xml;base64,bG9nbw==")
+
+MANIFEST = {
+    "path": "retain-shopify",
+    "brand": {"name": "Currys", "region": "UK", "category": "Electronics"},
+    "destination_country": "GB",
+    "run": {"pace": "standard"},
+    "shopify": {"enabled": True, "store": "demo.myshopify.com"},
+    "cdc": {"config_source": "none", "generate_orders": False},
+    "products": [
+        {"id": "P1", "name": "Jug Kettle", "product_type": "Kettle",
+         "price": "99.99", "options": [{"name": "Colour",
+                                        "values": ["Black", "White"]}]},
+        {"id": "P2", "name": "Sports Earbuds", "product_type": "Earbuds",
+         "price": "19.99", "options": []},
+    ],
+    "selection": {"core4": ["P1"], "shopify_extra": ["P2"]},
+    "orders": [
+        {"label": "01-clean-low", "fraud_level": "low", "cdc_slot": "fraud_low",
+         "customer": {"name": "Emily Turner", "email": "e@example.com"},
+         "products": ["P1"],
+         "shipments": [{"label": "A", "scenario": "happy", "courier": "dpd",
+                        "products": ["P1"],
+                        "events": ["InTransit", "Delivered"]}]},
+    ],
+}
+
+
+class TestImageLogo(unittest.TestCase):
+    def test_brand_header_renders_an_image_logo(self):
+        html = render_run_page.render(a_state(), assets=IMAGE_LOGO_ASSETS)
+        self.assertIn('src="data:image/svg+xml;base64,bG9nbw=="', html)
+
+    def test_preview_template_keeps_the_brand_logo(self):
+        # The logo is not a product, so the products map cannot supply it;
+        # unmapped it gets stripped and the email preview shows no brand.
+        out = render_run_page.preview_template(
+            '<img src="https://cdn.example/logo.svg" width="158"/>',
+            IMAGE_LOGO_ASSETS)
+        self.assertIn('src="data:image/svg+xml;base64,bG9nbw=="', out)
+        self.assertNotIn("data-stripped", out)
+
+
+class TestPlan(unittest.TestCase):
+    def test_orders_render_with_customer_scenario_and_events(self):
+        html = render_run_page.render(a_state(), manifest=MANIFEST)
+        self.assertIn("Emily Turner", html)
+        self.assertIn("happy", html)
+        self.assertIn("InTransit", html)
+        self.assertIn("low", html)
+
+    def test_selected_products_are_labelled_core_and_extra(self):
+        html = render_run_page.render(a_state(), manifest=MANIFEST)
+        self.assertIn("Jug Kettle", html)
+        self.assertIn("core", html)
+        self.assertIn("extra", html)
+
+    def test_plan_shows_destination_and_pace(self):
+        html = render_run_page.render(a_state(), manifest=MANIFEST)
+        self.assertIn("GB", html)
+        self.assertIn("standard", html)
+
+    def test_products_card_shows_only_the_selected_set(self):
+        # The scrape pool holds every candidate; the plan is the chosen subset.
+        assets = dict(ASSETS, products=dict(
+            ASSETS["products"],
+            **{"REJECTED-1": {"name": "Not Chosen", "price": "1.00",
+                              "product_type": "Other", "pdp_url": "",
+                              "image_url": "", "data_uri": None}}))
+        html = render_run_page.render(a_state(), manifest=MANIFEST,
+                                      assets=assets)
+        self.assertNotIn("Not Chosen", html)
+
+    def test_unknown_account_renders_a_dash_not_the_word_none(self):
+        # init() stores None until the account is resolved; .get(k, "—") does
+        # not fire on a present-but-None value, so the page titled itself
+        # "None" (live 2026-08-11).
+        state = a_state()
+        state["account_name"] = None
+        state["path"] = None
+        html = render_run_page.render(state)
+        self.assertNotIn(">None ", html)
+        self.assertIn("—", html)
+
+    def test_no_manifest_still_renders(self):
+        html = render_run_page.render(a_state(), assets=ASSETS)
+        self.assertIn("uniqlo-20260811-1913", html)
+
+
 class TestClock(unittest.TestCase):
     def test_running_run_embeds_the_schedule_and_clock(self):
         html = render_run_page.render(a_state())

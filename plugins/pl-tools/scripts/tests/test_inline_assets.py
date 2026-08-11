@@ -59,6 +59,45 @@ class TestInlineAssets(unittest.TestCase):
         self.assertTrue(assets["hero"]["data_uri"].startswith("data:"))
         self.assertIn("<svg", assets["logo_svg"])
 
+    def test_image_logo_is_fetched_and_inlined(self):
+        # The common case: the logo is a URL, not inline SVG. Left unfetched,
+        # it has no data: URI, so the CSP blocks it and the run page shows a
+        # brand with no logo at all (hit live 2026-08-11 on Currys).
+        tokens = dict(TOKENS,
+                      logo={"type": "image", "url": "https://img.example/l.svg"})
+        assets = inline_assets.build_assets(POOL, tokens, fake_fetch)
+        self.assertTrue(assets["logo_data_uri"].startswith("data:"))
+        self.assertEqual(assets["logo_url"], "https://img.example/l.svg")
+
+    def test_inline_svg_logo_has_no_data_uri_to_fetch(self):
+        assets = inline_assets.build_assets(POOL, TOKENS, fake_fetch)
+        self.assertIn("<svg", assets["logo_svg"])
+        self.assertIsNone(assets["logo_data_uri"])
+
+    def test_logo_fetch_failure_is_recorded_not_raised(self):
+        def boom(url):
+            raise OSError("connection reset")
+        tokens = dict(TOKENS,
+                      logo={"type": "image", "url": "https://img.example/l.svg"})
+        assets = inline_assets.build_assets(POOL, tokens, boom)
+        self.assertIsNone(assets["logo_data_uri"])
+        self.assertIn("logo", str(assets["skipped"]))
+
+    def test_local_logo_svg_wins_over_a_blocked_fetch(self):
+        # Some brands' CDNs refuse server-side fetches outright (Currys' WAF
+        # 403s every user-agent), while the Browser pane — holding a real
+        # session — gets the file fine. Dropping it into scrape/logo.svg is the
+        # documented escape hatch, so no run loses its logo to a WAF.
+        def boom(url):
+            raise OSError("HTTP Error 403: Forbidden")
+        tokens = dict(TOKENS,
+                      logo={"type": "image", "url": "https://img.example/l.svg"})
+        assets = inline_assets.build_assets(POOL, tokens, boom,
+                                            local_logo="<svg>brand</svg>")
+        self.assertTrue(
+            assets["logo_data_uri"].startswith("data:image/svg+xml;base64,"))
+        self.assertNotIn("logo", str(assets["skipped"]))
+
     def test_fetch_failure_is_recorded_not_raised(self):
         def boom(url):
             raise OSError("connection reset")

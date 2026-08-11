@@ -43,7 +43,7 @@ def _one(url, label, skipped, fetch):
     return to_data_uri(raw, content_type)
 
 
-def build_assets(pool, tokens, fetch=http_fetch):
+def build_assets(pool, tokens, fetch=http_fetch, local_logo=None):
     skipped = []
     products = {}
     for product in pool:
@@ -62,10 +62,26 @@ def build_assets(pool, tokens, fetch=http_fetch):
             "data_uri": _one(hero_src, "hero", skipped, fetch)
             if hero_src else None}
 
+    # A logo arrives one of two ways (branded-template Step 5's decision tree):
+    # inline SVG markup, or — far more commonly — a URL. Only the first was
+    # ever captured, so every URL-logo brand rendered with no logo at all: the
+    # CSP blocks the remote request on the run page, and the email preview
+    # strips the unmapped src outright (hit live 2026-08-11 on Currys).
     logo = tokens.get("logo") or {}
     logo_svg = logo.get("markup") if logo.get("type") == "inline_svg" else None
+    logo_url = logo.get("url") if logo.get("type") != "inline_svg" else None
+    if local_logo:
+        # A logo the Browser pane already fetched (see scrape/logo.svg): some
+        # CDNs 403 every server-side request regardless of user-agent, and a
+        # WAF must not be the reason a run page ships unbranded.
+        logo_data_uri = to_data_uri(local_logo.encode(), "image/svg+xml")
+    elif logo_url:
+        logo_data_uri = _one(logo_url, "logo", skipped, fetch)
+    else:
+        logo_data_uri = None
 
     return {"products": products, "hero": hero, "logo_svg": logo_svg,
+            "logo_url": logo_url, "logo_data_uri": logo_data_uri,
             "tokens": tokens.get("tokens", {}), "skipped": skipped}
 
 
@@ -78,7 +94,11 @@ def main():
     pool = pool if isinstance(pool, list) else pool["products"]
     tokens = json.loads((scrape / "brand-tokens.json").read_text())
 
-    assets = build_assets(pool, tokens)
+    local_logo_path = scrape / "logo.svg"
+    local_logo = (local_logo_path.read_text()
+                  if local_logo_path.exists() else None)
+
+    assets = build_assets(pool, tokens, local_logo=local_logo)
     (scrape / "assets.json").write_text(json.dumps(assets, indent=2))
     print(f"inlined {len(assets['products'])} products, "
           f"{len(assets['skipped'])} skipped")
