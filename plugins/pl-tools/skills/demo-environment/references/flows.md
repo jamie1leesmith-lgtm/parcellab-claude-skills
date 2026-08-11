@@ -16,15 +16,26 @@ An Engage-only run never asks the Shopify question; Retain covers the
 Engage comm story automatically, so "returns in scope?" is the only branch
 point that matters before "is this a Shopify opp?".
 
-## Phase 0 — Intake (main session)
+## Phase 0 — Intake, front-loaded (main session + one agent)
 
-All interaction lives here: batched interview (path, country, order plan,
-CDC region/category), Shopify dev-store + location resolution on
-retain-shopify, target-account confirmation + edit-mode guard, the run's
-only browser pass (brand tokens + product pool + image validation),
-**the single approval gate** (✋ — products, distribution, order/scenario/
-fraud matrix, CDC fields, account), then the manifest is written and
+Two lanes run concurrently after the path questions:
+
+- **scrape agent** (background, owns the Browser pane): brand tokens +
+  product pool + image validation → `scrape/` + `results/scrape.json`
+- **interview** (chat): country, order plan, pace, CDC region/category,
+  Shopify dev-store + location resolution on retain-shopify,
+  target-account confirmation + edit-mode guard
+
+They join at **pre-build** — template HTML, every order's create/track/event
+files, the proposed plan — all local, nothing sent. Then **the single
+approval gate** (✋ — products, distribution, order/scenario/fraud matrix,
+CDC fields, account) releases the sends: nothing before it has touched
+parcelLab, Shopify or the CDC. Finally the manifest is written and
 validated. Nothing past this phase starts on an invalid manifest.
+
+A repeat brand can skip the template lane entirely if its existing layout
+verifies live as published and store-assigned; a failed scrape agent falls
+back to the same browser pass inline.
 
 ## Phase 1 — Concurrent build
 

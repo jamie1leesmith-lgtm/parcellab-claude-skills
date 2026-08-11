@@ -25,15 +25,48 @@ Ask **"Are returns in scope for this demo?"** first.
   **retain-shopify**. An Engage-only run never asks the Shopify question;
   Retain covers the Engage story automatically.
 
-## Phase 0 — Intake
+## Phase 0 — Intake (front-loaded)
 
 1. **Create the run directory** `$HOME/parcellab-demo-runs/<handle>-<ts>/`
    (handle derived from the prospect URL exactly as shopify-seed Step 3
-   derives `prospect_handle`; ts = YYYYMMDD-HHMM). Create `results/` and
-   `orders/` inside it.
-2. **Interview** (batch with AskUserQuestion where possible; one round for
-   path + country + order count, a second for the order plan):
-   - returns in scope? · Shopify opp? (per *Paths*)
+   derives `prospect_handle`; ts = YYYYMMDD-HHMM). Create `results/`,
+   `orders/` and `scrape/` inside it.
+2. **Path + brand round:** take the prospect URL and ask ONLY the path
+   questions (returns in scope? · Shopify opp? — per *Paths*) — the minimum
+   needed to know what to collect.
+3. **Dispatch the scrape agent immediately.** Use the Agent tool
+   (general-purpose subagent, background) with exactly this brief, filling
+   the placeholders:
+
+   > Execute the demo-environment scrape pass for the run directory
+   > `<run dir>`, prospect `<url>`, path `<engage|retain|retain-shopify>`.
+   > Follow `${CLAUDE_PLUGIN_ROOT}/skills/branded-template/SKILL.md` Steps
+   > 3–6 for brand tokens (write the full `__BRAND_X__` token map + logo +
+   > hero to `<run dir>/scrape/brand-tokens.json`) and
+   > `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/product-scrape.md`
+   > for the product pool (≥8 candidates in the superset shape
+   > `{id, name, product_type, price, options, image_url, pdp_url, sku}`;
+   > variant axes required only on retain-shopify — elsewhere capture what
+   > the PDP shows without extra navigation; write to
+   > `<run dir>/scrape/product-pool.json`). Validate every candidate image
+   > by running
+   > `node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/check_images.mjs`
+   > over the whole pool (accepts 1–N products; 200 + image/*, ranged-GET
+   > retry) and set `image_verified` per product from its per-product `ok`
+   > flags. Ground rules, non-negotiable: never ask the user anything — a
+   > gap is a failure report; decline non-essential cookies; when done (or
+   > failed) write `<run dir>/results/scrape.json` as
+   > `{"status": "ok"|"failed", "error": null|"<why>"}` and return a
+   > one-paragraph summary.
+
+   **Browser pane ownership:** the agent owns the pane from dispatch until
+   `results/scrape.json` exists. Do not navigate the pane in that window —
+   the ★ template preview naturally starts after it, since it needs the
+   scraped tokens. **Reused pool:** when a prior run's pool for this brand
+   is being reused (offer this whenever one exists), skip the dispatch and
+   copy the prior `scrape/` files instead.
+4. **Interview concurrently, in chat** (batch with AskUserQuestion where
+   possible) — the remaining rounds, while the scrape agent runs:
    - destination country — **never assume it**
    - order plan: how many orders (1–5, default 3), and per order a fraud
      level + scenario. Offer the default matrix first: #1 low/happy,
@@ -46,73 +79,84 @@ Ask **"Are returns in scope for this demo?"** first.
      order-lifecycle's confidence rules). Runs of 2+ orders need at least
      one split-shipment order. Every order gets a distinct synthetic
      customer (region-appropriate name + email) — generate and show them.
+   - **pace:** `standard` (180 s gaps, comm-ordering safe — the default) or
+     `fast` (60 s gaps, comms may arrive out of order — say so when
+     offering it). Record as the manifest's `run.pace`.
    - CDC region (US|UK|DE) and category (Home|Electronics|Fashion) —
      inferred from the site later, confirmed at the approval gate.
-3. **Shopify resolution (retain-shopify only):** First `command -v shopify` — if the CLI is missing, stop and point the user at `/pl-setup`'s optional Shopify CLI section (install + full-scope store auth) rather than improvising an install mid-intake; the auth must carry the order/fulfilment scopes or the order engine hits a re-consent wall later. Confirm the dev store by
-   name from `~/.claude/parcellab-shopify-seed.env` (else
-   `shopify store auth list`), then resolve the location GID immediately —
-   follow shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
-   preference rules. Record both in the manifest.
-4. **Target account + confirmation (every run):** the demo's target is a
-   run-level choice — the user's own demo account
-   (`${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`, the default) or the
-   shared **parcelfashion** account (offer it only when
-   `CDC_ACCOUNT_CONFIG_PARCELFASHION` is stored; on retain-shopify never
-   offer it — the Shopify integration lives in the user's own account). The
-   choice drives every pL write in the run AND the CDC config key (the CDC
-   looks up linked orders in the config's target account, so they must
-   agree). Then: `parcellab account account show <id>` for the human name;
-   ask "Using **<name>** (<id>) — correct?"; verify
-   `parcellab settings edit-mode show` says `account-restricted` for that
-   same account, offering the fix if not. **If the guard was repointed for
-   this run** (e.g. at parcelfashion), note it — Beat 1 offers to restore it
-   to the user's own account.
-5. **CDC config:** read the key matching the target (process env, then
-   `~/.claude/parcellab-demo-request.env`): own account →
-   `CDC_ACCOUNT_CONFIG_DEFAULT` · parcelfashion →
-   `CDC_ACCOUNT_CONFIG_PARCELFASHION` · retain-shopify →
-   `CDC_ACCOUNT_CONFIG_SHOPIFY`. **The value is a UUID** — the API rejects a
-   bare parcelLab account id with 400 "invalid input syntax for type uuid"
-   (live-verified 2026-08-11). **The practical default needs no key at all:**
-   when the user's CDC default config targets their own demo account (set in
-   the CDC UI), omitting the field links correctly — that combination worked
-   on both live runs. **First-run capture:** if the needed key is missing,
-   ask once for the config UUID if the user has one (it is an id, not a
-   credential), offer to append it to `~/.claude/parcellab-demo-request.env`,
-   and proceed. If they don't:
-   `selected_account_config_id: null`, `config_source: "none"` (the CDC will
-   use the caller's default — say so in the final report, and note linking
-   then resolves in whatever account that default config targets).
-   `config_source` values: `default | parcelfashion | shopify | none`.
-   `generate_orders` is **false** unless the user asks the CDC to also
-   generate synthetic orders alongside the run's real ones — in that case
-   compose `cdc.orders` (`{name?, items?: [{product_index, quantity?}]}`,
-   0-based into the submitted products; the API has no order-type enum, only
-   free-form names). When `linked_orders` will be sent, the config matters:
-   the CDC resolves linked order numbers in the config's target account, so
-   a mismatched config fails linking with "No parcelLab order found"
-   (live-verified 2026-08-11).
-6. **One browser pass** (the run's only browsing):
-   - Brand tokens: run branded-template's Step 3–6 extraction snippets
-     (`${CLAUDE_PLUGIN_ROOT}/skills/branded-template/SKILL.md`) and build
-     the full `__BRAND_X__` token map + logo + hero.
-   - Product pool: collect ≥8 PDP candidates in the superset shape
-     (`{id, name, product_type, price, options, image_url, pdp_url, sku}`)
-     following `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/product-scrape.md`
-     — variant axes are required only on retain-shopify; elsewhere capture
-     what the PDP shows without extra navigation.
-   - Validate every candidate image by running
-     `node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/check_images.mjs`
-     over the whole pool (accepts 1–N products; 200 + image/*,
-     ranged-GET retry). Mark `image_verified` from its per-product `ok` flags.
-7. **Propose the plan** and gate on approval (✋ — the intake's one gate):
+   - **Shopify resolution (retain-shopify only):** First `command -v shopify` — if the CLI is missing, stop and point the user at `/pl-setup`'s optional Shopify CLI section (install + full-scope store auth) rather than improvising an install mid-intake; the auth must carry the order/fulfilment scopes or the order engine hits a re-consent wall later. Confirm the dev store by
+     name from `~/.claude/parcellab-shopify-seed.env` (else
+     `shopify store auth list`), then resolve the location GID immediately —
+     follow shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
+     preference rules. Record both in the manifest.
+   - **Target account + confirmation (every run):** the demo's target is a
+     run-level choice — the user's own demo account
+     (`${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`, the default) or the
+     shared **parcelfashion** account (offer it only when
+     `CDC_ACCOUNT_CONFIG_PARCELFASHION` is stored; on retain-shopify never
+     offer it — the Shopify integration lives in the user's own account). The
+     choice drives every pL write in the run AND the CDC config key (the CDC
+     looks up linked orders in the config's target account, so they must
+     agree). Then: `parcellab account account show <id>` for the human name;
+     ask "Using **<name>** (<id>) — correct?"; verify
+     `parcellab settings edit-mode show` says `account-restricted` for that
+     same account, offering the fix if not. **If the guard was repointed for
+     this run** (e.g. at parcelfashion), note it — Beat 1 offers to restore it
+     to the user's own account.
+   - **CDC config:** read the key matching the target (process env, then
+     `~/.claude/parcellab-demo-request.env`): own account →
+     `CDC_ACCOUNT_CONFIG_DEFAULT` · parcelfashion →
+     `CDC_ACCOUNT_CONFIG_PARCELFASHION` · retain-shopify →
+     `CDC_ACCOUNT_CONFIG_SHOPIFY`. **The value is a UUID** — the API rejects a
+     bare parcelLab account id with 400 "invalid input syntax for type uuid"
+     (live-verified 2026-08-11). **The practical default needs no key at all:**
+     when the user's CDC default config targets their own demo account (set in
+     the CDC UI), omitting the field links correctly — that combination worked
+     on both live runs. **First-run capture:** if the needed key is missing,
+     ask once for the config UUID if the user has one (it is an id, not a
+     credential), offer to append it to `~/.claude/parcellab-demo-request.env`,
+     and proceed. If they don't:
+     `selected_account_config_id: null`, `config_source: "none"` (the CDC will
+     use the caller's default — say so in the final report, and note linking
+     then resolves in whatever account that default config targets).
+     `config_source` values: `default | parcelfashion | shopify | none`.
+     `generate_orders` is **false** unless the user asks the CDC to also
+     generate synthetic orders alongside the run's real ones — in that case
+     compose `cdc.orders` (`{name?, items?: [{product_index, quantity?}]}`,
+     0-based into the submitted products; the API has no order-type enum, only
+     free-form names). When `linked_orders` will be sent, the config matters:
+     the CDC resolves linked order numbers in the config's target account, so
+     a mismatched config fails linking with "No parcelLab order found"
+     (live-verified 2026-08-11).
+5. **Repeat-brand template shortcut:** if a layout for this brand already
+   exists on the target account, verify it live —
+   `parcellab --env prod journey layout show <id> -o json` must show
+   `releaseStatus: published` AND an `autoLayout` entry for the store this
+   path's orders will land on — and offer to skip the template lane. If the
+   user accepts, write `results/branded-template.json` from the verified
+   state (note "template lane skipped — verified live at intake") and skip
+   the ★ checkpoint; Phase 1 then has no template work.
+6. **Pre-build everything sendable**, once the interview and
+   `results/scrape.json` (status ok) are both in: the template HTML from the
+   tokens (branded-template Step 7 — build only, no push), every order's
+   `create.json` + `track.json` + `NN-<status>.json` event files (fraud
+   fragments included, order-lifecycle's payload rules verbatim, no POSTs and
+   no PUTs), and the proposed plan itself.
+   **Scrape failure fallback:** if `results/scrape.json` says `failed` (or
+   the agent dies), run the browser pass inline now — brand tokens, product
+   pool, image validation, exactly as the scrape brief specifies — and carry
+   on. The agent is an accelerator, never load-bearing.
+7. **Propose the plan** and gate on approval (✋ — the intake's one gate;
+   one yes releases the sends, and nothing before this step has touched
+   parcelLab, Shopify or the CDC):
    core 4 (four distinct product types) · per-order product distribution ·
    (retain-shopify) the seed set = core 4 + extras at distinct price points ·
    the order/scenario/fraud matrix with expected comm per event (mark
    unproven items) · CDC region/category/config source · CDC synthetic
    generation on/off (+ which slots) · the account by name. One explicit yes
    covers all of it; any tweak loops back here.
-8. **Write the manifest** to `demo-manifest.json` (schema: `run`, `path`,
+8. **Write the manifest** to `demo-manifest.json` (schema:
+   `run{…, pace: "standard"|"fast" — absent means standard}`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
    edit_mode_verified}`, `cdc{selected_account_config_id,config_source,
    generate_orders,orders}`, `shopify{enabled,store?,location_id?}`,
@@ -124,7 +168,10 @@ Ask **"Are returns in scope for this demo?"** first.
    extras}}`, `approvals{products_approved_at,intake_completed_at}`).
    On retain-shopify also write `seed/seed-products.json`
    (`{products: core4 ∪ shopify_extra in scrape shape, location_id,
-   prospect_handle}`).
+   prospect_handle}`). The scrape lane's raw output stays on disk under the
+   run dir's `scrape/` (`brand-tokens.json`, `product-pool.json`) with its
+   outcome in `results/scrape.json`; the manifest carries the selected
+   subset.
 9. **Validate:**
    `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py <run>/demo-manifest.json`
    — on `MANIFEST INVALID`, fix the named gaps (re-asking if needed) and
@@ -146,10 +193,15 @@ background) with exactly this brief, filling the placeholders:
 
 **Then run branded-template inline** (main session): invoke the
 pl-tools:branded-template skill; its "Orchestrated runs (demo-environment)"
-contract consumes the manifest's `brand_tokens` and account. Its Step 8
-preview question is ★ the run's one checkpoint — wait for the user there as
-that skill specifies. It finishes by writing
-`results/branded-template.json`.
+contract consumes the manifest's `brand_tokens` and account, and the HTML
+pre-built at Phase 0 step 6. Its Step 8 preview question is ★ the run's one
+checkpoint — wait for the user there as that skill specifies. It finishes by
+writing `results/branded-template.json`.
+
+**Unless the repeat-brand shortcut was taken** at Phase 0 step 5 — then
+`results/branded-template.json` already exists from the live-verified
+layout, this lane has no work, and the publish gate below reads that same
+file.
 
 ## The publish gate
 
@@ -172,7 +224,9 @@ the same manifest (the fallback), and leave every other lane alone.
 ## Phase 2 — Orders (direct engine: engage and retain paths)
 
 For each manifest order, in its `orders/<nn>-<label>/` directory, follow
-order-lifecycle's "Orchestrated runs (demo-environment)" contract:
+order-lifecycle's "Orchestrated runs (demo-environment)" contract. Steps 1–3
+were pre-built at Phase 0 step 6 — reuse those files as they stand; rebuild
+only if the approved plan changed at the gate:
 
 1. Fraud fragment: run `prepare_fraud_fragment.py` for the order's level and
    merge `tags` + `additional_attributes` into `create.json`.
@@ -182,8 +236,10 @@ order-lifecycle's "Orchestrated runs (demo-environment)" contract:
    split rules for 2-shipment orders).
 3. Write the `NN-<status>.json` event files from the shipment's `events`.
 4. `DRYRUN=1` pass; then launch `run-lifecycle.sh` detached
-   (`run_in_background`, `GAP_SECONDS` default 180) — one driver per order,
-   all orders concurrent. Pass `PARCELLAB_ACCOUNT_ID=<manifest account.id>`
+   (`run_in_background`) — one driver per order, all orders concurrent.
+   `GAP_SECONDS` comes from the manifest's `run.pace`: 180 for standard (the
+   default), 60 for fast. When pace is fast, Beat 2's report must note that
+   comm ordering was not guaranteed at this pace. Pass `PARCELLAB_ACCOUNT_ID=<manifest account.id>`
    inline on every launch: `create.json`'s `account` field and the driver's
    account both come from the manifest, never from the ambient
    `$PARCELLAB_ACCOUNT_ID`, which may point at a different account than the
@@ -208,7 +264,10 @@ create the order in Shopify (line items = the order's `products` mapped to
 seeded variant gids) → poll pL ingestion → enrich with the fraud fragment →
 fulfil per shipment with tracking → poll the pL tracking → build the
 `NN-<status>.json` files and launch the driver, exactly as the direct
-engine's steps 3–4. Then write `order.json` (order_number = the Shopify
+engine's steps 3–4 — including that `GAP_SECONDS` comes from the manifest's
+`run.pace`: 180 for standard (the default), 60 for fast. When pace is fast,
+Beat 2's report must note that comm ordering was not guaranteed at this
+pace. Then write `order.json` (order_number = the Shopify
 order name, e.g. "#1001") and, once all orders are processed, build
 `results/linked-orders.json` the same way as the direct engine.
 
@@ -253,6 +312,7 @@ unproven event or chain that fired correctly, offer to record it in
 
 | Lane fails | Blocks | Response |
 |---|---|---|
+| scrape agent | nothing | run the browser pass inline (Phase 0 step 6's fallback) |
 | seed agent | Shopify orders only | report, offer inline re-run from the same manifest |
 | template publish | Phase 2 (all orders) | the three-way publish-gate offer |
 | one order (any engine) | nothing else | mark partial in its order.json; report the exact step |
