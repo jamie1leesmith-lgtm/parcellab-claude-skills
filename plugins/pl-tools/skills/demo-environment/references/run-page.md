@@ -3,9 +3,22 @@
 One artifact per run: the conductor maintains `<run dir>/run-page.html` and
 republishes it via the Artifact tool at each milestone below — same file
 path every time, so the URL stays stable. The page is a VIEW; chat is the
-only approval mechanism. Publishing is never load-bearing: if the Artifact
-tool is unavailable or a publish fails, say so once in chat and continue —
-no phase blocks on it.
+only approval mechanism.
+
+**"Non-fatal" means a failed publish never blocks a phase. It does not mean
+the publish is optional.** Skipping it is a defect, not a shortcut. Observed
+twice on the 2026-08-11 smoke run: the page sat at the approval gate through
+the entire template lane, and again through order creation, ingestion and
+enrichment — each time because a live write felt more urgent than a view.
+The states worth watching are exactly the ones where the conductor is
+busiest, so the pull is toward skipping precisely when it costs the user
+most.
+
+**The checkable rule:** the page must never be more than one milestone
+behind the run. Before starting any new phase or lane, if the page still
+shows the previous milestone, republish first — it is one Write plus one
+Artifact call. If the Artifact tool is unavailable or a publish fails, say
+so once in chat and continue; that is the only case where the page may lag.
 
 Rules baked into every publish: self-contained HTML (no external requests —
 the artifact CSP blocks them; product images ARE external, so render each

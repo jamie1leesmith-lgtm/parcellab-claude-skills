@@ -298,6 +298,17 @@ background) with exactly this brief, filling the placeholders:
 > `<run dir>/results/shopify-seed.json` exactly as the contract specifies,
 > and return a one-paragraph summary plus the product/demo tables.
 
+**Store assignment is reassigned, never negotiated.** branded-template Step 9b
+asks which store should use the template when an account has several, and 9b.3
+treats another layout's `country: []` entry for that store as stale. On an
+orchestrated run neither is a question: the path already determines the store
+(retain-shopify → the Shopify-integrated client; otherwise the account's
+default), and a prior brand's mapping on that store is always cleared in favour
+of this run's layout. A store can hold only one default auto-template, so the
+two are mutually exclusive and leaving the old one means every comm in this run
+goes out under the previous brand. Say in Beat 1 which layout lost the mapping,
+so the change is visible and reversible.
+
 **Then run branded-template inline** (main session): invoke the
 pl-tools:branded-template skill; its "Orchestrated runs (demo-environment)"
 contract consumes the manifest's `brand_tokens` and account, and reuses the
