@@ -710,7 +710,7 @@ class TestTimingColumns(unittest.TestCase):
         return str(d)
 
     def test_timing_columns_are_present_and_derived(self):
-        row = build_telemetry_row.build_row(self._run_dir(), "beat1")
+        row = btr.build_row(self._run_dir(), "beat1")
         self.assertEqual(row["Total elapsed"], 15.0)
         self.assertEqual(row["Measured working time"], 10.0)
         self.assertEqual(row["Waiting on user"], 3.0)
@@ -719,32 +719,26 @@ class TestTimingColumns(unittest.TestCase):
 
     def test_timeline_is_serialised_as_json_text(self):
         import json
-        row = build_telemetry_row.build_row(self._run_dir(), "beat1")
+        row = btr.build_row(self._run_dir(), "beat1")
         self.assertIsInstance(row["Timeline"], str)
         self.assertEqual(len(json.loads(row["Timeline"])), 4)
 
     def test_triage_status_starts_untriaged(self):
         # Blank makes unreviewed rows findable only by querying for empty.
-        row = build_telemetry_row.build_row(self._run_dir(), "committed")
+        row = btr.build_row(self._run_dir(), "committed")
         self.assertEqual(row["Triage status"], "Untriaged")
 
     def test_no_other_triage_column_is_written(self):
-        row = build_telemetry_row.build_row(self._run_dir(), "beat1")
+        row = btr.build_row(self._run_dir(), "beat1")
         for column in ("Issue key", "Reviewed at", "Reviewed by",
                        "Action taken", "Fix commit", "Verified in run"):
             self.assertNotIn(column, row)
 ```
 
-If `test_build_telemetry_row.py` does not already import the module under test, ensure the file's header matches the other test files:
-
-```python
-import pathlib
-import sys
-import unittest
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-import build_telemetry_row  # noqa: E402
-```
+The file already imports the module **as `btr`** (`import build_telemetry_row as btr`) and already
+imports `json`, `pathlib`, `tempfile` and `unittest` at the top — so the tests above use `btr.` and
+the local imports inside `_run_dir` are redundant but harmless. Do not add a second import of the
+module under a different name.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
