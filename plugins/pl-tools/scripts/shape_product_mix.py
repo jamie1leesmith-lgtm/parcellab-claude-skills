@@ -214,8 +214,9 @@ def build_mix(payload, extras=None):
     dearest, spare = roles["higher"], roles["lower"]
     pair_price = shaped[pair_i]
 
-    # Demo the size swap on whichever product has the most variants.
-    showcase = max(shaped_products, key=lambda p: p["variant_count"])
+    # Demo the size swap on whichever core-4 product has the most variants -- extras
+    # must never become the showcase, since demos are scoped to the core 4 only.
+    showcase = max(shaped_products[:PRODUCT_COUNT], key=lambda p: p["variant_count"])
     axis = showcase["options"][0]
 
     demos = {

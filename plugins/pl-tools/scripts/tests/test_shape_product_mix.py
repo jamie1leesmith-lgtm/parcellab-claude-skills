@@ -410,6 +410,29 @@ class TestExtrasFile(unittest.TestCase):
         self.assertEqual(base["demos"], with_extras["demos"])
         self.assertEqual(base["adjustments"], with_extras["adjustments"])
 
+    def richer_extras(self):
+        # Two axes (Colour x Size) => variant_count 6, more than any core-4 product
+        # (all of which fall back to the default 3-value Size axis => variant_count 3).
+        # This is the case that would make an extra win a naive max()-over-everything
+        # showcase pick.
+        return [
+            {"name": "Beanie", "product_type": "Beanie", "price": "18.00",
+             "options": [
+                 {"name": "Colour", "values": ["Red", "Blue"]},
+                 {"name": "Size", "values": ["S", "M", "L"]},
+             ],
+             "image_url": "https://x/b.jpg", "pdp_url": "https://x/b"},
+        ]
+
+    def test_demos_ignore_extras_even_when_extra_has_more_variants(self):
+        base = build_mix(self.payload())
+        with_extras = build_mix(self.payload(), extras=self.richer_extras())
+        self.assertEqual(with_extras["products"][-1]["variant_count"], 6)
+        self.assertEqual(base["demos"], with_extras["demos"])
+        self.assertEqual(base["adjustments"], with_extras["adjustments"])
+        core4_names = {p["name"] for p in base["products"]}
+        self.assertIn(with_extras["demos"]["in_product_even"]["product"], core4_names)
+
     def test_extras_bad_price_fails_loud(self):
         bad = [{"name": "X", "product_type": "X", "price": "??", "options": []}]
         with self.assertRaises(ValueError):
