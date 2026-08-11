@@ -156,6 +156,35 @@ class TestTimingColumns(unittest.TestCase):
         row = btr.build_row(self._run_dir(), "committed")
         self.assertEqual(row["Triage status"], "Untriaged")
 
+    def test_triage_status_is_written_only_at_row_creation(self):
+        # Emitting it at beat1/beat2 resets whatever a reviewer set.
+        for stage in ("beat1", "beat2"):
+            self.assertNotIn("Triage status", btr.build_row(self._run_dir(),
+                                                            stage))
+
+    def test_duration_to_build_is_derived_not_a_duplicate_of_total(self):
+        d = pathlib.Path(self._run_dir())
+        state = json.loads((d / "run-state.json").read_text())
+        state["timeline"].append({"kind": "gate", "name": "beat1",
+                                  "phase": "end", "at": "2026-08-11T21:35:00Z"})
+        (d / "run-state.json").write_text(json.dumps(state))
+        row = btr.build_row(d, "beat1")
+        self.assertEqual(row["Duration to build"], 30.0)
+        self.assertNotEqual(row["Duration to build"], row["Total elapsed"])
+
+    def test_duration_to_build_is_null_without_a_beat1_mark(self):
+        row = btr.build_row(self._run_dir(), "beat1")
+        self.assertIsNone(row["Duration to build"])
+
+    def test_missing_run_state_still_builds_a_partial_row(self):
+        # Telemetry is an observer, never a dependency: a run dir with no
+        # run-state.json must yield nulls, not a FileNotFoundError.
+        d = pathlib.Path(self._run_dir())
+        (d / "run-state.json").unlink()
+        row = btr.build_row(d, "beat1")
+        self.assertIsNone(row["Total elapsed"])
+        self.assertEqual(row["Brand"], "Currys")
+
     def test_no_other_triage_column_is_written(self):
         row = btr.build_row(self._run_dir(), "beat1")
         for column in ("Issue key", "Reviewed at", "Reviewed by",

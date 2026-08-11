@@ -90,7 +90,7 @@ def build_row(run_dir, stage, skill_version=""):
     if lanes_failed and stage != "committed":
         outcome = "Failed" if len(lanes_failed) > 1 else outcome
 
-    return {
+    row = {
         "Run ID": state.get("run_id") or manifest.get("run", {}).get("id"),
         "Brand": brand.get("name"),
         "Prospect URL": brand.get("url"),
@@ -115,9 +115,13 @@ def build_row(run_dir, stage, skill_version=""):
         "Event window": timing["event_window_min"],
         "Slowest lane": timing["slowest_lane"],
         "Timeline": json.dumps(timing["timeline"]),
-        "Duration to build": timing["total_elapsed_min"],
-        "Triage status": "Untriaged",
+        "Duration to build": timing["duration_to_build_min"],
     }
+    if stage == "committed":
+        # The one permitted triage write, and only at row creation: emitting
+        # it again at beat1/beat2 would reset a reviewer's value.
+        row["Triage status"] = "Untriaged"
+    return row
 
 
 def main():
