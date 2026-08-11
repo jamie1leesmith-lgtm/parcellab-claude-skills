@@ -244,8 +244,18 @@ needed). With those present the call **merges**: the integration-written article
 address, and tracking placeholder all survived untouched, with `tags` +
 `additional_attributes` added on top. One cosmetic note: the write echo shows
 `client_key: ""` while the integration order belongs to the Shopify store's client —
-the order-info readback confirmed a single merged document, but eyeball the portal's
-order view on a first run against a new store.
+eyeball the portal's order view on a first run against a new store.
+
+**Verify from the PUT's own response, not from order-info** (live-verified
+2026-08-11): `/v4/track/orders/info/` is the customer-facing projection — it
+redacts PII to `<name>`/`<email>` and carries **no order-level `tags` and no
+`riskAssessment`**; its `additional_attributes` is a *dict* holding only
+`ShopifyOrderTagsAtCreation`, not the API's list-of-`{key,value}`. Checking there
+makes a successful enrichment look like a silent failure. The PUT response echoes
+the merged document — assert `tags` and the `additional_attributes` keys on it.
+Any `tags`/`additional_attributes` found under `trackings[].articles[]` in
+order-info are the seeded **product** tags (`pl-demo-seed`,
+`pl-prospect-<handle>`), unrelated to the fraud fragment.
 
 **On enrichment failure** (non-2xx, or `userErrors`-equivalent rejection): report this order
 as **enrichment-failed**, skip Parts 5–6 for it, continue with the next order. This is the
@@ -306,13 +316,37 @@ Variables (one shipment):
       }
     ],
     "trackingInfo": {
-      "number": "<randomised, format-correct>",
+      "number": "<randomised, format-correct, UNIQUE ACROSS THE WHOLE RUN>",
       "company": "<carrier pL recognises — the shipment's courier from the manifest, e.g. UPS/DPD>"
     },
     "notifyCustomer": false
   }
 }
 ```
+
+**Tracking numbers must be unique across every shipment in the run, not merely
+random.** parcelLab keys a tracking record by `courier` + `tracking_number`, so
+two shipments sharing a number collide: events pushed for one land on the other,
+and the run reports success while one arc silently overwrites another. Seeding a
+PRNG deterministically is the trap — a resumed or re-run Part 5 replays the same
+sequence and re-issues a number an earlier order already holds (hit live
+2026-08-11: orders 1 and 2A both drew `01524417519594`). Keep a set of the run's
+issued numbers, generate against it, and audit before Part 6.
+
+To repair a collision found after fulfilment, update the tracking rather than
+re-fulfilling:
+
+```graphql
+mutation TIU($fulfillmentId: ID!, $trackingInfoInput: FulfillmentTrackingInput!, $notifyCustomer: Boolean) {
+  fulfillmentTrackingInfoUpdate(fulfillmentId: $fulfillmentId, trackingInfoInput: $trackingInfoInput, notifyCustomer: $notifyCustomer) {
+    fulfillment { id trackingInfo { number company } }
+    userErrors { field message }
+  }
+}
+```
+
+**`trackingInfo` reads back as a LIST**, both here and on `fulfillmentCreate` —
+the selection set above looks like a single object but is not. Index it.
 
 Write the mutation to `/tmp/fulfil.graphql` and the variables to (per shipment)
 `orders/<nn>-<label>/fulfil-<shipment>-vars.json`, then:
