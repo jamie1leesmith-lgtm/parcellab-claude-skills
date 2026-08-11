@@ -157,7 +157,7 @@ next republish. Publishing is never load-bearing.
      order-lifecycle's confidence rules). Runs of 2+ orders need at least
      one split-shipment order. Every order gets a distinct synthetic
      customer (region-appropriate name + email) — generate and show them.
-   - **pace:** `standard` (180 s gaps, comm-ordering safe — the default) or
+   - **pace:** `standard` (200 s gaps, comm-ordering safe — the default) or
      `fast` (60 s gaps, comms may arrive out of order — say so when
      offering it). Record as the manifest's `run.pace`.
    - CDC region (US|UK|DE) and category (Home|Electronics|Fashion) —
@@ -431,7 +431,7 @@ files.)
    Set `STATE_FILE="<run dir>/orders/<nn>-<label>/events.jsonl"` on every launch
    so the watcher in step 5 can see progress.
 
-   `GAP_SECONDS` comes from the manifest's `run.pace`: 180 for standard (the
+   `GAP_SECONDS` comes from the manifest's `run.pace`: 200 for standard (the
    default), 60 for fast. When pace is fast, Beat 2's report must note that
    comm ordering was not guaranteed at this pace. Pass `PARCELLAB_ACCOUNT_ID=<manifest account.id>`
    inline on every launch: `create.json`'s `account` field and the driver's
@@ -474,7 +474,7 @@ the direct engine's steps 3–4 — but **the event files are always written
 fresh at Part 6c, never reused from Phase 0**: only after 6b has read the
 `courier` back out of the live order-info response are the file's `courier`
 and `tracking_number` knowable at all. This includes that `GAP_SECONDS` comes from the manifest's
-`run.pace`: 180 for standard (the default), 60 for fast. When pace is fast,
+`run.pace`: 200 for standard (the default), 60 for fast. When pace is fast,
 Beat 2's report must note that comm ordering was not guaranteed at this
 pace. It also includes the launch mechanics in full: a **tracked background task
 per order (`run_in_background: true`, never `nohup`)** with `STATE_FILE` set,

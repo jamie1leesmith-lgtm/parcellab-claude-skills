@@ -109,6 +109,36 @@ a stale `confirmed` stamp: visibly wrong rather than quietly false. When the run
 finishes the clock is omitted entirely, so opening the page tomorrow shows the
 real end state rather than an animation that ran off the end.
 
+## Roadmap — a genuinely live view
+
+The artifact is not what limits freshness: **only the conductor can republish,
+and the conductor only acts in turns.** Phase 2's drivers run in the background
+for fifteen minutes, which is precisely when the conductor is least able to
+update anything. Any design where the background process updates the view
+directly beats any amount of tuning on the republish cadence.
+
+Verified 2026-08-11: a page served from the `preview_start` server polls a local
+JSON file every second and tracks changes written by another process, with no
+conductor turn at all. The artifact CSP forbids this; localhost does not.
+
+The intended shape, when it is worth building:
+
+- **During the run** — a local polling page in the Browser pane, reading the
+  `events.jsonl` files the drivers already write. Roughly one second of lag,
+  zero conductor turns. Cheapest real win available.
+- **After the run** — one artifact publish as the permanent, shareable record,
+  which is what artifacts are actually good at.
+
+`preview_start` is session-scoped, so the local page is a during-the-run tool
+only — it cannot be the durable artefact.
+
+A third option exists and is a real project rather than an afternoon: have
+`run-lifecycle.sh` post state to Notion (the telemetry database is already
+there), and give the artifact the `mcp` capability so it polls Notion via
+`watchTool`. That is live *and* shareable, with the driver — not the conductor —
+doing the updating. It inherits one constraint: a page declaring `mcp` can
+never be shared publicly.
+
 ## Milestone hook (the sentence SKILL.md uses)
 
 > record it via `run_state.py`, re-render with `render_run_page.py <run dir>`
