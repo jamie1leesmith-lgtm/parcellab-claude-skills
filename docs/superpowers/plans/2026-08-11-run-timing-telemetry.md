@@ -878,15 +878,22 @@ longest single order, never the sum of every event. The live run's window was
 15.2 minutes; multiplying 12 events by the 200 s gap suggests 40 and is wrong.
 ```
 
-- [ ] **Step 3: Note the manual Notion step**
+- [ ] **Step 3: Record that the columns already exist**
+
+The seven timing columns were added to the live database on 2026-08-11 through the Notion
+connector — no manual step is required, and none should be added to this plan.
 
 In `references/telemetry.md`, under *The live database*, add:
 
 ```markdown
-The seven timing columns must exist in the database before a run can write
-them. Notion rejects an unknown property name, and a rejected telemetry write
-is non-fatal by design — so a missing column shows up as silently absent
-timing data, not as an error. Add them once, with the types in the table above.
+The seven timing columns were added on 2026-08-11 and are already live. A
+column must exist before a run can write it: Notion rejects an unknown
+property name, and a rejected telemetry write is non-fatal by design, so a
+missing column shows up as silently absent data rather than as an error. Add
+any future column through the connector's `update_data_source`
+(`ADD COLUMN "Name" NUMBER`) against data source
+`6061c7ca-bbe2-484c-a072-c0a77d9394d3`, not by hand in the UI — the schema is
+shared, and doing it through the connector keeps it reproducible.
 ```
 
 - [ ] **Step 4: Verify the docs match the code**
