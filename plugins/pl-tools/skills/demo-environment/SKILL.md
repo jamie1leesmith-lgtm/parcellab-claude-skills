@@ -31,8 +31,10 @@ Ask **"Are returns in scope for this demo?"** first.
 Every run keeps one progress artifact — see
 `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md` for
 the states and skeleton. Publish state 1 right after creating the run dir;
-republish at each numbered state; record the URL as `run.page_url` in the
-manifest after the first publish. Publishing is never load-bearing.
+republish at each numbered state; keep the URL the first publish returns and
+carry it into `run.page_url` when step 8 writes the manifest. Values the run
+dir does not yet carry (path, account name) render as `—` and fill in at the
+next republish. Publishing is never load-bearing.
 
 ## Phase 0 — Intake (front-loaded)
 
@@ -43,8 +45,16 @@ manifest after the first publish. Publishing is never load-bearing.
    `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
    and republish — non-fatal.
 2. **Path + brand round:** take the prospect URL and ask ONLY the path
-   questions (returns in scope? · Shopify opp? — per *Paths*) — the minimum
-   needed to know what to collect.
+   questions (returns in scope? · Shopify opp? — per *Paths*) plus, when one
+   applies, the reuse offer below — the minimum needed to know what to
+   collect, and everything that has to be settled before the scrape agent is
+   dispatched.
+   **Prior-pool detection:** scan `$HOME/parcellab-demo-runs/` for a
+   directory whose `<handle>-<ts>` handle equals this run's handle and which
+   contains both `scrape/brand-tokens.json` and `scrape/product-pool.json`;
+   the most recent such run is the candidate. If one exists, offer it in this
+   same round ("reuse the pool scraped for <brand> on <date>, or scrape
+   fresh?"). No candidate → no offer, and step 3 dispatches as normal.
 3. **Dispatch the scrape agent immediately.** Use the Agent tool
    (general-purpose subagent, background) with exactly this brief, filling
    the placeholders. **Resolve `${CLAUDE_PLUGIN_ROOT}` to its absolute path
@@ -76,9 +86,13 @@ manifest after the first publish. Publishing is never load-bearing.
    **Browser pane ownership:** the agent owns the pane from dispatch until
    `results/scrape.json` exists. Do not navigate the pane in that window —
    the ★ template preview naturally starts after it, since it needs the
-   scraped tokens. **Reused pool:** when a prior run's pool for this brand
-   is being reused (offer this whenever one exists), skip the dispatch and
-   copy the prior `scrape/` files instead. Once `results/scrape.json` shows
+   scraped tokens. **Reused pool:** when the user accepted the reuse offer
+   made in step 2, skip the dispatch entirely — copy the prior run's
+   `scrape/brand-tokens.json` and `scrape/product-pool.json` into this run's
+   `scrape/`, then write `results/scrape.json` yourself as
+   `{"status": "ok", "error": null}`. Without that file the pre-build at
+   step 6 waits on a precondition nothing else will ever satisfy. Once
+   `results/scrape.json` shows
    `ok`: Update `run-page.html` (state 2 per
    `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
    and republish — non-fatal.
@@ -145,21 +159,56 @@ manifest after the first publish. Publishing is never load-bearing.
      the CDC resolves linked order numbers in the config's target account, so
      a mismatched config fails linking with "No parcelLab order found"
      (live-verified 2026-08-11).
-5. **Repeat-brand template shortcut:** if a layout for this brand already
-   exists on the target account, verify it live —
-   `parcellab --env prod journey layout show <id> -o json` must show
-   `releaseStatus: published` AND an `autoLayout` entry for the store this
-   path's orders will land on — and offer to skip the template lane. If the
-   user accepts, write `results/branded-template.json` from the verified
-   state (note "template lane skipped — verified live at intake") and skip
-   the ★ checkpoint; Phase 1 then has no template work.
+5. **Repeat-brand template shortcut:** look for an existing layout for this
+   brand on the target account and, if one verifies live, offer to skip the
+   template lane.
+   - **Find it:**
+     `parcellab --env prod journey layout list --account <account.id> --all -o json --jmes 'results[].{id:id,name:prettyName,auto:autoLayout}'`.
+     **Match rule:** a layout whose `prettyName`, lowercased with punctuation
+     and whitespace stripped, contains the brand name or the run's `<handle>`
+     similarly normalised. No match → no shortcut. Several matches → offer the
+     most recently created one, or run the template lane normally if the user
+     is unsure. Never guess an id.
+   - **Verify it:** `parcellab --env prod journey layout show <id> -o json`
+     must show `releaseStatus: published` AND an `autoLayout` entry whose
+     `client` is the store this path's orders will land on. Anything less →
+     no shortcut.
+   - **If the user accepts,** write `results/branded-template.json` with
+     exactly the four keys branded-template's orchestrated contract defines.
+     **The CLI's field names are not those keys — copy the values across, do
+     not paste the CLI's shape:**
+     `layout_id` ← the response's `id` · `release_status` ← the value of
+     `releaseStatus` (the publish gate reads `"release_status": "published"`;
+     a verbatim `releaseStatus` key leaves `release_status` absent and stalls
+     the gate on every order) · `store_assignment` ← the name of the store
+     behind the matching `autoLayout` entry's `client` id (resolve it with
+     `parcellab --env prod config client list --account <account.id> -o json`)
+     · `account` ← the manifest's `account.id`. Add
+     `"note": "template lane skipped — verified live at intake"`. Then skip
+     the ★ checkpoint; Phase 1 has no template work.
 6. **Pre-build everything sendable**, once the interview and
-   `results/scrape.json` (status ok) are both in: the template HTML from the
-   tokens (branded-template Step 7 — build only, no push; skip when the
-   repeat-brand shortcut was taken), every order's
-   `create.json` + `track.json` + `NN-<status>.json` event files (fraud
-   fragments included, order-lifecycle's payload rules verbatim, no POSTs and
-   no PUTs), and the proposed plan itself.
+   `results/scrape.json` (status ok) are both in:
+   - **The template HTML** from the tokens — branded-template Step 7, build
+     only, no push, written to Step 7's own canonical path
+     `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html`
+     (that path, not the run dir: Step 8's preview server serves from there
+     and cannot read `~/Documents`). Skip when the repeat-brand shortcut was
+     taken.
+   - **The fraud fragment** for every order, on every path — it depends on
+     nothing the engines produce.
+   - **Direct engine only** (engage and retain paths): every order's
+     `create.json` + `track.json` + `NN-<status>.json` event files
+     (order-lifecycle's payload rules verbatim, no POSTs and no PUTs).
+     **Never pre-build these on retain-shopify.** That path's tracking number
+     is assigned by Shopify at `fulfillmentCreate` time and its `courier` must
+     be read back out of the live pL order-info response (shopify-order-engine
+     Parts 5b and 6b — live run: Shopify company `DPD` → pL courier `dpd`, not
+     the `dpd-uk` the direct engine uses). Both values are fields in the event
+     files, so anything built now would carry a locally invented tracking
+     number and a guessed courier, and every event would push at a tracking
+     that does not exist. On retain-shopify these files are built fresh at
+     6c, after the read-back.
+   - **The proposed plan** itself.
    **Scrape failure fallback:** if `results/scrape.json` says `failed` (or
    the agent dies), run the browser pass inline now — brand tokens, product
    pool, image validation, exactly as the scrape brief specifies — and carry
@@ -218,8 +267,10 @@ background) with exactly this brief, filling the placeholders:
 
 **Then run branded-template inline** (main session): invoke the
 pl-tools:branded-template skill; its "Orchestrated runs (demo-environment)"
-contract consumes the manifest's `brand_tokens` and account, and the HTML
-pre-built at Phase 0 step 6. Its Step 8 preview question is ★ the run's one
+contract consumes the manifest's `brand_tokens` and account, and reuses the
+HTML pre-built at Phase 0 step 6 at Step 7's own path
+`$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html`
+rather than building it again. Its Step 8 preview question is ★ the run's one
 checkpoint — wait for the user there as that skill specifies. It finishes by
 writing `results/branded-template.json`.
 
@@ -250,8 +301,10 @@ the same manifest (the fallback), and leave every other lane alone.
 
 For each manifest order, in its `orders/<nn>-<label>/` directory, follow
 order-lifecycle's "Orchestrated runs (demo-environment)" contract. Steps 1–3
-were pre-built at Phase 0 step 6 — reuse those files as they stand; rebuild
-only if the approved plan changed at the gate:
+were pre-built at Phase 0 step 6 on this engine's paths — reuse those files as
+they stand; rebuild only if the approved plan changed at the gate. (The
+Shopify engine below shares only steps 3–4's *shape*, never these pre-built
+files.)
 
 1. Fraud fragment: run `prepare_fraud_fragment.py` for the order's level and
    merge `tags` + `additional_attributes` into `create.json`.
@@ -291,8 +344,11 @@ For each manifest order, in its `orders/<nn>-<label>/` directory, follow
 create the order in Shopify (line items = the order's `products` mapped to
 seeded variant gids) → poll pL ingestion → enrich with the fraud fragment →
 fulfil per shipment with tracking → poll the pL tracking → build the
-`NN-<status>.json` files and launch the driver, exactly as the direct
-engine's steps 3–4 — including that `GAP_SECONDS` comes from the manifest's
+`NN-<status>.json` files and launch the driver, following the same rules as
+the direct engine's steps 3–4 — but **the event files are always written
+fresh at Part 6c, never reused from Phase 0**: only after 6b has read the
+`courier` back out of the live order-info response are the file's `courier`
+and `tracking_number` knowable at all. This includes that `GAP_SECONDS` comes from the manifest's
 `run.pace`: 180 for standard (the default), 60 for fast. When pace is fast,
 Beat 2's report must note that comm ordering was not guaranteed at this
 pace. Once drivers are launched: Update `run-page.html` (state 5 per

@@ -14,14 +14,20 @@ embedding `<img>` tags that may be blocked — test on the first smoke run
 and, if remote images render, switch to `<img>`), light/dark via
 `@media (prefers-color-scheme: dark)` plus `:root[data-theme="…"]`
 overrides, favicon `📦` (never changes mid-run), title
-`<brand> demo — <run id>`. Record the URL in the manifest as
-`run.page_url` after the first publish.
+`<brand> demo — <run id>`. Keep the URL returned by the first publish and
+carry it into the manifest as `run.page_url` when Phase 0 step 8 writes the
+manifest (the manifest does not exist yet at the first publish).
+
+**Not-yet-known values:** the page is published from step 1, before the
+interview has answered everything it displays. Any header or card value the
+run dir does not yet carry renders as an em dash `—`; it fills in at the next
+republish. Never delay a publish waiting for a value, and never invent one.
 
 ## States (each row = one redeploy)
 
 | # | When | The page shows |
 |---|---|---|
-| 1 | Run dir created | Header (brand, path, account by name, run id), "collecting products + brand styling", interview underway |
+| 1 | Run dir created | Header (brand, path, account by name, run id — path and account are still unanswered at this point, so render them `—`), "collecting products + brand styling", interview underway |
 | 2 | `results/scrape.json` ok | Product pool grid (name, type, price, verified badge, PDP link), brand-token swatch strip |
 | 3 | ✋ gate opens | The proposed plan: core-4 grid · order matrix table (label, customer, fraud, scenario, products, expected comms with confidence labels) · CDC settings (config source, generate_orders) · pace · a banner: "⏳ Approval waiting in chat" |
 | 4 | Gate approved / sends firing | Lane cards — template (push → publish → assign), seed (retain-shopify only), per-order chips (created → tracked → events queued); each chip flips as its results land |
@@ -29,6 +35,12 @@ overrides, favicon `📦` (never changes mid-run), title
 | 6 | Beat 1 | The environment-built summary: layout id/status/store, per-order table, CDC request id + link |
 | 7 | Beat 2 | Per-arc verification: checkpoints attached vs planned, comms fired vs promised, ✅/⚠️ per arc; fast-pace ordering caveat when `run.pace` is fast |
 | 8 | Any failure | The matching failure-table row, verbatim, in a highlighted card at the top — added to whatever state the page is in, never replacing it |
+
+**Wide tables scroll inside themselves.** Every `<table>` on this page —
+state 3's order matrix (the widest content in the run), state 6's per-order
+table, state 7's per-arc verification table — is wrapped in
+`<div class="overflow">…</div>` so it scrolls horizontally within its own
+card. The page body must never scroll sideways.
 
 ## Skeleton
 

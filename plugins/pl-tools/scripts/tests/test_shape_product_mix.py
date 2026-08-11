@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from decimal import Decimal
 from pathlib import Path
@@ -437,6 +438,62 @@ class TestExtrasFile(unittest.TestCase):
         bad = [{"name": "X", "product_type": "X", "price": "??", "options": []}]
         with self.assertRaises(ValueError):
             build_mix(self.payload(), extras=bad)
+
+
+class TestExtrasFileCli(unittest.TestCase):
+    """--extras-file through argparse, which the in-process tests never touch."""
+
+    def payload(self):
+        return {
+            "products": [
+                {"name": f"P{i}", "product_type": f"T{i}", "price": p,
+                 "image_url": f"https://x/{i}.jpg", "pdp_url": f"https://x/{i}",
+                 "options": [{"name": "Size", "values": ["S", "M"]}]}
+                for i, p in enumerate(["28.00", "32.00", "64.00", "90.00"])
+            ],
+            "location_id": "gid://shopify/Location/1",
+            "prospect_handle": "acme",
+        }
+
+    def run_script(self, extras_path):
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), "--extras-file", str(extras_path)],
+            input=json.dumps(self.payload()), capture_output=True, text=True,
+        )
+
+    def write(self, tmpdir, content):
+        path = Path(tmpdir) / "extras.json"
+        path.write_text(content)
+        return path
+
+    def test_valid_extras_file_end_to_end(self):
+        extras = [
+            {"name": "Scarf", "product_type": "Scarf", "price": "22.50",
+             "options": [{"name": "Colour", "values": ["Red", "Blue"]}],
+             "image_url": "https://x/s.jpg", "pdp_url": "https://x/s"},
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc = self.run_script(self.write(tmpdir, json.dumps(extras)))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout)
+        self.assertEqual(len(out["products"]), 5)
+        scarf = out["products"][-1]
+        self.assertEqual(scarf["name"], "Scarf")
+        self.assertEqual(scarf["price"], "22.50")
+        self.assertEqual(scarf["variant_count"], 2)
+
+    def test_non_array_extras_file_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc = self.run_script(self.write(tmpdir, json.dumps({"name": "Scarf"})))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("--extras-file must contain a JSON array", proc.stderr)
+        self.assertEqual(proc.stdout, "")
+
+    def test_missing_extras_file_exits_1(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc = self.run_script(Path(tmpdir) / "nope.json")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("shape_product_mix", proc.stderr)
 
 
 if __name__ == "__main__":

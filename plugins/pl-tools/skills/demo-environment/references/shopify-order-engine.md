@@ -374,6 +374,11 @@ every event at a tracking that doesn't exist; this step is not optional.
 
 ### 6c. Build and push events exactly as the direct engine's driver does
 
+**These files are always written fresh here — never pre-built and never reused.** The
+conductor's Phase 0 pre-build deliberately excludes this path: `tracking_number` does not
+exist until Part 5b's `fulfillmentCreate` assigns it, and `courier` is only knowable after
+6b reads it back. Both are fields in every event file.
+
 Write `orders/<nn>-<label>/NN-<status>.json` files for the chosen scenario, one per stage,
 using the `courier` from 6b and the `tracking_number` from Part 5b — same rules as
 `order-lifecycle`'s *Event sequence* (no `event_timestamp`, no `account` in the file; the
@@ -384,12 +389,15 @@ for the valid `event_status` enum and the proven happy/unhappy sequences.
 Then launch the driver, one per order, exactly as the direct engine does:
 
 ```bash
-PARCELLAB_ACCOUNT_ID="<manifest account.id>" EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<gap, default 180>" \
+PARCELLAB_ACCOUNT_ID="<manifest account.id>" EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<180 standard | 60 fast, from the manifest's run.pace>" \
   bash ${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/run-lifecycle.sh
 ```
 
 `PARCELLAB_ACCOUNT_ID` is set inline from the manifest's `account.id` — the
 confirmed target account, not whatever the ambient env var happens to hold.
+`GAP_SECONDS` likewise comes from the manifest's `run.pace`: `standard` (or an
+absent `run.pace`) → 180, `fast` → 60. At `fast`, Beat 2's report must note
+that comm ordering was not guaranteed.
 
 Run it with the Bash tool's `run_in_background`; do a `DRYRUN=1` pass first. All orders'
 drivers run concurrently once each has reached this point — a failure earlier in one

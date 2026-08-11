@@ -736,6 +736,12 @@ When invoked by the `demo-environment` conductor with a run directory whose
   conductor — do not open the brand site.
 - **Steps 7–10 run unchanged**, including the Step 8 preview and its
   question — this is the whole run's one human checkpoint, never skip it.
+  One shortcut only: the conductor pre-builds Step 7's HTML at its Phase 0
+  step 6, at Step 7's own path
+  `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html`.
+  If that file already exists for this brand and this run, reuse it as the
+  Step 7 output instead of rebuilding — after running Step 7's grep checks
+  over it, since it is the file Step 8 previews and Step 9 pushes.
 - **Store assignment preference:** on a Shopify-path run (`shopify.enabled`),
   when 9b.2 offers multiple stores, pre-select the client whose `key` or
   `name` matches `shopify.store`; still follow 9b.3–9b.5 in full.

@@ -29,9 +29,12 @@ class TestCheckImages(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
 
     def test_accepts_eleven_products(self):
+        # Missing image_url fails fast with no network access.
         r = run({"products": [{"name": f"P{i}"} for i in range(11)]})
         out = json.loads(r.stdout)
         self.assertEqual(len(out["results"]), 11)
+        self.assertFalse(out["ok"])
+        self.assertEqual(r.returncode, 1)
 
 
 if __name__ == "__main__":

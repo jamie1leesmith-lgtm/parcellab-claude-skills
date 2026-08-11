@@ -631,8 +631,13 @@ given at the conductor's intake (this is not inference):
   come from the manifest's `account.id` — never from `$PARCELLAB_ACCOUNT_ID`,
   which may point at a different account than the one confirmed at intake.
   Launch every driver with the account inline: `PARCELLAB_ACCOUNT_ID=<manifest
-  account.id> EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS=180 bash <skill
+  account.id> EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<180 standard |
+  60 fast, from the manifest's run.pace>" bash <skill
   dir>/references/run-lifecycle.sh`.
+- **Pace:** `GAP_SECONDS` is never hard-coded on an orchestrated run — it
+  comes from the manifest's `run.pace` (`standard` → 180, `fast` → 60; an
+  absent `run.pace` means standard). At `fast`, comms may arrive out of
+  order; say so when reporting.
 
 **Multi-order runs.** Each manifest order gets its own directory
 (`orders/<nn>-<label>/` inside the run dir), its own `create.json`,
