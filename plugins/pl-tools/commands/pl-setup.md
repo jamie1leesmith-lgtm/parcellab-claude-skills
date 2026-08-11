@@ -134,6 +134,41 @@ and offers to store it here. With none stored, the CDC uses the caller's
 default config and demo-environment says so in its report. They are ids, not
 credentials, but they still belong in the env file, not the transcript.
 
+### Optional: Shopify CLI (for Shopify demos)
+
+Only needed by users running Shopify demos (`shopify-seed`, or the
+`demo-environment` skill's Retain-Shopify path). Skip freely otherwise —
+everything else in pl-tools works without it.
+
+1. Check: `command -v shopify && shopify version`. If present, skip to
+   step 3.
+2. Install (the plain brew install fails — the formula lives in a
+   non-official tap that Homebrew refuses until trusted):
+
+       brew tap shopify/shopify
+       brew trust shopify/shopify
+       brew install shopify-cli
+
+   Then, before anything else: `shopify config autoupgrade off` — a
+   self-upgrade firing mid-session uninstalls the CLI and leaves a dangling
+   symlink.
+3. Authenticate against the user's **dev store** (never a production
+   merchant store), warning them a browser consent window will open. Request
+   the full scope set up front — the demo-environment order engine needs the
+   order and fulfilment scopes, and asking now avoids a re-consent
+   mid-demo:
+
+       shopify store auth -s <store>.myshopify.com \
+         --scopes write_products,write_inventory,read_orders,write_orders,write_fulfillments
+
+   Substitute the real subdomain — never write the literal text `<store>`.
+4. Persist the store so skills stop asking:
+
+       echo 'SHOPIFY_DEMO_STORE=<store>.myshopify.com' > ~/.claude/parcellab-shopify-seed.env
+
+   (A config file, not an env var in settings.json — env vars are only read
+   at app startup, and this one is read fresh from the file by each run.)
+
 ## 7. Tell me to restart
 
 I must fully quit Claude Code (**Cmd-Q**, not just closing the window) and reopen

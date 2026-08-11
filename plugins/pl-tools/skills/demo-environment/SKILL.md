@@ -48,7 +48,7 @@ Ask **"Are returns in scope for this demo?"** first.
      customer (region-appropriate name + email) — generate and show them.
    - CDC region (US|UK|DE) and category (Home|Electronics|Fashion) —
      inferred from the site later, confirmed at the approval gate.
-3. **Shopify resolution (retain-shopify only):** confirm the dev store by
+3. **Shopify resolution (retain-shopify only):** First `command -v shopify` — if the CLI is missing, stop and point the user at `/pl-setup`'s optional Shopify CLI section (install + full-scope store auth) rather than improvising an install mid-intake; the auth must carry the order/fulfilment scopes or the order engine hits a re-consent wall later. Confirm the dev store by
    name from `~/.claude/parcellab-shopify-seed.env` (else
    `shopify store auth list`), then resolve the location GID immediately —
    follow shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
