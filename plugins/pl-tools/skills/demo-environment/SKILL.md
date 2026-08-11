@@ -293,7 +293,23 @@ next republish. Publishing is never load-bearing.
    the order/scenario/fraud matrix with expected comm per event (mark
    unproven items) · CDC region/category/config source · CDC synthetic
    generation on/off (+ which slots) · the account by name. One explicit yes
-   covers all of it; any tweak loops back here. When the gate opens, and again once approved: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py`, then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and republish the artifact — non-fatal. **Never hand-edit `run-page.html`;** it is derived, and the next render overwrites it.
+   covers all of it; any tweak loops back here. When the gate opens: record it
+   via `run_state.py`, re-render with `render_run_page.py <run dir>` and
+   republish — non-fatal.
+
+   **Once approved:** record it via `run_state.py`, re-render, and republish
+   again — non-fatal. **Then open the telemetry row** (skip entirely when
+   `PL_RUN_TELEMETRY_DB` is unset): build the payload with
+   `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_telemetry_row.py <run dir> committed
+   --skill-version "$(git -C ${CLAUDE_PLUGIN_ROOT}/../.. rev-parse --short HEAD)"`,
+   then create the page in the telemetry database via the Notion connector,
+   setting `Date` to today and `Ran by` to the current user. Record the
+   returned page id in the run dir as `results/telemetry.json` so Beats 1 and 2
+   can update the same row. See
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/telemetry.md`.
+
+   This is the first outward-facing write of the run, and it happens only after
+   the gate — never before.
 9. **Write the manifest** to `demo-manifest.json` (schema:
    `run{…, pace: "standard"|"fast" — absent means standard, page_url —
    recorded after the first run-page publish}`, `path`,
@@ -497,6 +513,8 @@ config" when `config_source` is `none`), and `generate_orders`/`orders`
 and for which slots). No currency symbols. **If the edit-mode guard was
 repointed for this run** (per Phase 0 step 4's note), offer here to restore
 it to the user's own account. Once Beat 1 is posted: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
+Update the telemetry row (stage `beat1`) with the build results, if
+`results/telemetry.json` exists.
 
 **Beat 2 — verified** (after each order's driver finishes AND **≥15 minutes**
 after its final event — comms lag, and delivered comms the longest: measured
@@ -509,6 +527,26 @@ explicitly covering the good AND bad arcs the run promised. For every
 unproven event or chain that fired correctly, offer to record it in
 `${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/status-codes.md`.
 Once Beat 2 is posted: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
+
+Update the telemetry row (stage `beat2`), filling `Comms expected` and
+`Comms fired` from the verification just performed, and `Duration to build`
+from the gate-approval and Beat 1 timestamps.
+
+**Then answer these three questions explicitly before writing the row** — they
+are the only source for the self-reported deviations, and an open "did
+anything go wrong?" reliably returns "no":
+
+1. Did any instruction fail to work as written? If so, which file and line?
+   → `instruction_unfollowable`
+2. Did you do anything the skill does not describe, including a workaround for
+   a tool that behaved unexpectedly? → `workaround_invented`
+3. Did the user have to intervene, correct you, or ask why something had not
+   happened? → `manual_intervention`
+
+Answer them from the actual run, not from intent. Live 2026-08-11 all three
+would have been answered "no" by a conductor that had in fact wrapped its
+drivers in `nohup` against the skill's instruction, leaving the user staring
+at an empty task list — question 3 is the one that would have caught it.
 
 ## Failure handling
 
