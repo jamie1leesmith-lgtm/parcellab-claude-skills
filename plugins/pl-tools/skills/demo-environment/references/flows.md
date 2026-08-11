@@ -26,12 +26,23 @@ Two lanes run concurrently after the path questions:
   Shopify dev-store + location resolution on retain-shopify,
   target-account confirmation + edit-mode guard
 
-They join at **pre-build** — template HTML, every order's create/track/event
-files, the proposed plan — all local, nothing sent. Then **the single
-approval gate** (✋ — products, distribution, order/scenario/fraud matrix,
-CDC fields, account) releases the sends: nothing before it has touched
-parcelLab, Shopify or the CDC. Finally the manifest is written and
-validated. Nothing past this phase starts on an invalid manifest.
+They join at **pre-build** — template HTML, the fraud fragments, the direct
+engine's create/track/event files (never on retain-shopify: its tracking and
+courier do not exist yet), the proposed plan — all local, nothing sent.
+
+Then **two approvals, in order**:
+
+1. ★ **the template** — the pre-built HTML is served and previewed on its own,
+   and iterated until the user says yes. It is the run's first deliverable and
+   gates every comm, so it is approved before anything downstream is shown.
+   The run page holds at a template-only state here. Skipped entirely when a
+   repeat brand's layout already verified live.
+2. ✋ **the plan** — products, distribution, order/scenario/fraud matrix, CDC
+   fields, pace, account. One yes releases the sends: nothing before it has
+   sent anything to parcelLab, Shopify or the CDC.
+
+Finally the manifest is written and validated. Nothing past this phase starts
+on an invalid manifest.
 
 A repeat brand can skip the template lane entirely if its existing layout
 verifies live as published and store-assigned; a failed scrape agent falls

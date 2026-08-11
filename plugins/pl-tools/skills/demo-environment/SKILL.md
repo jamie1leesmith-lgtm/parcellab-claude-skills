@@ -63,7 +63,7 @@ Every run keeps one progress artifact — see
 `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md` for
 the states and skeleton. Publish state 1 right after creating the run dir;
 republish at each numbered state; keep the URL the first publish returns and
-carry it into `run.page_url` when step 8 writes the manifest. Values the run
+carry it into `run.page_url` when step 9 writes the manifest. Values the run
 dir does not yet carry (path, account name) render as `—` and fill in at the
 next republish. Publishing is never load-bearing.
 
@@ -117,7 +117,13 @@ next republish. Publishing is never load-bearing.
    **Browser pane ownership:** the agent owns the pane from dispatch until
    `results/scrape.json` exists. Do not navigate the pane in that window —
    the ★ template preview naturally starts after it, since it needs the
-   scraped tokens. **Reused pool:** when the user accepted the reuse offer
+   scraped tokens. **This binds more than deliberate navigation:** a
+   `PostToolUse` hook can open a file in the pane as a side effect of a plain
+   Write (observed 2026-08-11 — writing `run-page.html` took the pane while the
+   scrape agent held it). Writing run files is unavoidable, so treat pane
+   contention as expected rather than forbidden: if the pane is taken from the
+   agent, do not also drive it, and re-check `results/scrape.json` rather than
+   assuming the agent died. **Reused pool:** when the user accepted the reuse offer
    made in step 2, skip the dispatch entirely — copy the prior run's
    `scrape/brand-tokens.json` and `scrape/product-pool.json` into this run's
    `scrape/`, then write `results/scrape.json` yourself as
@@ -246,7 +252,24 @@ next republish. Publishing is never load-bearing.
    the agent dies), run the browser pass inline now — brand tokens, product
    pool, image validation, exactly as the scrape brief specifies — and carry
    on. The agent is an accelerator, never load-bearing.
-7. **Propose the plan** and gate on approval (✋ — the intake's one gate;
+7. ★ **Show the template and get it approved — before anything else is
+   proposed.** The HTML exists on disk from step 6, so serve it and put it in
+   front of the user now: follow branded-template Step 8 (launch config →
+   `preview_start` → navigate → screenshot), ask *"Does this look right before
+   I push it to parcelLab?"*, and iterate on the file until they say yes. This
+   is the run's first deliverable and it gates every comm the environment will
+   send, so it is approved on its own, ahead of the plan.
+   - **Hold the run page here.** Publish a template-only state — the preview,
+     the brand-token swatches, and nothing downstream. Do not show the plan,
+     the order matrix or the seed set yet: putting detail on screen that the
+     user cannot act on, before the first deliverable is even visible, is what
+     made the 2026-08-11 smoke run confusing.
+   - **Skip this step entirely when the repeat-brand shortcut was taken** at
+     step 5 — the layout is already live and verified, so there is nothing to
+     preview and `results/branded-template.json` already exists.
+   - **Approval here covers the push.** Phase 1's branded-template run does not
+     ask again; its own Step 8 checkpoint is already satisfied.
+8. **Propose the plan** and gate on approval (✋ — the sends gate;
    one yes releases the sends, and nothing before this step has *sent
    anything to* parcelLab, Shopify or the CDC — the only prior calls are
    read-only lookups plus the edit-mode guard):
@@ -261,7 +284,7 @@ next republish. Publishing is never load-bearing.
    and republish — non-fatal. Once approved: Update `run-page.html` (state 4
    per `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
    and republish — non-fatal.
-8. **Write the manifest** to `demo-manifest.json` (schema:
+9. **Write the manifest** to `demo-manifest.json` (schema:
    `run{…, pace: "standard"|"fast" — absent means standard, page_url —
    recorded after the first run-page publish}`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
@@ -279,7 +302,7 @@ next republish. Publishing is never load-bearing.
    run dir's `scrape/` (`brand-tokens.json`, `product-pool.json`) with its
    outcome in `results/scrape.json`; the manifest carries the selected
    subset.
-9. **Validate:**
+10. **Validate:**
    `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py <run>/demo-manifest.json`
    — on `MANIFEST INVALID`, fix the named gaps (re-asking if needed) and
    re-validate. **Never start Phase 1 on an invalid manifest.**
@@ -314,9 +337,10 @@ pl-tools:branded-template skill; its "Orchestrated runs (demo-environment)"
 contract consumes the manifest's `brand_tokens` and account, and reuses the
 HTML pre-built at Phase 0 step 6 at Step 7's own path
 `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html`
-rather than building it again. Its Step 8 preview question is ★ the run's one
-checkpoint — wait for the user there as that skill specifies. It finishes by
-writing `results/branded-template.json`.
+rather than building it again. **Its Step 8 preview question is already
+answered** — the ★ checkpoint ran at Phase 0 step 7, before the plan gate, and
+the user approved that exact file. Do not ask again: go straight to Step 9's
+push and publish. It finishes by writing `results/branded-template.json`.
 
 **Unless the repeat-brand shortcut was taken** at Phase 0 step 5 — then
 `results/branded-template.json` already exists from the live-verified
