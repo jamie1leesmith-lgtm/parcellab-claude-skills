@@ -118,6 +118,22 @@ If I will, print this command and ask me to run it myself:
 
 It's a single value, nothing to decode. The base URL is filled in automatically.
 
+### Optional: CDC account-config UUIDs (for demo-environment)
+
+The `demo-environment` skill selects a CDC account configuration matching the
+run's target account. Each user has up to three (visible in the CDC UI when
+editing an account config — there is no API to list them). If the user has
+them, append to `~/.claude/parcellab-demo-request.env`:
+
+    CDC_ACCOUNT_CONFIG_DEFAULT=<uuid>        # their own demo account (the default target)
+    CDC_ACCOUNT_CONFIG_PARCELFASHION=<uuid>  # the shared parcelfashion account
+    CDC_ACCOUNT_CONFIG_SHOPIFY=<uuid>        # Shopify demos
+
+All optional — demo-environment also captures a missing one on its first run
+and offers to store it here. With none stored, the CDC uses the caller's
+default config and demo-environment says so in its report. They are ids, not
+credentials, but they still belong in the env file, not the transcript.
+
 ## 7. Tell me to restart
 
 I must fully quit Claude Code (**Cmd-Q**, not just closing the window) and reopen

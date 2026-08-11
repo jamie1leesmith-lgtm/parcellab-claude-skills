@@ -10,6 +10,7 @@ a single plugin.
 | `pl-tools:branded-template` | Build a branded transactional email layout from a brand URL |
 | `pl-tools:demo-request` | Raise a custom demo request from a prospect URL |
 | `pl-tools:bug-investigation` | Investigate and document a live product bug |
+| `pl-tools:demo-environment` | One interview → a full parcelLab demo: branded template, 1–5 fraud-tagged orders with good/bad journeys, optional Shopify build, CDC request linking the real orders |
 | `pl-tools:shopify-seed` | Seed a prospect's real products into a Shopify dev store for exchange demos |
 | `pl-tools:pl-setup` | One-time setup (below) |
 | `pl-tools:pl-update` | Pull the latest skills and fixes, then tell you if a restart is needed |

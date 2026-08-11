@@ -60,6 +60,7 @@ they deliberately don't share the `parcellab-` prefix used by the org's
 | `pl-tools:branded-template` | Builds a branded transactional email layout in your parcelLab account from a brand URL, with live preview in the desktop app | *"Create a parcelLab layout for www.nike.com"* |
 | `pl-tools:demo-request` | Creates a custom demo request from a prospect website URL — collects products, verifies images, submits to the Custom Demo Creator | *"Create a demo request for www.example.com"* |
 | `pl-tools:bug-investigation` | Investigates a product bug end to end: checks live config via the `parcellab` CLI, reproduces it in Claude-in-Chrome with real screenshot/recording capture, isolates root cause against sibling portals, and publishes a shareable bug report as an artifact, HTML file, and PDF — always *before* any mitigation, which needs express account-number-specific sign-off | *"Investigate this bug on [portal]"* |
+| `pl-tools:demo-environment` | One interview → a full parcelLab demo: branded template, 1–5 fraud-tagged orders with good/bad journeys, optional Shopify build, CDC request linking the real orders | *"Create a complete parcelLab demo for [brand]"* |
 | `pl-tools:pl-setup` | One-time setup: account, CLI write guard, and per-skill tokens | *`/pl-setup`* |
 | `onyx` *(separate plugin)* | Pulls knowledge from your parcelLab Onyx instance into Claude — semantic search, cited RAG answers, and document retrieval | *"Search Onyx for our return policy on damaged items"* |
 
