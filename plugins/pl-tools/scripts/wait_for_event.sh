@@ -11,10 +11,16 @@
 # Coalescing matters. Several orders push events within the same second, and
 # one page update covering all of them is worth more than three in a row —
 # each republish costs the conductor a turn.
+#
+# The settle window is the page's staleness floor: nothing reaches the reader
+# faster than this. Concurrent drivers share a launch time and a gap, so their
+# events land within a second or two of each other — a few seconds is enough to
+# coalesce them, and the rest of a longer window is pure delay in front of the
+# reader. Kept deliberately short: the page is meant to read as live.
 set -uo pipefail
 
 RUN_DIR="${1:?run_dir required}"
-SETTLE="${2:-20}"
+SETTLE="${2:-5}"
 TIMEOUT="${3:-1200}"
 
 count_lines() {

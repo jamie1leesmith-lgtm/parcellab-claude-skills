@@ -260,6 +260,17 @@ class TestClock(unittest.TestCase):
         self.assertIn("RUN_SCHEDULE", html)
         self.assertIn("gap_seconds", html)
 
+    def test_age_ticker_runs_even_before_any_schedule_exists(self):
+        # The page is a snapshot republished by the conductor, so the reader's
+        # real question is "how old is this?" — which must be answerable from
+        # the moment the run starts, not only once drivers are launched.
+        state = a_state()
+        state["schedule"] = {}
+        html = render_run_page.render(state)
+        self.assertIn("setInterval", html)
+        self.assertIn("RUN_UPDATED_AT", html)
+        self.assertIn("freshness", html)
+
     def test_finished_run_has_no_clock(self):
         html = render_run_page.render(a_state(finished=True))
         self.assertNotIn("setInterval", html)

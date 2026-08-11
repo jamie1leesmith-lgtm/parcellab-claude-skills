@@ -53,9 +53,26 @@ CLOCK_JS = """
 <script>
 (() => {
   const S = RUN_SCHEDULE;
-  if (!S || !S.started_at || !S.gap_seconds) return;
+  const updated = Date.parse(RUN_UPDATED_AT);
+  // How stale the page is, always. This page is a snapshot the conductor
+  // republishes, so an unlabelled reading is indistinguishable from a frozen
+  // one — the age is what tells the reader which they are looking at.
+  const age = () => {
+    const el = document.getElementById('freshness');
+    if (!el || !updated) return;
+    const secs = Math.max(0, Math.round((Date.now() - updated) / 1000));
+    el.textContent = secs < 60
+      ? 'updated ' + secs + 's ago'
+      : 'updated ' + Math.floor(secs / 60) + 'm ' + (secs % 60) + 's ago';
+  };
+  if (!S || !S.started_at || !S.gap_seconds) {
+    age();
+    setInterval(age, 1000);
+    return;
+  }
   const started = Date.parse(S.started_at);
   const tick = () => {
+    age();
     const elapsed = (Date.now() - started) / 1000;
     // Events fire after a leading gap, then one per gap.
     const due = Math.floor(elapsed / S.gap_seconds);
@@ -95,11 +112,13 @@ def _clock(state):
     """
     if state.get("finished"):
         return ""
+    # Emitted with or without a schedule: the freshness ticker has to run from
+    # the first publish, long before any driver is launched.
     schedule = state.get("schedule") or {}
-    if not schedule:
-        return ""
     return ("<script>const RUN_SCHEDULE = "
-            + json.dumps(schedule) + ";</script>" + CLOCK_JS)
+            + json.dumps(schedule or None)
+            + "; const RUN_UPDATED_AT = "
+            + json.dumps(state.get("updated_at")) + ";</script>" + CLOCK_JS)
 
 
 def state_of(planned_status, confirmed):
@@ -156,8 +175,9 @@ def _rail(state):
             parts.append("</div>")
 
     parts.append('<div class="stamp" id="countdown"></div>')
+    parts.append('<div class="stamp" id="freshness"></div>')
     parts.append(f'<div class="stamp">confirmed '
-                 f'{e(state.get("updated_at", "—"))}</div>')
+                 f'{e(state.get("updated_at") or "—")}</div>')
     parts.append("</div>")
     return "".join(parts)
 

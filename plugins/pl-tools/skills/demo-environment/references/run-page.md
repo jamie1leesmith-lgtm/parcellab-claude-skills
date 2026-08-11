@@ -23,6 +23,25 @@ hand, that is the bug** — fix the renderer and its tests instead.
 **"Non-fatal" still means what it says:** a failed publish never blocks a
 phase. Say so once in chat and carry on.
 
+## Cadence — the page should read as live
+
+The states below are the *minimum*, not the budget. Republish whenever the
+run's state changes at all: every lane transition, every confirmed event,
+every failure. Two renders that would land in the same turn are one render;
+otherwise, when in doubt, republish. Recording a fact and re-rendering are
+both cheap by design — that is what makes this affordable, and a page that
+lags the run is the specific failure this whole mechanism exists to prevent.
+
+The reader cannot tell a fresh page from a frozen one by looking, so the page
+carries its own age (`#freshness`, ticking every second) alongside the
+countdown to the next expected event. That is what makes a genuine quiet
+period legible as quiet rather than broken — but it is not a substitute for
+republishing; an honest "updated 9m ago" is still a stale page.
+
+**The staleness floor during Phase 2** is `wait_for_event.sh`'s settle window
+(default 5s), plus the conductor's turn. Widen it only if republishing proves
+too expensive, and say so when you do — never silently.
+
 Rules baked into every publish: self-contained HTML (no external requests —
 the artifact CSP blocks them. **Never use `<img>` with a remote `src`** —
 measured on the 2026-08-11 Pets at Home smoke run, a remote product image
