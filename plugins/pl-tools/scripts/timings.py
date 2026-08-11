@@ -39,28 +39,48 @@ def parse_ts(text):
 def pair_intervals(timeline):
     """Pair timeline entries into {kind, name, start, end} intervals.
 
+    One span per open/close pair, not one per name: a re-asked gate is an
+    enumerated deviation, and collapsing 20:00→20:05 and 21:00→21:05 into a
+    single 65-minute span reports a wrong number for a real, common case.
+    A second open while one is still unclosed starts a new span; the previous
+    one stays unclosed rather than being retro-fitted with someone else's end.
+
     An interval whose close never arrived keeps `end: None` — an agent that
     died must not read as zero, nor be stretched to the end of the run.
     """
-    spans = {}
-    order = []
+    spans = []
+    open_span = {}
     for entry in timeline or []:
         key = (entry.get("kind"), entry.get("name"))
-        if key not in spans:
-            spans[key] = {"kind": key[0], "name": key[1],
-                          "start": None, "end": None}
-            order.append(key)
         at = parse_ts(entry.get("at"))
-        if entry.get("phase") in OPEN_PHASES and spans[key]["start"] is None:
-            spans[key]["start"] = at
-        elif entry.get("phase") in CLOSE_PHASES:
-            spans[key]["end"] = at
-    return [spans[k] for k in order]
+        phase = entry.get("phase")
+        if phase in OPEN_PHASES:
+            span = {"kind": key[0], "name": key[1], "start": at, "end": None}
+            spans.append(span)
+            open_span[key] = span
+        elif phase in CLOSE_PHASES:
+            span = open_span.pop(key, None)
+            if span is None:
+                # A close with no open: keep it visible rather than dropping
+                # it, but it has no duration.
+                spans.append({"kind": key[0], "name": key[1],
+                              "start": None, "end": at})
+            else:
+                span["end"] = at
+    return spans
 
 
 def union_seconds(spans):
-    """Total wall-clock seconds covered by any span. Unclosed spans ignored."""
+    """Total wall-clock seconds covered by any span. Unclosed spans ignored.
+
+    A span whose end precedes its start is impossible; it raises rather than
+    returning a negative, which would make `covered` negative and push
+    `unattributed` above `total`.
+    """
     closed = sorted((s, e) for s, e in spans if s is not None and e is not None)
+    for start, end in closed:
+        if end < start:
+            raise ValueError(f"span ends before it starts: {start} → {end}")
     if not closed:
         return 0
     total = 0
@@ -79,6 +99,40 @@ def _minutes(seconds):
     return None if seconds is None else round(seconds / 60.0, 1)
 
 
+def _live_start_index(lines):
+    """Index of the live driver's START line, or None if there is no live run.
+
+    `run-lifecycle.sh` appends, and both SKILL.mds mandate a `DRYRUN=1` pass
+    into the same run.log immediately before the live launch. Taking lines[0]
+    therefore measured from the dry run: a real 3.0-minute order read as 6.7.
+    Anchor on the LAST `START sequence` carrying `dryrun=0`.
+
+    A log whose START lines carry no `dryrun=` token at all predates the flag;
+    fall back to the first line. A log with only dry-run passes has no live
+    driver interval — the caller skips it.
+    """
+    live = None
+    saw_flag = False
+    for i, line in enumerate(lines):
+        if "START sequence" not in line:
+            continue
+        if "dryrun=" in line:
+            saw_flag = True
+            if "dryrun=0" in line:
+                live = i
+    if live is not None:
+        return live
+    return None if saw_flag else 0
+
+
+def _stamp_of(line):
+    """The leading timestamp of a log line, or None if it is corrupt."""
+    try:
+        return parse_ts(line.split()[0])
+    except (ValueError, IndexError):
+        return None
+
+
 def driver_intervals(run_dir):
     """Driver spans, read from each order's run.log.
 
@@ -93,20 +147,53 @@ def driver_intervals(run_dir):
                  if raw_line.strip()]
         if not lines:
             continue
-        try:
-            start = parse_ts(lines[0].split()[0])
-        except ValueError:
+        first = _live_start_index(lines)
+        if first is None:
+            continue
+        start = _stamp_of(lines[first])
+        if start is None:
             # A partial write or truncated flush must not take down the
             # whole report — skip this driver, keep the others.
             continue
         end = None
-        for line in reversed(lines):
+        for line in lines[first + 1:]:
             if "DONE sequence complete" in line:
-                end = parse_ts(line.split()[0])
+                # A corrupt DONE stamp leaves the driver unfinished, which is
+                # honest; guessing an end would be a wrong number.
+                end = _stamp_of(line)
                 break
         spans.append({"kind": "driver", "name": log.parent.name,
                       "start": start, "end": end})
     return spans
+
+
+def _last_stamp(timeline, kind, name, phase):
+    """The last stamp for one exact mark, or None if it was never written.
+
+    Last, not first: a re-asked gate is answered more than once, and the
+    build starts from the answer that released it.
+    """
+    found = None
+    for entry in timeline or []:
+        if (entry.get("kind") == kind and entry.get("name") == name
+                and entry.get("phase") == phase):
+            at = parse_ts(entry.get("at"))
+            if at is not None:
+                found = at
+    return found
+
+
+def duration_to_build(timeline):
+    """Seconds from the plan gate being answered to Beat 1, or None.
+
+    Derived, never hand-computed: a model reading two stamps off a page and
+    subtracting them is exactly the estimate this module exists to replace.
+    """
+    approved = _last_stamp(timeline, "gate", "plan", "answered")
+    built = _last_stamp(timeline, "gate", "beat1", "end")
+    if approved is None or built is None or built < approved:
+        return None
+    return (built - approved).total_seconds()
 
 
 def summarise(run_dir):
@@ -117,8 +204,13 @@ def summarise(run_dir):
     interval including gates, and waiting is an overlapping view of it.
     """
     run_dir = pathlib.Path(run_dir)
-    state = json.loads((run_dir / "run-state.json").read_text())
-    timeline = state.get("timeline", [])
+    try:
+        state = json.loads((run_dir / "run-state.json").read_text())
+    except (OSError, ValueError):
+        # Telemetry is an observer that never fails a run: a missing or
+        # unreadable run-state is an empty timeline, not an exception.
+        state = {}
+    timeline = state.get("timeline") or []
 
     marked = pair_intervals(timeline)
     drivers = driver_intervals(run_dir)
@@ -130,17 +222,25 @@ def summarise(run_dir):
     def has_closed(spans):
         return any(s["start"] and s["end"] for s in spans)
 
-    stamps = [t for s in everything for t in (s["start"], s["end"]) if t]
-    total = (max(stamps) - min(stamps)).total_seconds() if stamps else None
+    # Fewer than two distinct stamps is not a zero-length run, it is a run
+    # nobody measured. "Total elapsed 0.0, Unattributed 0.0" would read as
+    # fully instrumented with nothing unexplained.
+    stamps = {t for s in everything for t in (s["start"], s["end"]) if t}
+    total = ((max(stamps) - min(stamps)).total_seconds()
+             if len(stamps) >= 2 else None)
 
     covered = union_seconds((s["start"], s["end"]) for s in everything)
     measured = union_seconds((s["start"], s["end"]) for s in work)
     waiting = (union_seconds((s["start"], s["end"]) for s in gates)
                if has_closed(gates) else None)
 
-    driver_stamps = [t for s in drivers for t in (s["start"], s["end"]) if t]
-    window = ((max(driver_stamps) - min(driver_stamps)).total_seconds()
-              if driver_stamps else None)
+    # The window is not known until every driver has finished: falling back
+    # to the other drivers' stamps silently shortens it.
+    if drivers and all(s["start"] and s["end"] for s in drivers):
+        window = (max(s["end"] for s in drivers)
+                  - min(s["start"] for s in drivers)).total_seconds()
+    else:
+        window = None
 
     def by_kind(kind):
         out = {}
@@ -160,6 +260,7 @@ def summarise(run_dir):
         "unattributed_min": (_minutes(max(0, total - covered))
                              if total is not None else None),
         "event_window_min": _minutes(window),
+        "duration_to_build_min": _minutes(duration_to_build(timeline)),
         "per_lane": per_lane,
         "per_agent": by_kind("agent"),
         "slowest_lane": slowest,

@@ -63,6 +63,41 @@ class TestPairIntervals(unittest.TestCase):
         self.assertEqual(spans[0]["start"], dt(21, 20))
         self.assertEqual(spans[0]["end"], dt(21, 23))
 
+    def test_repeated_marks_make_one_span_each(self):
+        # A re-asked gate is an enumerated deviation. Keeping the first open
+        # and the last close would report 65 minutes of waiting against a
+        # truth of 10.
+        timeline = [
+            {"kind": "gate", "name": "plan", "phase": "asked",
+             "at": "2026-08-11T20:00:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-11T20:05:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "asked",
+             "at": "2026-08-11T21:00:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-11T21:05:00Z"},
+        ]
+        spans = timings.pair_intervals(timeline)
+        self.assertEqual(len(spans), 2)
+        self.assertEqual((spans[0]["start"], spans[0]["end"]),
+                         (dt(20, 0), dt(20, 5)))
+        self.assertEqual((spans[1]["start"], spans[1]["end"]),
+                         (dt(21, 0), dt(21, 5)))
+
+    def test_reopen_before_close_leaves_the_first_span_unclosed(self):
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:00:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-11T20:10:00Z"},
+            {"kind": "agent", "name": "scrape", "phase": "end",
+             "at": "2026-08-11T20:20:00Z"},
+        ]
+        spans = timings.pair_intervals(timeline)
+        self.assertEqual(len(spans), 2)
+        self.assertIsNone(spans[0]["end"])
+        self.assertEqual(spans[1]["end"], dt(20, 20))
+
     def test_same_name_in_different_kinds_does_not_cross_pair(self):
         timeline = [
             {"kind": "lane", "name": "seed", "phase": "start",
@@ -110,6 +145,12 @@ class TestUnionSeconds(unittest.TestCase):
             timings.union_seconds([(dt(10, 0), dt(10, 5)),
                                    (dt(10, 5), dt(10, 10))]), 600)
 
+    def test_reversed_span_raises(self):
+        # An impossible union must raise rather than return -600, which would
+        # make `covered` negative and inflate `unattributed` above the total.
+        with self.assertRaises(ValueError):
+            timings.union_seconds([(dt(10, 0), dt(9, 50))])
+
 
 
 import json  # noqa: E402
@@ -155,6 +196,40 @@ class TestDriverIntervals(unittest.TestCase):
 
     def test_no_orders_gives_no_intervals(self):
         self.assertEqual(timings.driver_intervals(a_run_dir()), [])
+
+    def test_dry_run_pass_is_not_counted_as_the_driver_start(self):
+        # Both SKILL.mds mandate a DRYRUN=1 pass into the same run.log
+        # immediately before the live launch. Anchoring on lines[0] made a
+        # 3.0-minute order read as 6.7.
+        logs = {"01-fraud-low-happy": [
+            "2026-08-11T17:39:29Z START sequence: 3 events, gap=180s, "
+            "dryrun=1, endpoint=/v4/track/events/, account=1626718",
+            "2026-08-11T17:39:29Z DONE sequence complete",
+            "2026-08-11T17:43:12Z START sequence: 3 events, gap=180s, "
+            "dryrun=0, endpoint=/v4/track/events/, account=1626718",
+            "2026-08-11T17:46:13Z DONE sequence complete",
+        ]}
+        spans = timings.driver_intervals(a_run_dir(logs=logs))
+        self.assertEqual(len(spans), 1)
+        self.assertEqual(spans[0]["start"], dt(17, 43, 12))
+        self.assertEqual(spans[0]["end"], dt(17, 46, 13))
+
+    def test_dry_run_only_log_has_no_driver_interval(self):
+        logs = {"01-fraud-low-happy": [
+            "2026-08-11T17:39:29Z START sequence: 3 events, gap=180s, "
+            "dryrun=1, endpoint=/v4/track/events/, account=1626718",
+            "2026-08-11T17:39:29Z DONE sequence complete",
+        ]}
+        self.assertEqual(timings.driver_intervals(a_run_dir(logs=logs)), [])
+
+    def test_malformed_done_line_leaves_the_driver_unfinished(self):
+        logs = {"01-clean-low": [
+            "2026-08-11T21:35:56Z START sequence: 3 events",
+            "not-a-timestamp DONE sequence complete",
+        ]}
+        spans = timings.driver_intervals(a_run_dir(logs=logs))
+        self.assertEqual(spans[0]["start"], dt(21, 35, 56))
+        self.assertIsNone(spans[0]["end"])
 
     def test_malformed_first_line_skips_that_driver_only(self):
         # A partial write or truncated flush in one order's log must not take
@@ -275,6 +350,116 @@ class TestSummarise(unittest.TestCase):
         logs["04-garbled"] = ["not-a-timestamp START sequence: 1 events"]
         out = timings.summarise(a_run_dir(logs=logs))
         self.assertEqual(out["event_window_min"], 15.2)
+
+        # A garbled DONE line is the same class of corruption and was
+        # unguarded: it raised out of summarise and killed the whole row.
+        # The driver is simply unfinished, so the window is not yet known.
+        logs = dict(DRIVER_LOGS)
+        logs["04-garbled-done"] = [
+            "2026-08-11T21:36:00Z START sequence: 1 events",
+            "not-a-timestamp DONE sequence complete",
+        ]
+        out = timings.summarise(a_run_dir(logs=logs))
+        self.assertIsNone(out["event_window_min"])
+
+    def test_unfinished_driver_makes_the_window_null(self):
+        # Falling back to the other drivers' stamps silently shortens the
+        # window; it genuinely is not known until every driver finishes.
+        logs = dict(DRIVER_LOGS)
+        logs["04-still-running"] = [
+            "2026-08-11T21:36:00Z START sequence: 2 events"]
+        out = timings.summarise(a_run_dir(logs=logs))
+        self.assertIsNone(out["event_window_min"])
+
+    def test_single_mark_reports_null_total_not_zero(self):
+        # "Total elapsed 0.0, Unattributed 0.0" reads as fully instrumented
+        # with nothing unexplained — the most misleading output available.
+        timeline = [{"kind": "lane", "name": "cdc", "phase": "start",
+                     "at": "2026-08-11T21:05:00Z"}]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertIsNone(out["total_elapsed_min"])
+        self.assertIsNone(out["unattributed_min"])
+
+    def test_two_marks_at_the_same_instant_are_not_a_total(self):
+        timeline = [
+            {"kind": "lane", "name": "cdc", "phase": "start",
+             "at": "2026-08-11T21:05:00Z"},
+            {"kind": "lane", "name": "cdc", "phase": "end",
+             "at": "2026-08-11T21:05:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertIsNone(out["total_elapsed_min"])
+        self.assertIsNone(out["unattributed_min"])
+
+    def test_missing_run_state_returns_nulls_not_an_exception(self):
+        # Telemetry is an observer that never fails a run.
+        d = pathlib.Path(a_run_dir(logs=DRIVER_LOGS))
+        (d / "run-state.json").unlink()
+        out = timings.summarise(d)
+        self.assertEqual(out["timeline"], [])
+        self.assertIsNone(out["waiting_on_user_min"])
+        # The drivers still stamped their own logs, so what was recorded is
+        # still reported.
+        self.assertEqual(out["event_window_min"], 15.2)
+
+    def test_unreadable_run_state_returns_nulls_not_an_exception(self):
+        d = pathlib.Path(a_run_dir())
+        (d / "run-state.json").write_text("{not json")
+        out = timings.summarise(d)
+        self.assertIsNone(out["total_elapsed_min"])
+        self.assertEqual(out["timeline"], [])
+
+
+class TestDurationToBuild(unittest.TestCase):
+    def test_plan_answered_to_beat1_end(self):
+        timeline = [
+            {"kind": "gate", "name": "plan", "phase": "asked",
+             "at": "2026-08-11T20:00:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-11T20:05:00Z"},
+            {"kind": "gate", "name": "beat1", "phase": "end",
+             "at": "2026-08-11T20:35:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertEqual(out["duration_to_build_min"], 30.0)
+
+    def test_missing_beat1_gives_null(self):
+        timeline = [
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-11T20:05:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertIsNone(out["duration_to_build_min"])
+
+    def test_missing_plan_answer_gives_null(self):
+        timeline = [
+            {"kind": "gate", "name": "beat1", "phase": "end",
+             "at": "2026-08-11T20:35:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertIsNone(out["duration_to_build_min"])
+
+    def test_reasked_plan_gate_measures_from_the_final_answer(self):
+        timeline = [
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-11T20:05:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-11T21:05:00Z"},
+            {"kind": "gate", "name": "beat1", "phase": "end",
+             "at": "2026-08-11T21:35:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertEqual(out["duration_to_build_min"], 30.0)
+
+    def test_beat1_before_the_plan_answer_gives_null_not_a_negative(self):
+        timeline = [
+            {"kind": "gate", "name": "beat1", "phase": "end",
+             "at": "2026-08-11T20:05:00Z"},
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-11T20:35:00Z"},
+        ]
+        out = timings.summarise(a_run_dir(timeline=timeline))
+        self.assertIsNone(out["duration_to_build_min"])
 
 
 if __name__ == "__main__":
