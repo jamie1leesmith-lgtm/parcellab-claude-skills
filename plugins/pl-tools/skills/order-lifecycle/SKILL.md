@@ -167,7 +167,18 @@ parcellab api request PUT /v4/track/orders/ --data @create.json -o json
    `article_category`** — for the same reason you mirror name/image/price: the
    Returns Order API derives returnable items from `tracking.articles` (see
    `create-order`'s *Payload shape*), so that's the level a reason filter has
-   anything to act on:
+   anything to act on.
+
+   **Dual-family article keys — required for the article block to render in
+   comms at all** (live-verified 2026-08-11 against a working legacy-ingest
+   account): the message templates read the LEGACY camelCase fields from the
+   stored document — `articleNo`, `articleName`, `articleImageUrl`,
+   `articleCategory`, `price` — and v4 snake_case fields alone leave those
+   unset (`imageUrl: null` in the stored doc → empty article table in every
+   email). The v4 API passes the camelCase keys through verbatim, so every
+   article entry at BOTH levels duplicates its data in both families, and
+   `line_item_id` carries the real SKU/article number rather than a sequence
+   number (parcelLab's own Custom Demo Creator does the same):
 
    ```json
    "tracking": {
@@ -175,12 +186,19 @@ parcellab api request PUT /v4/track/orders/ --data @create.json -o json
      "courier": "<chosen courier>",
      "articles": [
        {
-         "line_item_id": "1",
+         "line_item_id": "TS-BLK-M",
+         "sku": "TS-BLK-M",
          "article_name": "Classic T-Shirt — Black, M",
          "article_category": "fashion",
          "quantity": 1,
+         "unit_price": "29.90",
          "article_image_url": "https://picsum.photos/seed/tshirt/400/400",
-         "article_store_url": "https://example.com/products/classic-t-shirt"
+         "article_store_url": "https://example.com/products/classic-t-shirt",
+         "articleNo": "TS-BLK-M",
+         "articleName": "Classic T-Shirt — Black, M",
+         "articleImageUrl": "https://picsum.photos/seed/tshirt/400/400",
+         "articleCategory": "fashion",
+         "price": "29.90"
        }
      ]
    }

@@ -173,13 +173,18 @@ A realistic tracked order with one article:
   },
   "articles_order": [
     {
-      "line_item_id": "1",
+      "line_item_id": "TS-BLK-M",
       "sku": "TS-BLK-M",
       "article_name": "Classic T-Shirt — Black, M",
       "article_category": "fashion",
       "quantity": 1,
       "unit_price": "89.90",
-      "article_image_url": "https://picsum.photos/seed/tshirt/400/400"
+      "article_image_url": "https://picsum.photos/seed/tshirt/400/400",
+      "articleNo": "TS-BLK-M",
+      "articleName": "Classic T-Shirt — Black, M",
+      "articleImageUrl": "https://picsum.photos/seed/tshirt/400/400",
+      "articleCategory": "fashion",
+      "price": "89.90"
     }
   ],
   "mutations": [
@@ -193,12 +198,16 @@ A realistic tracked order with one article:
         "language_iso2": "de",
         "articles": [
           {
-            "line_item_id": "1",
+            "line_item_id": "TS-BLK-M",
             "sku": "TS-BLK-M",
             "article_name": "Classic T-Shirt — Black, M",
             "article_category": "fashion",
             "quantity": 1,
-            "unit_price": "89.90"
+            "unit_price": "89.90",
+            "articleNo": "TS-BLK-M",
+            "articleName": "Classic T-Shirt — Black, M",
+            "articleCategory": "fashion",
+            "price": "89.90"
           }
         ]
       }
@@ -208,6 +217,15 @@ A realistic tracked order with one article:
 ```
 
 Notes:
+- **Dual-family article keys are required for comms to render articles**
+  (live-verified 2026-08-11): the message templates read the legacy camelCase
+  fields (`articleNo`, `articleName`, `articleImageUrl`, `articleCategory`,
+  `price`) from the stored document, and the v4 snake_case fields alone leave
+  them unset — the article block in every email comes out empty. The v4 API
+  passes the camelCase keys through verbatim, so duplicate each article's
+  data in both families at BOTH levels, and put the real SKU/article number
+  in `line_item_id` (not a sequence number) — parcelLab's own Custom Demo
+  Creator does the same.
 - `account` is the numeric account id resolved in *Account resolution and confirmation* — `${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`.
 - `order_number` must be unique per account. **Prefix it with the first three letters of the business/brand name, uppercased, then a timestamp** — `<XXX>-$(date +%s)` — so orders are easy to find in the portal (e.g. Moonpig → `MOO-1784828280`, Nike → `NIK-…`). Strip leading "www."/articles and non-letters before taking the three letters; if no brand is given, fall back to `ORD-$(date +%s)`. Unless the user gives an explicit order number, always follow this scheme.
 - `line_item_id` must be unique within `articles_order`.
