@@ -92,9 +92,11 @@ class TestBuildTelemetryRow(unittest.TestCase):
 
     def test_row_contains_no_triage_columns(self):
         # Triage is written by review, never by a run — a run must not be able
-        # to clobber it.
+        # to clobber it. Triage status is the one permitted exception: it is
+        # always set to Untriaged on creation so unreviewed rows are
+        # findable by value.
         row = btr.build_row(a_run(), "beat2")
-        for column in ("Triage status", "Reviewed at", "Action taken",
+        for column in ("Reviewed at", "Action taken",
                        "Fix commit", "Verified in run", "Reviewed by"):
             self.assertNotIn(column, row)
 
@@ -105,6 +107,60 @@ class TestBuildTelemetryRow(unittest.TestCase):
     def test_unfinished_run_reports_stalled(self):
         row = btr.build_row(a_run(finished=False), "beat2")
         self.assertEqual(row["Outcome"], "Stalled")
+
+
+class TestTimingColumns(unittest.TestCase):
+    def _run_dir(self):
+        import json
+        import pathlib
+        import tempfile
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / "orders").mkdir()
+        (d / "results").mkdir()
+        (d / "run-state.json").write_text(json.dumps({
+            "run_id": "currys-1",
+            "lanes": {},
+            "orders": [],
+            "failures": [],
+            "timeline": [
+                {"kind": "lane", "name": "scrape", "phase": "start",
+                 "at": "2026-08-11T20:50:00Z"},
+                {"kind": "lane", "name": "scrape", "phase": "end",
+                 "at": "2026-08-11T21:00:00Z"},
+                {"kind": "gate", "name": "plan", "phase": "asked",
+                 "at": "2026-08-11T21:02:00Z"},
+                {"kind": "gate", "name": "plan", "phase": "answered",
+                 "at": "2026-08-11T21:05:00Z"},
+            ],
+        }))
+        (d / "demo-manifest.json").write_text(json.dumps(
+            {"brand": {"name": "Currys"}, "orders": []}))
+        return str(d)
+
+    def test_timing_columns_are_present_and_derived(self):
+        row = btr.build_row(self._run_dir(), "beat1")
+        self.assertEqual(row["Total elapsed"], 15.0)
+        self.assertEqual(row["Measured working time"], 10.0)
+        self.assertEqual(row["Waiting on user"], 3.0)
+        self.assertEqual(row["Slowest lane"], "scrape")
+        self.assertGreaterEqual(row["Unattributed"], 0)
+
+    def test_timeline_is_serialised_as_json_text(self):
+        import json
+        row = btr.build_row(self._run_dir(), "beat1")
+        self.assertIsInstance(row["Timeline"], str)
+        self.assertEqual(len(json.loads(row["Timeline"])), 4)
+
+    def test_triage_status_starts_untriaged(self):
+        # Blank makes unreviewed rows findable only by querying for empty.
+        row = btr.build_row(self._run_dir(), "committed")
+        self.assertEqual(row["Triage status"], "Untriaged")
+
+    def test_no_other_triage_column_is_written(self):
+        row = btr.build_row(self._run_dir(), "beat1")
+        for column in ("Issue key", "Reviewed at", "Reviewed by",
+                       "Action taken", "Fix commit", "Verified in run"):
+            self.assertNotIn(column, row)
 
 
 if __name__ == "__main__":

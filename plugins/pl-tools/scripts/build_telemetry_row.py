@@ -10,6 +10,8 @@ import json
 import pathlib
 import sys
 
+import timings
+
 DEVIATIONS = (
     "validator_rejected",
     "api_error",
@@ -80,6 +82,7 @@ def build_row(run_dir, stage, skill_version=""):
 
     lanes_failed = [name for name, lane in state.get("lanes", {}).items()
                     if lane.get("status") == "failed"]
+    timing = timings.summarise(run_dir)
 
     outcome = STAGE_OUTCOME.get(stage, "Committed")
     if stage == "beat2" and not state.get("finished"):
@@ -105,6 +108,15 @@ def build_row(run_dir, stage, skill_version=""):
         "Deviations": derive_deviations(state, results),
         "Error detail": "; ".join(f["detail"]
                                   for f in state.get("failures", [])),
+        "Total elapsed": timing["total_elapsed_min"],
+        "Measured working time": timing["measured_min"],
+        "Waiting on user": timing["waiting_on_user_min"],
+        "Unattributed": timing["unattributed_min"],
+        "Event window": timing["event_window_min"],
+        "Slowest lane": timing["slowest_lane"],
+        "Timeline": json.dumps(timing["timeline"]),
+        "Duration to build": timing["total_elapsed_min"],
+        "Triage status": "Untriaged",
     }
 
 
