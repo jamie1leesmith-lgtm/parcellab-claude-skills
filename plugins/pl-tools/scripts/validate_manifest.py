@@ -15,6 +15,7 @@ FRAUD_LEVELS = {"low", "medium", "high"}
 PATHS = {"engage", "retain", "retain-shopify"}
 BRAND_REGIONS = {"US", "UK", "DE"}
 BRAND_CATEGORIES = {"Home", "Electronics", "Fashion"}
+PACES = {"standard", "fast"}
 PROVEN_SEQUENCES = (
     ("InTransit", "OutForDelivery", "Delivered"),
     ("InTransit", "WarehouseDelay"),
@@ -29,6 +30,10 @@ def validate(m):
             errs.append(msg)
 
     need(m.get("path") in PATHS, f"path must be one of {sorted(PATHS)}")
+
+    pace = m.get("run", {}).get("pace")
+    if pace is not None:
+        need(pace in PACES, f"run.pace must be one of {sorted(PACES)}")
 
     brand = m.get("brand", {})
     need(bool(brand.get("name")), "brand.name must be non-empty")

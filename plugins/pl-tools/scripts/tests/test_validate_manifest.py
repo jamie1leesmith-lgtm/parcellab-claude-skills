@@ -170,6 +170,14 @@ class TestValidateManifest(unittest.TestCase):
         m["orders"][0]["shipments"][0]["unproven_chain"] = True
         self.assertEqual(validate(m), [])
 
+    def test_pace_optional_and_enum(self):
+        self.assertEqual(validate(valid_manifest()), [])  # absent is fine
+        m = valid_manifest()
+        m["run"]["pace"] = "fast"
+        self.assertEqual(validate(m), [])
+        m["run"]["pace"] = "leisurely"
+        self.assertTrue(any("pace" in e for e in validate(m)))
+
 
 if __name__ == "__main__":
     unittest.main()
