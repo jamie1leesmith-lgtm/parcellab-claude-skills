@@ -207,7 +207,7 @@ Reuse `demo-request`'s checker against the same file:
 node ${CLAUDE_PLUGIN_ROOT}/skills/demo-request/scripts/check_images.mjs /tmp/seed-products.json
 ```
 
-It expects exactly 4 products, prints a JSON result per image, and **exits non-zero if any
+It expects at least 1 product, prints a JSON result per image, and **exits non-zero if any
 fails**. It retries HEAD as a ranged GET on 403/405, which is the hotlink-protected CDN
 case — and that same protection will later defeat Shopify's own server-side fetch, so an
 image failing here will not work in Step 8 either. Replace it now.
@@ -437,7 +437,13 @@ inside it replace Steps 1, 2, 3 and 5:
   `shopify.location_id`) — both were confirmed/resolved at intake. State the
   store name in output; do not re-ask, do not run `store auth list`.
 - **Products come from `seed/seed-products.json`** — already in Step 3's
-  input shape with images verified at intake. Skip all browsing.
+  input shape with images verified at intake. Skip all browsing. The
+  manifest's `selection.core4` products go to `shape_product_mix.py` on
+  stdin exactly as the standalone flow does; the `selection.shopify_extra`
+  products go in a temp JSON array passed via `--extras-file`, which seeds
+  them at their own real price with the same option/variant logic (no
+  matched-pair adjustment). One script call shapes the whole seed set — do
+  not call the script's helpers directly.
 - **The Step 5 approval is already given** (`approvals.products_approved_at`
   in the manifest). Do not wait for a yes.
 - **Agent ground rules:** never open the Browser pane; never ask the user

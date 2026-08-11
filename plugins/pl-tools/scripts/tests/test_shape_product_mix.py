@@ -368,5 +368,53 @@ class CliTests(unittest.TestCase):
         self.assertIn("shape_product_mix", proc.stderr)
 
 
+class TestExtrasFile(unittest.TestCase):
+    def payload(self):
+        return {
+            "products": [
+                {"name": "Jumper", "product_type": "Jumper", "price": "50.00",
+                 "options": [], "image_url": "https://x/i.jpg", "pdp_url": "https://x/p"},
+                {"name": "Jeans", "product_type": "Jeans", "price": "60.00",
+                 "options": [], "image_url": "https://x/i.jpg", "pdp_url": "https://x/p"},
+                {"name": "Shoes", "product_type": "Shoes", "price": "80.00",
+                 "options": [], "image_url": "https://x/i.jpg", "pdp_url": "https://x/p"},
+                {"name": "Coat", "product_type": "Coat", "price": "120.00",
+                 "options": [], "image_url": "https://x/i.jpg", "pdp_url": "https://x/p"},
+            ],
+            "location_id": "gid://shopify/Location/1",
+            "prospect_handle": "acme",
+        }
+
+    def extras(self):
+        return [
+            {"name": "Scarf", "product_type": "Scarf", "price": "22.50",
+             "options": [{"name": "Colour", "values": ["Red", "Blue"]}],
+             "image_url": "https://x/s.jpg", "pdp_url": "https://x/s"},
+        ]
+
+    def test_extras_appended_at_own_price(self):
+        out = build_mix(self.payload(), extras=self.extras())
+        self.assertEqual(len(out["products"]), 5)
+        scarf = out["products"][-1]
+        self.assertEqual(scarf["name"], "Scarf")
+        self.assertEqual(scarf["price"], "22.50")
+        self.assertEqual(scarf["original_price"], "22.50")
+        self.assertFalse(scarf["adjusted"])
+        self.assertEqual(scarf["options"][0]["name"], "Colour")
+        self.assertEqual(scarf["variant_count"], 2)
+        self.assertIn("pl-prospect-acme", scarf["tags"])
+
+    def test_demos_ignore_extras(self):
+        base = build_mix(self.payload())
+        with_extras = build_mix(self.payload(), extras=self.extras())
+        self.assertEqual(base["demos"], with_extras["demos"])
+        self.assertEqual(base["adjustments"], with_extras["adjustments"])
+
+    def test_extras_bad_price_fails_loud(self):
+        bad = [{"name": "X", "product_type": "X", "price": "??", "options": []}]
+        with self.assertRaises(ValueError):
+            build_mix(self.payload(), extras=bad)
+
+
 if __name__ == "__main__":
     unittest.main()

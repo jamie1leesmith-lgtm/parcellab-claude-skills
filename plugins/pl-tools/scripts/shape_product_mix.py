@@ -19,6 +19,7 @@ import json
 import re
 import sys
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from pathlib import Path
 
 TWO_PLACES = Decimal("0.01")
 DEFAULT_AXIS = ("S", "M", "L")
@@ -134,7 +135,7 @@ def build_variants(options, price, quantity, location_id):
     ]
 
 
-def build_mix(payload):
+def build_mix(payload, extras=None):
     products = payload["products"]
     if len(products) != PRODUCT_COUNT:
         raise ValueError(f"need exactly {PRODUCT_COUNT} products, got {len(products)}")
@@ -183,6 +184,23 @@ def build_mix(payload):
                 "to": f"{shaped[index]}",
             })
 
+    for product in extras or []:
+        price = normalise_price(product["price"])
+        options = resolve_options(product)
+        shaped_products.append({
+            "name": product["name"],
+            "product_type": str(product.get("product_type") or "").strip(),
+            "original_price": f"{price}",
+            "price": f"{price}",
+            "adjusted": False,
+            "image_url": product.get("image_url"),
+            "pdp_url": product.get("pdp_url"),
+            "options": options,
+            "variants": build_variants(options, price, stock, location_id),
+            "tags": [SEED_TAG, f"pl-prospect-{handle}"],
+        })
+        shaped_products[-1]["variant_count"] = len(shaped_products[-1]["variants"])
+
     warnings = []
     types = [p["product_type"] for p in shaped_products if p["product_type"]]
     repeated = sorted({t for t in types if types.count(t) > 1})
@@ -229,9 +247,20 @@ def build_mix(payload):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--extras-file", default=None,
+                    help="JSON array of scrape-shaped products seeded at "
+                         "their own price alongside the shaped core 4")
+    args = ap.parse_args()
     try:
-        print(json.dumps(build_mix(json.load(sys.stdin)), indent=2))
-    except (ValueError, KeyError) as exc:
+        extras = None
+        if args.extras_file:
+            extras = json.loads(Path(args.extras_file).read_text())
+            if not isinstance(extras, list):
+                raise ValueError("--extras-file must contain a JSON array")
+        print(json.dumps(build_mix(json.load(sys.stdin), extras=extras), indent=2))
+    except (ValueError, KeyError, OSError) as exc:
         print(f"shape_product_mix: {exc}", file=sys.stderr)
         sys.exit(1)
 
