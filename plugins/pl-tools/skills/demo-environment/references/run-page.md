@@ -1,46 +1,36 @@
 # The run page
 
-One artifact per run: the conductor maintains `<run dir>/run-page.html` and
-republishes it via the Artifact tool at each milestone below — same file
-path every time, so the URL stays stable. The page is a VIEW; chat is the
-only approval mechanism.
+One artifact per run: the conductor renders `<run dir>/run-page.html` from
+`run-state.json` and republishes it via the Artifact tool at each milestone
+below — same file path every time, so the URL stays stable. The page is a
+VIEW; chat is the only approval mechanism.
 
-**"Non-fatal" means a failed publish never blocks a phase. It does not mean
-the publish is optional.** Skipping it is a defect, not a shortcut. Observed
-twice on the 2026-08-11 smoke run: the page sat at the approval gate through
-the entire template lane, and again through order creation, ingestion and
-enrichment — each time because a live write felt more urgent than a view.
-The states worth watching are exactly the ones where the conductor is
-busiest, so the pull is toward skipping precisely when it costs the user
-most.
+**The page is derived, never authored.** The conductor records facts in
+`run-state.json` through `scripts/run_state.py` and runs
+`scripts/render_run_page.py <run dir>`. Publishing is one Artifact call on the
+rendered file. Never hand-edit `run-page.html` — the next render overwrites it.
 
-**The checkable rule:** the page must never be more than one milestone
-behind the run. Before starting any new phase or lane, if the page still
-shows the previous milestone, republish first — it is one Write plus one
-Artifact call. If the Artifact tool is unavailable or a publish fails, say
-so once in chat and continue; that is the only case where the page may lag.
+**Why this replaced a rule.** Earlier versions of this file carried a rule —
+*"the page must never be more than one milestone behind"* — plus escalating
+warnings about how often it had been broken. It was then broken four more
+times, three of them by conductors that had just read it, and every lapse was
+caught by the user asking why the page had not moved. The cause was structural,
+not moral: updating the page meant hand-editing HTML with string replacements,
+which is expensive, so it lost every race against a live write. Making the
+update cheap is what fixes it. **If you find yourself about to edit HTML by
+hand, that is the bug** — fix the renderer and its tests instead.
 
-**Treat the republish as a step of the phase, not a note about it.** This
-rule was written after two failures on the 2026-08-11 smoke run and then
-broken a third time within the same run, by the conductor that had just
-written it. The cause is structural: every hook below is a trailing sentence
-appended to a paragraph whose subject is some other action, so it reads as an
-aside and is dropped precisely when that other action is demanding. Counter
-it by treating the hook as its own numbered step — when a phase's steps are
-"1. create the order · 2. poll · 3. enrich", the republish is a step in that
-list, not a remark after it. A phase is not finished while the page still
-shows the previous one.
-
-**The user is the detector of last resort, and that is a failure.** All three
-lapses were caught by the user asking why the page had not moved — not by the
-conductor noticing. If the user has to ask, the rule has already failed.
+**"Non-fatal" still means what it says:** a failed publish never blocks a
+phase. Say so once in chat and carry on.
 
 Rules baked into every publish: self-contained HTML (no external requests —
-the artifact CSP blocks them; product images ARE external, so render each
-product card with its name/price/type and link the image URL. **Never use
-`<img>` with a remote `src`** — measured on the 2026-08-11 Pets at Home smoke
-run, a remote product image renders as a broken-image icon, which reads as a
-failed run rather than a styling choice), light/dark via
+the artifact CSP blocks them. **Never use `<img>` with a remote `src`** —
+measured on the 2026-08-11 Pets at Home smoke run, a remote product image
+renders as a broken-image icon, which reads as a failed run rather than a
+styling choice. Product images, the hero and the brand logo are therefore
+**inlined as `data:` URIs** by `scripts/inline_assets.py` during the scrape
+lane, and the renderer only ever emits those; a product whose asset was
+skipped renders as a text card, never as a broken icon), light/dark via
 `@media (prefers-color-scheme: dark)` plus `:root[data-theme="…"]`
 overrides, favicon `📦` (never changes mid-run), title
 `<brand> demo — <run id>`. Keep the URL returned by the first publish and
@@ -68,7 +58,7 @@ republish. Never delay a publish waiting for a value, and never invent one.
 | 2b | ★ template preview (step 7) | The template preview and brand-token swatches ONLY — no plan, no order matrix, no seed set. The first deliverable is approved on its own; showing downstream detail the user cannot act on yet is what made the first smoke run confusing. Skipped when the repeat-brand shortcut was taken. |
 | 3 | ✋ plan gate opens | The proposed plan: core-4 grid · order matrix table (label, customer, fraud, scenario, products, expected comms with confidence labels) · CDC settings (config source, generate_orders) · pace · a banner: "⏳ Approval waiting in chat" |
 | 4 | Gate approved / sends firing | Lane cards — template (push → publish → assign), seed (retain-shopify only), per-order chips (created → tracked → events queued); each chip flips as its results land |
-| 5 | Drivers launched | Per order: planned event list with "running since HH:MM"; timestamps filled in from `orders/*/run.log` at each driver-completion notification |
+| 5 | Drivers launched, then on **every watcher return** | Per order: the planned event list, each step confirmed / expected / pending, with a countdown to the next event. Confirmations come from `orders/*/events.jsonl` via `run_state.confirm_event`, ingested each time `wait_for_event.sh` returns — roughly 8–12 republishes per run, not one |
 | 6 | Beat 1 | The environment-built summary: layout id/status/store, per-order table, CDC request id + link |
 | 7 | Beat 2 | Per-arc verification: checkpoints attached vs planned, comms fired vs promised, ✅/⚠️ per arc; fast-pace ordering caveat when `run.pace` is fast |
 | 8 | Any failure | The matching failure-table row, verbatim, in a highlighted card at the top — added to whatever state the page is in, never replacing it |
@@ -79,33 +69,28 @@ table, state 7's per-arc verification table — is wrapped in
 `<div class="overflow">…</div>` so it scrolls horizontally within its own
 card. The page body must never scroll sideways.
 
-## Skeleton
+## Where the markup lives
 
-Every publish rewrites the whole file from current run-dir state (no
-incremental patching). Use this skeleton:
+`plugins/pl-tools/scripts/render_run_page.py` owns all of it — layout, CSS, the
+four-state vocabulary, the clock. Change the page by changing the renderer and
+its tests, never by pasting HTML into a run.
 
-```html
-<title>{brand} demo — {run_id}</title>
-<style>
-  :root { --fg:#111; --bg:#fff; --muted:#667; --card:#f5f5f7; --ok:#0a7d33; --warn:#b45309; --bad:#b91c1c; }
-  @media (prefers-color-scheme: dark) { :root { --fg:#eee; --bg:#111; --muted:#99a; --card:#1c1c22; } }
-  :root[data-theme="dark"] { --fg:#eee; --bg:#111; --muted:#99a; --card:#1c1c22; }
-  :root[data-theme="light"] { --fg:#111; --bg:#fff; --muted:#667; --card:#f5f5f7; }
-  body { color:var(--fg); background:var(--bg); font:15px/1.5 system-ui, sans-serif; max-width:860px; margin:0 auto; padding:24px; }
-  .card { background:var(--card); border-radius:12px; padding:16px 20px; margin:12px 0; }
-  .banner { border-left:4px solid var(--warn); font-weight:600; }
-  .fail { border-left:4px solid var(--bad); }
-  table { border-collapse:collapse; width:100%; } td,th { text-align:left; padding:6px 10px; border-bottom:1px solid var(--muted); }
-  .chip { display:inline-block; border-radius:999px; padding:2px 10px; margin:2px; background:var(--card); border:1px solid var(--muted); }
-  .done { border-color:var(--ok); } .overflow { overflow-x:auto; }
-</style>
-<h1>{brand} demo <span style="color:var(--muted)">— {run_id}</span></h1>
-<p>{path} path · account {account_name} · {timestamp of this publish}</p>
-<!-- state-specific cards go here, newest first; failure cards always at top -->
-```
+The four states, used everywhere:
+
+| State | Class | Meaning |
+|---|---|---|
+| confirmed | `s-confirmed` | A republish confirmed this happened |
+| happening now | `s-live` | In progress |
+| expected | `s-expected` | The page's own clock believes this happened; unconfirmed |
+| failed / stuck | `s-failed` | Failed, or a deliberate terminal state |
+
+The clock may only ever promote a step to **expected** — never to confirmed. A
+driver that dies therefore shows as a dashed pill that never fills in, next to
+a stale `confirmed` stamp: visibly wrong rather than quietly false. When the run
+finishes the clock is omitted entirely, so opening the page tomorrow shows the
+real end state rather than an animation that ran off the end.
 
 ## Milestone hook (the sentence SKILL.md uses)
 
-> Update `run-page.html` (state N per
-> `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md`)
+> record it via `run_state.py`, re-render with `render_run_page.py <run dir>`
 > and republish — non-fatal.
