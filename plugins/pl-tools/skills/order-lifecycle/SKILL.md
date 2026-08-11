@@ -155,6 +155,20 @@ parcellab api request PUT /v4/track/orders/ --data @create.json -o json
    and the API rejects it.) **For a split shipment, send both `add_tracking`
    mutations in the same `mutations` array of one PUT** — see *Split shipments*.
 
+   **Verify attachment with a read — the PUT response cannot tell you.** The response echoes the
+   request payload and carries no `trackings` field, so a successful write looks identical to a
+   no-op. Confirm once per tracking number:
+
+   ```bash
+   parcellab track tracking list --account <ACCOUNT_ID> --tracking-number <TN> -o json \
+     --jmes 'results[].{tn:trackingNumber,c:courier}'
+   ```
+
+   One entry per parcel means attached. **Never re-send the `add_tracking` PUT to find out** —
+   live 2026-08-11 a conductor did exactly that as a diagnostic, which is an avoidable duplicate
+   write against a live account. (It happened not to create a duplicate tracking; that is luck,
+   not a guarantee.)
+
    **Always set `tracking.articles` on every `add_tracking` mutation, even for
    a single-shipment order — not just `articles_order` at the order level.**
    Tracking-triggered comms (Out for Delivery, Delivered, delay updates) render
@@ -539,15 +553,23 @@ order-info lookup (account + courier/tracking_number) and report the actual
 checkpoint list and `contacted_with_messages` — that is the real proof of
 success, not the 204s.
 
-**Wait at least 5 minutes after the final event before treating a missing comm as
-a problem.** Comms do not arrive at a uniform lag: in a live run the order
+**Wait at least 15 minutes after the final event before treating a missing comm as
+a problem.** Comms do not arrive at a uniform lag: in live runs the order
 confirmation, dispatch and out-for-delivery comms each appeared within ~3-4
-minutes of their event, but `package_delivered_*` took **over 5 minutes** —
-noticeably longer than the rest. Checking at ~3 minutes showed all four
-checkpoints attached with only three comms, which looks exactly like a broken
-delivered trigger and isn't.
+minutes of their event, but `package_delivered_*` is consistently the slowest —
+3-4 minutes on single-parcel orders, and **over 10 minutes** on one parcel of a
+split order (measured 2026-08-11, account 1626718, three orders / four parcels).
+Checking early shows every checkpoint attached with a comm missing, which looks
+exactly like a broken delivered trigger and isn't.
 
-**Do not go digging in Journey config before that 5 minutes has elapsed.** Doing
+**This window was 5 minutes and that was too short.** On the 2026-08-11 run a
+conductor checked at ~6 minutes, found the delivered comm missing, and reported
+it to the user as a possible defect with a plausible-but-wrong hypothesis
+attached — that split orders withhold the delivered comm until every parcel
+lands. The comm arrived minutes later and disproved it. Wait the full window
+before forming a theory, let alone reporting one.
+
+**Do not go digging in Journey config before that window has elapsed.** Doing
 so wastes real effort on a non-problem — and in one investigation produced a
 plausible-but-wrong diagnosis (the delivered action has
 `recipientCustomer: false, recipientPlTest: true`, which looks like the cause
