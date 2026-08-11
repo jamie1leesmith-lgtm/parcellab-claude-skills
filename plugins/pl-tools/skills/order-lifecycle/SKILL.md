@@ -609,6 +609,12 @@ given at the conductor's intake (this is not inference):
   table specifies.
 - **Destination country** comes from `destination_country`; the account was
   confirmed by name at intake — do not re-confirm mid-run.
+- **Account:** every payload's `account` field and the driver's environment
+  come from the manifest's `account.id` — never from `$PARCELLAB_ACCOUNT_ID`,
+  which may point at a different account than the one confirmed at intake.
+  Launch every driver with the account inline: `PARCELLAB_ACCOUNT_ID=<manifest
+  account.id> EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS=180 bash <skill
+  dir>/references/run-lifecycle.sh`.
 
 **Multi-order runs.** Each manifest order gets its own directory
 (`orders/<nn>-<label>/` inside the run dir), its own `create.json`,

@@ -266,7 +266,7 @@ the single interface between conductor and sub-skills. Sketch:
                   "image_url": "…", "image_verified": true,
                   "pdp_url": "…", "sku": "…" } ],
   "selection": { "core4": ["p1","p2","p3","p4"], "shopify_extra": ["p5","p6"] },
-  "brand_tokens": { "…": "branded-template Step 6 token map",
+  "brand_tokens": { "tokens": { "…": "branded-template Step 6 token map" },
                     "logo": { "type": "url | inline-svg", "value": "…" },
                     "hero": { "url": "…", "alt": "…" } },
   "orders": [ { "label": "recovered-high", "dir": "orders/03-recovered-high",

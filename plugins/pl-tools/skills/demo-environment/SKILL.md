@@ -64,7 +64,9 @@ Ask **"Are returns in scope for this demo?"** first.
    agree). Then: `parcellab account account show <id>` for the human name;
    ask "Using **<name>** (<id>) — correct?"; verify
    `parcellab settings edit-mode show` says `account-restricted` for that
-   same account, offering the fix if not.
+   same account, offering the fix if not. **If the guard was repointed for
+   this run** (e.g. at parcelfashion), note it — Beat 1 offers to restore it
+   to the user's own account.
 5. **CDC config:** read the key matching the target (process env, then
    `~/.claude/parcellab-demo-request.env`): own account →
    `CDC_ACCOUNT_CONFIG_DEFAULT` · parcelfashion →
@@ -76,6 +78,9 @@ Ask **"Are returns in scope for this demo?"** first.
    have it: `selected_account_config_id: null`, `config_source: "none"`
    (the CDC will use the caller's default — say so in the final report).
    `config_source` values: `default | parcelfashion | shopify | none`.
+   `generate_orders` is **false** unless the user asks the CDC to also
+   generate synthetic orders for slots this run doesn't cover — in that case
+   `order_types` lists exactly those uncovered slots.
 6. **One browser pass** (the run's only browsing):
    - Brand tokens: run branded-template's Step 3–6 extraction snippets
      (`${CLAUDE_PLUGIN_ROOT}/skills/branded-template/SKILL.md`) and build
@@ -92,8 +97,9 @@ Ask **"Are returns in scope for this demo?"** first.
    core 4 (four distinct product types) · per-order product distribution ·
    (retain-shopify) the seed set = core 4 + extras at distinct price points ·
    the order/scenario/fraud matrix with expected comm per event (mark
-   unproven items) · CDC region/category/config source · the account by
-   name. One explicit yes covers all of it; any tweak loops back here.
+   unproven items) · CDC region/category/config source · CDC synthetic
+   generation on/off (+ which slots) · the account by name. One explicit yes
+   covers all of it; any tweak loops back here.
 8. **Write the manifest** to `demo-manifest.json` (schema: `run`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
    edit_mode_verified}`, `cdc{selected_account_config_id,config_source,
@@ -165,7 +171,11 @@ order-lifecycle's "Orchestrated runs (demo-environment)" contract:
 3. Write the `NN-<status>.json` event files from the shipment's `events`.
 4. `DRYRUN=1` pass; then launch `run-lifecycle.sh` detached
    (`run_in_background`, `GAP_SECONDS` default 180) — one driver per order,
-   all orders concurrent.
+   all orders concurrent. Pass `PARCELLAB_ACCOUNT_ID=<manifest account.id>`
+   inline on every launch: `create.json`'s `account` field and the driver's
+   account both come from the manifest, never from the ambient
+   `$PARCELLAB_ACCOUNT_ID`, which may point at a different account than the
+   one confirmed at intake.
 5. Write `order.json` per the contract.
 
 When every order's `order.json` exists, build
@@ -209,8 +219,12 @@ repeated verbatim) · per order: number, customer, fraud level, slot,
 courier(s) + tracking number(s), scenario, and the expected comm per event
 with confidence labels · (retain-shopify) the seed table + demos +
 adjustments from `results/shopify-seed.json` · CDC request id/URL, which
-orders were submitted for linking, and the config source (say "caller's
-default config" when `config_source` is `none`). No currency symbols.
+orders were submitted for linking, the config source (say "caller's default
+config" when `config_source` is `none`), and `generate_orders`/`order_types`
+(say plainly whether the CDC was also asked to generate synthetic orders,
+and for which slots). No currency symbols. **If the edit-mode guard was
+repointed for this run** (per Phase 0 step 4's note), offer here to restore
+it to the user's own account.
 
 **Beat 2 — verified** (after each order's driver finishes AND ≥5 minutes
 after its final event — comms lag, delivered comms the longest): per order,

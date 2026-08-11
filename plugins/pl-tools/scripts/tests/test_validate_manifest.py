@@ -146,6 +146,21 @@ class TestValidateManifest(unittest.TestCase):
         m["approvals"]["products_approved_at"] = ""
         self.assertTrue(any("approval" in e for e in validate(m)))
 
+    def test_bad_brand_region(self):
+        m = valid_manifest()
+        m["brand"]["region"] = "FR"
+        self.assertTrue(any("brand.region" in e for e in validate(m)))
+
+    def test_bad_brand_category(self):
+        m = valid_manifest()
+        m["brand"]["category"] = "Toys"
+        self.assertTrue(any("brand.category" in e for e in validate(m)))
+
+    def test_empty_brand_name(self):
+        m = valid_manifest()
+        m["brand"]["name"] = ""
+        self.assertTrue(any("brand.name" in e for e in validate(m)))
+
     def test_unproven_sequence_needs_chain_label(self):
         m = valid_manifest()
         m["orders"][0]["shipments"][0]["events"] = ["InTransit", "WarehouseDelay", "OutForDelivery", "Delivered"]

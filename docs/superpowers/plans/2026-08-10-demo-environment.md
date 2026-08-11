@@ -34,7 +34,7 @@
 - **Scripts (Task 1, Task 2):**
   - `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/prepare_fraud_fragment.py --level <low|medium|high> --shop-url <domain> [--source <path>] [--now <ISO8601>]` → stdout JSON `{"tags": [...], "additional_attributes": {"riskAssessment": [...]}}`, exit 1 + stderr message on bad input.
   - `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py <manifest-path>` → exit 0 silent-ish (`MANIFEST OK`), exit 1 with one `MANIFEST INVALID: <reason>` line per failure.
-- **Env keys:** `CDC_DEMO_API_TOKEN`, `CDC_DEMO_API_BASE_URL`, `CDC_ACCOUNT_CONFIG_SHOPIFY`, `CDC_ACCOUNT_CONFIG_STANDARD` (all read from process env first, then `~/.claude/parcellab-demo-request.env`).
+- **Env keys:** `CDC_DEMO_API_TOKEN`, `CDC_DEMO_API_BASE_URL`, `CDC_ACCOUNT_CONFIG_DEFAULT`, `CDC_ACCOUNT_CONFIG_PARCELFASHION`, `CDC_ACCOUNT_CONFIG_SHOPIFY` (all read from process env first, then `~/.claude/parcellab-demo-request.env`).
 
 ---
 

@@ -7,6 +7,9 @@ direct engine writes to — `orders/<nn>-<label>/order.json` and, once every ord
 processed, `results/linked-orders.json` — so Phase 3 and Phase 4 never need to know which
 engine built an order.
 
+Every relative path in this doc (`orders/<nn>-<label>/`, `results/…`) resolves against the
+run directory — `cd` there first, or use absolute paths.
+
 > **Both GraphQL mutations below are CANDIDATES, not confirmed shapes.** Shopify's Admin
 > GraphQL schema is versioned and drifts store to store (see `shopify-seed`'s
 > `references/mutation-template.md`, verified against a specific `2026-07` schema — this
@@ -91,9 +94,12 @@ mutation CreateDemoOrder($order: OrderCreateOrderInput!, $options: OrderCreateOp
 ```
 
 Variables, one order (map the order's `products` entries to seeded variant gids from
-`results/shopify-seed.json` — match by product `title`/`id`, then pick the variant whose
-option values match what the order asked for, or the first listed variant if the order
-didn't specify size/colour):
+`results/shopify-seed.json` — match by **title only**: the manifest's product `id`
+(`p1`, `p2`, …) and Shopify's product/variant gids are disjoint namespaces, one never
+resolves to the other, so match the manifest product's `name` against
+`results/shopify-seed.json`'s `products[].title` and take that product's `variants`
+from there. Then pick the variant whose `selectedOptions` match what the order asked
+for, or the first listed variant if the order didn't specify size/colour):
 
 ```json
 {
@@ -144,7 +150,8 @@ exists on the pL side. Poll for it rather than assuming it landed:
 for i in $(seq 1 12); do
   sleep 10
   parcellab api request GET "/v4/track/orders/info/?account=<account-id>&orderNo=<order.name>" -o json \
-    && break
+    | tee /tmp/order-info.json \
+    | grep -q "<order.name, digits only e.g. 1001>" && break
 done
 ```
 
@@ -158,7 +165,10 @@ query-parameter spelling**, so treat the parameter names above as the current be
 not a confirmed contract. Confirm them on the first live retain-shopify run and correct this
 paragraph (and the command above) to match whatever the CLI actually accepts if it differs.
 
-**Success** = the order document exists in the response (a body, not an empty/404 result).
+**Success** = the response body actually contains the order document — grepped for the
+order number, mirroring Part 6a's pattern below — not merely that the CLI call exited 0. A
+GET against a not-yet-ingested order can still exit 0 with an empty or 404-shaped JSON body,
+which `&& break` alone would treat as done; grep for content instead.
 **On timeout** (12 attempts exhausted): report this order as **not-ingested**, skip Parts
 4–6 for it, and continue with the next order — one order's ingestion failure must never
 stop another order's run. This is the `"failed_at": "ingestion"` case in `order.json` (see
@@ -334,9 +344,12 @@ for the valid `event_status` enum and the proven happy/unhappy sequences.
 Then launch the driver, one per order, exactly as the direct engine does:
 
 ```bash
-EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<gap, default 180>" \
+PARCELLAB_ACCOUNT_ID="<manifest account.id>" EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<gap, default 180>" \
   bash ${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/run-lifecycle.sh
 ```
+
+`PARCELLAB_ACCOUNT_ID` is set inline from the manifest's `account.id` — the
+confirmed target account, not whatever the ambient env var happens to hold.
 
 Run it with the Bash tool's `run_in_background`; do a `DRYRUN=1` pass first. All orders'
 drivers run concurrently once each has reached this point — a failure earlier in one

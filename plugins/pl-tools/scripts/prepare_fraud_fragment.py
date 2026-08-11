@@ -21,11 +21,12 @@ DEFAULT_SOURCE = (Path(__file__).resolve().parent.parent / "skills"
 TS_KEYS = ("created_at", "updated_at", "prediction_date")
 
 
-def freshen(pred, now):
+def freshen(pred, now, index=0):
+    stagger = timedelta(minutes=index * 7)
     for key in TS_KEYS:
         if pred.get(key):
             offset = timedelta(days=2) if key == "prediction_date" else timedelta(hours=1)
-            pred[key] = (now - offset).isoformat()
+            pred[key] = (now - offset - stagger).isoformat()
     return pred
 
 
@@ -53,7 +54,8 @@ def main():
     fragment = {
         "tags": entry["tags"],
         "additional_attributes": {
-            "riskAssessment": [freshen(p, now) for p in entry["riskAssessment"]],
+            "riskAssessment": [freshen(p, now, i)
+                               for i, p in enumerate(entry["riskAssessment"])],
         },
     }
     json.dump(fragment, sys.stdout, indent=2)

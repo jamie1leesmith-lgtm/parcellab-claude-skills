@@ -190,7 +190,7 @@ the instant the mutation returns:
         }
       }
       variants(first: 50) {
-        nodes { inventoryQuantity availableForSale selectedOptions { name value } }
+        nodes { id inventoryQuantity availableForSale selectedOptions { name value } }
       }
     }
   }
@@ -198,4 +198,7 @@ the instant the mutation returns:
 ```
 
 Same fields as the tag-based query, plus `variants` folded in so one query covers both
-checks Step 8 needs (media status and stocked variants).
+checks Step 8 needs (media status and stocked variants). `id` is included so this
+verification pass captures each variant's gid — `results/shopify-seed.json`'s
+orchestrated-runs contract requires it (the Shopify order engine builds `lineItems`
+from these gids).

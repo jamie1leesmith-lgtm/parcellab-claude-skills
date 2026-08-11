@@ -13,6 +13,8 @@ CDC_SLOTS = {"fraud_high", "fraud_medium", "fraud_low",
              "manual_return", "return_tracking"}
 FRAUD_LEVELS = {"low", "medium", "high"}
 PATHS = {"engage", "retain", "retain-shopify"}
+BRAND_REGIONS = {"US", "UK", "DE"}
+BRAND_CATEGORIES = {"Home", "Electronics", "Fashion"}
 PROVEN_SEQUENCES = (
     ("InTransit", "OutForDelivery", "Delivered"),
     ("InTransit", "WarehouseDelay"),
@@ -27,6 +29,13 @@ def validate(m):
             errs.append(msg)
 
     need(m.get("path") in PATHS, f"path must be one of {sorted(PATHS)}")
+
+    brand = m.get("brand", {})
+    need(bool(brand.get("name")), "brand.name must be non-empty")
+    need(brand.get("region") in BRAND_REGIONS,
+         f"brand.region must be one of {sorted(BRAND_REGIONS)}")
+    need(brand.get("category") in BRAND_CATEGORIES,
+         f"brand.category must be one of {sorted(BRAND_CATEGORIES)}")
 
     products = {p.get("id"): p for p in m.get("products", [])}
     core4 = m.get("selection", {}).get("core4", [])

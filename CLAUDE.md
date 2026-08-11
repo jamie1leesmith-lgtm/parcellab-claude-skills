@@ -1,7 +1,7 @@
 # parcellab-claude-skills
 
 A private Claude Code plugin marketplace distributing internal parcelLab tooling to
-Jamie's team. Two plugins: **`pl-tools`** (six skills + `/pl-setup` + `/pl-update`)
+Jamie's team. Two plugins: **`pl-tools`** (seven skills + `/pl-setup` + `/pl-update`)
 and **`onyx`** (Onyx knowledge bridge, own MCP server).
 
 Full detail is in [README.md](README.md). This file carries the rules whose failure

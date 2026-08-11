@@ -451,6 +451,11 @@ inside it replace Steps 1, 2, 3 and 5:
   "seeded_price", "variants", "adjusted"}], "demos": <the shape script's
   demos output verbatim>, "warnings": [...], "error": null|"<message>"}` —
   then give the usual Step 9 tables as the agent's returned summary.
+  Pin `"variants"`'s shape: `[{"id", "selectedOptions", "inventoryQuantity",
+  "availableForSale"}]` — the variant `id` (a Shopify gid) is required, not
+  optional, because the Shopify order engine builds each order's `lineItems`
+  by looking up these gids; without them it has nothing to put in
+  `lineItems[].variantId`.
 
 Standalone behaviour (no brief/manifest): everything above this section,
 unchanged.

@@ -1,6 +1,6 @@
 # pl-tools
 
-parcelLab internal tooling for Claude Code — six skills and one setup command in
+parcelLab internal tooling for Claude Code — seven skills and one setup command in
 a single plugin.
 
 | Handle | What it does |
