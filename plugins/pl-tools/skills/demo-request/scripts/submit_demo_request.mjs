@@ -70,28 +70,50 @@ function validatePayload(payload) {
   }
 
   if (payload.selected_account_config_id != null) {
+    // The API's config id is a UUID column — a bare parcelLab account id is
+    // rejected server-side with 400 "invalid input syntax for type uuid"
+    // (live-verified 2026-08-11). Fail fast here with the same message.
     const value = String(payload.selected_account_config_id);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
-      throw new Error('selected_account_config_id must be a UUID when provided.');
+      throw new Error('selected_account_config_id must be a UUID when provided (a bare account id is rejected by the API); omit it to use the caller\'s default CDC config.');
     }
   }
-
-  const ORDER_TYPES = new Set([
-    'fraud_high', 'fraud_medium', 'fraud_low', 'manual_return', 'return_tracking',
-  ]);
 
   if (payload.generate_orders != null && typeof payload.generate_orders !== 'boolean') {
     throw new Error('generate_orders must be a boolean when provided.');
   }
 
+  // 2026-08-11 API order-model simplification: the order-type enum is gone.
+  // Orders carry a free-form human `name` label; refuse the old field so a
+  // stale caller fails loudly here instead of sending a dead field.
   if (payload.order_types != null) {
-    if (!Array.isArray(payload.order_types)) {
-      throw new Error('order_types must be an array when provided.');
+    throw new Error(
+      'order_types was removed from the API (2026-08-11); describe synthetic orders with the orders[] field instead.'
+    );
+  }
+
+  if (payload.orders != null) {
+    if (!Array.isArray(payload.orders)) {
+      throw new Error('orders must be an array when provided.');
     }
-    const bad = payload.order_types.filter((t) => !ORDER_TYPES.has(t));
-    if (bad.length) {
-      throw new Error(`order_types contains invalid values: ${bad.join(', ')}`);
-    }
+    payload.orders.forEach((o, i) => {
+      if (o == null || typeof o !== 'object' || Array.isArray(o)) {
+        throw new Error(`orders[${i}] must be an object.`);
+      }
+      if (o.items != null) {
+        if (!Array.isArray(o.items) || o.items.length === 0) {
+          throw new Error(`orders[${i}].items must be a non-empty array when provided.`);
+        }
+        o.items.forEach((item, j) => {
+          if (!Number.isInteger(item?.product_index) || item.product_index < 0) {
+            throw new Error(`orders[${i}].items[${j}].product_index must be a non-negative integer.`);
+          }
+          if (Array.isArray(payload.products) && item.product_index >= payload.products.length) {
+            throw new Error(`orders[${i}].items[${j}].product_index is out of range for products.`);
+          }
+        });
+      }
+    });
   }
 
   if (payload.linked_orders != null) {
@@ -102,14 +124,19 @@ function validatePayload(payload) {
       if (!String(o?.order_number ?? '').trim()) {
         throw new Error(`linked_orders[${i}].order_number is required.`);
       }
-      if (!ORDER_TYPES.has(o?.order_type)) {
-        throw new Error(`linked_orders[${i}].order_type is invalid: ${o?.order_type}`);
+      if (o?.order_type != null) {
+        throw new Error(
+          `linked_orders[${i}].order_type was removed from the API (2026-08-11); use the optional free-form name instead.`
+        );
+      }
+      if (o?.name != null && !String(o.name).trim()) {
+        throw new Error(`linked_orders[${i}].name must be non-empty when provided.`);
       }
     });
   }
 
-  if (!Array.isArray(payload.products) || payload.products.length !== 4) {
-    throw new Error('products must contain exactly 4 items.');
+  if (!Array.isArray(payload.products) || payload.products.length < 1) {
+    throw new Error('products must contain at least 1 item.');
   }
 
   payload.products.forEach((product, index) => {

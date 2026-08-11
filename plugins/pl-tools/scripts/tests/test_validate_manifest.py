@@ -16,7 +16,7 @@ def valid_manifest():
                     "confirmed_at": "2026-08-11T09:01:00+00:00",
                     "edit_mode_verified": True},
         "cdc": {"selected_account_config_id": None, "config_source": "none",
-                "generate_orders": False, "order_types": []},
+                "generate_orders": False, "orders": []},
         "shopify": {"enabled": True, "store": "jamie-demo.myshopify.com",
                     "location_id": "gid://shopify/Location/123"},
         "destination_country": "GBR",

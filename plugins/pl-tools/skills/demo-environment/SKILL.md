@@ -71,16 +71,27 @@ Ask **"Are returns in scope for this demo?"** first.
    `~/.claude/parcellab-demo-request.env`): own account →
    `CDC_ACCOUNT_CONFIG_DEFAULT` · parcelfashion →
    `CDC_ACCOUNT_CONFIG_PARCELFASHION` · retain-shopify →
-   `CDC_ACCOUNT_CONFIG_SHOPIFY`. **First-run capture:** if the needed key is
-   missing, ask the user for the UUID once (it is visible in the CDC UI —
-   there is no list API; it is an id, not a credential), offer to append it
-   to `~/.claude/parcellab-demo-request.env`, and proceed. If they don't
-   have it: `selected_account_config_id: null`, `config_source: "none"`
-   (the CDC will use the caller's default — say so in the final report).
+   `CDC_ACCOUNT_CONFIG_SHOPIFY`. **The value is a UUID** — the API rejects a
+   bare parcelLab account id with 400 "invalid input syntax for type uuid"
+   (live-verified 2026-08-11). **The practical default needs no key at all:**
+   when the user's CDC default config targets their own demo account (set in
+   the CDC UI), omitting the field links correctly — that combination worked
+   on both live runs. **First-run capture:** if the needed key is missing,
+   ask once for the config UUID if the user has one (it is an id, not a
+   credential), offer to append it to `~/.claude/parcellab-demo-request.env`,
+   and proceed. If they don't:
+   `selected_account_config_id: null`, `config_source: "none"` (the CDC will
+   use the caller's default — say so in the final report, and note linking
+   then resolves in whatever account that default config targets).
    `config_source` values: `default | parcelfashion | shopify | none`.
    `generate_orders` is **false** unless the user asks the CDC to also
-   generate synthetic orders for slots this run doesn't cover — in that case
-   `order_types` lists exactly those uncovered slots.
+   generate synthetic orders alongside the run's real ones — in that case
+   compose `cdc.orders` (`{name?, items?: [{product_index, quantity?}]}`,
+   0-based into the submitted products; the API has no order-type enum, only
+   free-form names). When `linked_orders` will be sent, the config matters:
+   the CDC resolves linked order numbers in the config's target account, so
+   a mismatched config fails linking with "No parcelLab order found"
+   (live-verified 2026-08-11).
 6. **One browser pass** (the run's only browsing):
    - Brand tokens: run branded-template's Step 3–6 extraction snippets
      (`${CLAUDE_PLUGIN_ROOT}/skills/branded-template/SKILL.md`) and build
@@ -103,7 +114,7 @@ Ask **"Are returns in scope for this demo?"** first.
 8. **Write the manifest** to `demo-manifest.json` (schema: `run`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
    edit_mode_verified}`, `cdc{selected_account_config_id,config_source,
-   generate_orders,order_types}`, `shopify{enabled,store?,location_id?}`,
+   generate_orders,orders}`, `shopify{enabled,store?,location_id?}`,
    `destination_country`, `products[]`, `selection{core4,shopify_extra}`,
    `brand_tokens{tokens,logo,hero}`, `orders[]` with per-order
    `{label,dir,cdc_slot,fraud_level,customer{name,email},products,
@@ -180,7 +191,10 @@ order-lifecycle's "Orchestrated runs (demo-environment)" contract:
 
 When every order's `order.json` exists, build
 `results/linked-orders.json`: every order with a non-null `cdc_slot` becomes
-`{"order_number": <order.json order_number>, "order_type": <cdc_slot>}`.
+`{"order_number": <order.json order_number>, "name": <human label>}` — the
+label derived from the slot (`fraud_low` → "Fraud risk: low", `manual_return`
+→ "Manual return", `return_tracking` → "Return tracking"); `cdc_slot` itself
+never goes to the API (its enum was removed 2026-08-11).
 An order whose creation failed is excluded (and reported); one order's
 failure never stops another's driver.
 
@@ -220,7 +234,7 @@ courier(s) + tracking number(s), scenario, and the expected comm per event
 with confidence labels · (retain-shopify) the seed table + demos +
 adjustments from `results/shopify-seed.json` · CDC request id/URL, which
 orders were submitted for linking, the config source (say "caller's default
-config" when `config_source` is `none`), and `generate_orders`/`order_types`
+config" when `config_source` is `none`), and `generate_orders`/`orders`
 (say plainly whether the CDC was also asked to generate synthetic orders,
 and for which slots). No currency symbols. **If the edit-mode guard was
 repointed for this run** (per Phase 0 step 4's note), offer here to restore

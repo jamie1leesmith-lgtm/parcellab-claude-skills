@@ -276,7 +276,8 @@ directory containing `demo-manifest.json` whose
   `website_url` = `brand.url`, `region` = `brand.region`, `category` =
   `brand.category`, `products` = the four `selection.core4` entries as
   `{name, image_url}`. From `cdc`: `selected_account_config_id` (omit the key
-  when null), `generate_orders`, and `order_types` (omit when empty).
+  when null), `generate_orders`, and `orders` (the synthetic-composition
+  array; omit when empty — `order_types` no longer exists on the API).
 - **Link the real orders:** if `results/linked-orders.json` exists in the run
   dir, pass its array verbatim as `linked_orders`.
 - **Submit** exactly as Step 7 (same script, same env), then write
