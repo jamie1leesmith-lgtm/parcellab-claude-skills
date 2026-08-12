@@ -103,12 +103,44 @@ explicitly untested on the account instead of inferring it from the two events
 that had run — and the honest gap is more useful to the next reader than a
 confident guess would have been.
 
+## Phase 2b — Report the timing shape
+
+Runs alongside Phase 2, on the same top row, every time. Report size and
+location only — never a cause. `demo-environment/references/telemetry.md`
+already warns that a large `Unattributed` value can mean "the conductor was
+fixing its own defects" rather than a genuine bottleneck, and with two rows in
+the database a confident guess at which one this is would likely be wrong —
+and would undercut every other claim this skill makes.
+
+Write the top row's own JSON object — not the Phase 1 array — to `row.json`,
+then run the script against it:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/timing_note.py < row.json
+```
+
+It reads `Total elapsed`, `Largest gap`, `Largest gap after`, and
+`Unattributed`, using the Notion column names verbatim, and prints a note of up
+to three sentences — or nothing, when the row predates timing instrumentation
+(Currys' shape: `Total elapsed` is null).
+
+If it prints nothing, say so in the triage output and write nothing to
+`Timing note`. Never write a placeholder.
+
+**There is no cross-run ledger for timing findings, yet.** A comms cause
+generalizes — `hasReleasedVersion` gates sending on every account, always. A
+slow lane on one run has not been shown to generalize the same way. Build a
+ledger only once the same named bottleneck (by lane or gate name) appears on
+two or more independent rows — at that point a pattern is earned rather than
+assumed.
+
 ## Phase 3 — Land it
 
 ### Write without asking
 
 - The Notion triage columns: `Triage status`, `Reviewed at`, `Reviewed by`,
-  `Action taken`, plus `Issue key` and `Fix commit` when they exist.
+  `Action taken`, plus `Issue key` and `Fix commit` when they exist, and
+  `Timing note` from Phase 2b.
 - An append to `references/comms-diagnosis.md`.
 
 Both are review's own records. `references/telemetry.md` in `demo-environment`
@@ -166,3 +198,7 @@ where the next run will read it stops the same twenty minutes being spent again.
 - `references/comms-diagnosis.md` — proven causes and proven non-causes for
   comms that did not fire, each with the account and object it was proven
   against. Read before Phase 2; append after Phase 3.
+- `Timing note` (Notion column) — a factual, non-causal size-and-location
+  summary from Phase 2b. No cross-run ledger exists yet; one is built only
+  once the same named bottleneck repeats on two or more independent rows. See
+  `docs/superpowers/specs/2026-08-12-run-triage-timing-phase-design.md`.
