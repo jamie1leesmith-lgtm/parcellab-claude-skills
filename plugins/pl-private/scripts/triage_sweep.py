@@ -21,7 +21,10 @@ def severity(row):
     rows exist.
 
     A run with no Beat 2 scores for it rather than being read as missing data:
-    it stopped before anything was verified, which is a finding.
+    it stopped before anything was verified, which is a finding. Unlike every
+    other field here, an absent `Reached` key also scores rather than
+    defaulting to neutral — `build_telemetry_row` writes it at every stage, so
+    a row without one did not reach Beat 2 either.
     """
     score = 0
     if row.get("Outcome") in SEVERE_OUTCOMES:

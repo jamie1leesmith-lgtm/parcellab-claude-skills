@@ -43,15 +43,28 @@ class SeverityTests(unittest.TestCase):
             4)
 
     def test_zero_expected_comms_is_not_a_shortfall(self):
-        """An engage run planning no comms has not missed any."""
+        """A zero-planned run is not treated as having missed any comms."""
         self.assertEqual(
             triage_sweep.severity(row(**{"Comms expected": 0,
                                          "Comms fired": 0})), 0)
 
     def test_null_counts_are_not_a_shortfall(self):
+        """A row with null comms counts is not treated as a comms shortfall."""
         self.assertEqual(
             triage_sweep.severity(row(**{"Comms expected": None,
                                          "Comms fired": None})), 0)
+
+    def test_a_row_with_no_reached_key_scores_as_unverified(self):
+        """Absent is not neutral here, deliberately.
+
+        Every other field defaults to neutral when missing; this one scores,
+        because a row with no `Reached` did not reach Beat 2. `build_telemetry_row`
+        writes `Reached` at every stage, so an absent key means the row came from
+        somewhere else — which is itself worth surfacing.
+        """
+        r = row()
+        del r["Reached"]
+        self.assertEqual(triage_sweep.severity(r), 2)
 
 
 class RankTests(unittest.TestCase):
