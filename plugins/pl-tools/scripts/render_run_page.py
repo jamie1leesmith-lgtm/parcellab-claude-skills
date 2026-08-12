@@ -11,6 +11,8 @@ import pathlib
 import re
 import sys
 
+import run_state
+
 CSS = """
 :root { --fg:#111; --bg:#fff; --muted:#667; --card:#f5f5f7; --line:#e2e2e8;
         --ok:#0a7d33; --live:#1d4ed8; --warn:#b45309; --bad:#b91c1c; }
@@ -480,6 +482,9 @@ def main():
 
     (run_dir / "run-page.html").write_text(
         render(state, manifest, assets, template_html))
+    # Recorded after the write, so a render that died mid-write is not
+    # counted. This is the half of page telemetry that cannot be skipped.
+    run_state.record_render(run_dir)
     print(f"rendered {run_dir / 'run-page.html'}")
     return 0
 

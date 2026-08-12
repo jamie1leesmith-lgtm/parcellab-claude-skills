@@ -8,6 +8,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import build_telemetry_row as btr  # noqa: E402
 import run_state  # noqa: E402
+import timings  # noqa: E402
 
 MANIFEST = {
     "run": {"id": "uniqlo-20260811-1913", "pace": "standard"},
@@ -225,6 +226,82 @@ class TestTimingColumns(unittest.TestCase):
         for column in ("Issue key", "Reviewed at", "Reviewed by",
                        "Action taken", "Fix commit", "Verified in run"):
             self.assertNotIn(column, row)
+
+
+
+class TestPageColumns(unittest.TestCase):
+    def test_timeline_json_passes_short_timelines_through(self):
+        timeline = [{"kind": "gate", "name": "plan", "phase": "asked",
+                     "at": "2026-08-12T10:00:00Z"}]
+        self.assertEqual(json.loads(btr.timeline_json(timeline)), timeline)
+
+    def test_timeline_json_truncates_oldest_and_marks_the_loss(self):
+        timeline = [{"kind": "lane", "name": f"lane{i}", "phase": "start",
+                     "at": "2026-08-12T10:00:00Z"} for i in range(200)]
+        text = btr.timeline_json(timeline)
+        self.assertLessEqual(len(text), 1900)
+        payload = json.loads(text)
+        self.assertIn("truncated", payload[0])
+        self.assertGreater(payload[0]["truncated"], 0)
+        self.assertEqual(payload[-1]["name"], "lane199")
+
+    def test_page_counts_and_url_stability(self):
+        page = {"renders": [{"at": "2026-08-12T10:00:00Z"}] * 3,
+                "publishes": [
+                    {"at": "2026-08-12T10:00:01Z", "url": "https://x.test/a"},
+                    {"at": "2026-08-12T10:00:02Z", "url": "https://x.test/a"}]}
+        cols = btr.page_columns(page, [])
+        self.assertEqual(cols["Page renders"], 3)
+        self.assertEqual(cols["Page publishes"], 2)
+        self.assertEqual(cols["Page URL changes"], 0)
+
+    def test_page_url_change_is_counted(self):
+        page = {"renders": [], "publishes": [
+            {"at": "2026-08-12T10:00:01Z", "url": "https://x.test/a"},
+            {"at": "2026-08-12T10:00:02Z", "url": "https://x.test/b"}]}
+        self.assertEqual(btr.page_columns(page, [])["Page URL changes"], 1)
+
+    def test_page_columns_are_null_without_publishes(self):
+        cols = btr.page_columns(
+            {"renders": [{"at": "2026-08-12T10:00:00Z"}], "publishes": []}, [])
+        self.assertEqual(cols["Page renders"], 1)
+        self.assertEqual(cols["Page publishes"], 0)
+        self.assertIsNone(cols["Page URL changes"])
+        self.assertIsNone(cols["Page cadence"])
+        self.assertIsNone(cols["Max page gap"])
+
+    def test_page_cadence_counts_seconds_from_the_first_render(self):
+        page = {"renders": [{"at": "2026-08-12T10:00:00Z"}],
+                "publishes": [{"at": "2026-08-12T10:00:05Z", "url": "u"},
+                              {"at": "2026-08-12T10:01:00Z", "url": "u"}]}
+        self.assertEqual(btr.page_columns(page, [])["Page cadence"], "5,60")
+
+    def test_max_page_gap_uses_only_publishes_inside_the_driver_window(self):
+        page = {"renders": [], "publishes": [
+            {"at": "2026-08-12T10:00:00Z", "url": "u"},
+            {"at": "2026-08-12T10:10:00Z", "url": "u"},
+            {"at": "2026-08-12T10:14:00Z", "url": "u"},
+            {"at": "2026-08-12T10:15:00Z", "url": "u"},
+            {"at": "2026-08-12T11:00:00Z", "url": "u"}]}
+        drivers = [{"kind": "driver", "name": "01",
+                    "start": timings.parse_ts("2026-08-12T10:05:00Z"),
+                    "end": timings.parse_ts("2026-08-12T10:20:00Z")}]
+        self.assertEqual(btr.page_columns(page, drivers)["Max page gap"], 4.0)
+
+    def test_max_page_gap_is_null_while_a_driver_is_unfinished(self):
+        page = {"renders": [], "publishes": [
+            {"at": "2026-08-12T10:10:00Z", "url": "u"},
+            {"at": "2026-08-12T10:14:00Z", "url": "u"}]}
+        drivers = [{"kind": "driver", "name": "01",
+                    "start": timings.parse_ts("2026-08-12T10:05:00Z"),
+                    "end": None}]
+        self.assertIsNone(btr.page_columns(page, drivers)["Max page gap"])
+
+    def test_page_columns_tolerate_a_missing_page_section(self):
+        cols = btr.page_columns(None, [])
+        self.assertEqual(cols["Page renders"], 0)
+        self.assertEqual(cols["Page publishes"], 0)
+        self.assertIsNone(cols["Page cadence"])
 
 
 if __name__ == "__main__":

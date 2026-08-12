@@ -70,6 +70,78 @@ def _counts(state, manifest):
     return planned, pushed
 
 
+TIMELINE_LIMIT = 1900
+
+
+def timeline_json(timeline, limit=TIMELINE_LIMIT):
+    """Serialise the timeline within Notion's 2000-char rich-text limit.
+
+    An over-length property rejects the WHOLE row, and a rejected telemetry
+    write is non-fatal by design — so without this guard a long run loses
+    every column silently, not just its timeline. Oldest entries go first;
+    the marker makes the loss visible rather than silent.
+    """
+    entries = list(timeline)
+    dropped = 0
+    while True:
+        payload = ([{"truncated": dropped}] + entries) if dropped else entries
+        text = json.dumps(payload)
+        if len(text) <= limit or not entries:
+            return text
+        entries.pop(0)
+        dropped += 1
+
+
+def page_columns(page, drivers):
+    """Derive the five run-page columns.
+
+    `Page renders` is trustworthy (the renderer records itself); `Page
+    publishes` is self-reported, so publishes < renders means the Artifact
+    call was skipped. `Max page gap` is scoped to the driver window because
+    that is the only stretch with an expected cadence — one wave per
+    GAP_SECONDS. Measured across the whole run it would be dominated by
+    legitimate waiting at the plan gate.
+    """
+    page = page or {}
+    renders = page.get("renders") or []
+    publishes = page.get("publishes") or []
+
+    cols = {
+        "Page renders": len(renders),
+        "Page publishes": len(publishes),
+        "Page URL changes": None,
+        "Page cadence": None,
+        "Max page gap": None,
+    }
+    if not publishes:
+        return cols
+
+    urls = {p.get("url") for p in publishes if p.get("url")}
+    cols["Page URL changes"] = max(len(urls) - 1, 0)
+
+    stamps = [timings.parse_ts(p["at"]) for p in publishes if p.get("at")]
+    stamps = [s for s in stamps if s]
+    if stamps:
+        baseline = None
+        if renders and renders[0].get("at"):
+            baseline = timings.parse_ts(renders[0]["at"])
+        baseline = baseline or stamps[0]
+        cols["Page cadence"] = ",".join(
+            str(int((s - baseline).total_seconds())) for s in stamps)
+
+    # The window is unknown until every driver has finished; falling back to
+    # the finished ones would silently shorten it.
+    if drivers and all(d["start"] and d["end"] for d in drivers):
+        start = min(d["start"] for d in drivers)
+        end = max(d["end"] for d in drivers)
+        inside = sorted(s for s in stamps if start <= s <= end)
+        if len(inside) >= 2:
+            gap = max((b - a).total_seconds()
+                      for a, b in zip(inside, inside[1:]))
+            cols["Max page gap"] = round(gap / 60.0, 1)
+    return cols
+
+
 def build_row(run_dir, stage, skill_version=""):
     run_dir = pathlib.Path(run_dir)
     state = _load(run_dir / "run-state.json", {})
@@ -119,9 +191,11 @@ def build_row(run_dir, stage, skill_version=""):
         "Unattributed": timing["unattributed_min"],
         "Event window": timing["event_window_min"],
         "Slowest lane": timing["slowest_lane"],
-        "Timeline": json.dumps(timing["timeline"]),
+        "Timeline": timeline_json(timing["timeline"]),
         "Duration to build": timing["duration_to_build_min"],
     }
+    row.update(page_columns(state.get("page"),
+                            timings.driver_intervals(run_dir)))
     if stage == "committed":
         # The one permitted triage write, and only at row creation: emitting
         # it again at beat1/beat2 would reset a reviewer's value.

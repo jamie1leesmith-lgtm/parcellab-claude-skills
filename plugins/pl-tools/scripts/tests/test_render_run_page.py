@@ -295,5 +295,36 @@ class TestClock(unittest.TestCase):
         self.assertNotIn("s-confirmed", script)
 
 
+
+class TestRenderRecordsItself(unittest.TestCase):
+    def _run_dir(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "uniqlo-20260811-1913", "engage", "Demo - JLS")
+        return d
+
+    def test_main_records_the_render_in_run_state(self):
+        run_dir = self._run_dir()
+        argv = sys.argv
+        sys.argv = ["render_run_page.py", str(run_dir)]
+        try:
+            self.assertEqual(render_run_page.main(), 0)
+        finally:
+            sys.argv = argv
+        state = run_state.load(run_dir)
+        self.assertEqual(len(state["page"]["renders"]), 1)
+        self.assertTrue((pathlib.Path(run_dir) / "run-page.html").exists())
+
+    def test_each_render_appends_another_stamp(self):
+        run_dir = self._run_dir()
+        argv = sys.argv
+        sys.argv = ["render_run_page.py", str(run_dir)]
+        try:
+            render_run_page.main()
+            render_run_page.main()
+        finally:
+            sys.argv = argv
+        self.assertEqual(len(run_state.load(run_dir)["page"]["renders"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
