@@ -619,6 +619,20 @@ Update the telemetry row (stage `beat2`), filling `Comms expected` and
 `Comms fired` from the verification just performed. `Duration to build` is
 derived from the marks — never compute a duration by hand.
 
+**Then append the run detail to the row's own page**, so the run is readable by
+anyone on the team:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_run_digest.py <run dir>
+```
+
+Append the output to the Notion **row page** — the page the `beat2` update just
+wrote to — not to the database and not to a new page. The run page artifact is
+private to whoever ran it and cannot be shared from here, so this is the only
+copy a teammate can open. A failed append is recorded and mentioned once in the
+final report, exactly like a failed row write: telemetry is an observer, never
+a dependency.
+
 **Then answer these three questions explicitly before writing the row** — they
 are the only source for the self-reported deviations, and an open "did
 anything go wrong?" reliably returns "no":
