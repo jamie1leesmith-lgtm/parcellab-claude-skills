@@ -599,6 +599,7 @@ while the trigger still matches and the event still names it. Proven causes and
 proven non-causes are listed in the run-triage skill's
 `references/comms-diagnosis.md`; several plausible hypotheses there are already
 disproven, and re-deriving one costs a run about twenty minutes.
+
 **Restore the edit-mode guard.** Once every driver has exited and the
 verification above is done, if the guard was repointed for this run, restore it
 to the user's own account — no question, and report it in one line. If the
