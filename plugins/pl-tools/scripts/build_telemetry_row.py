@@ -73,8 +73,19 @@ def _counts(state, manifest):
 TIMELINE_LIMIT = 1900
 
 
-def timeline_json(timeline, limit=TIMELINE_LIMIT):
-    """Serialise the timeline within Notion's 2000-char rich-text limit.
+def timeline_text(timeline, limit=TIMELINE_LIMIT):
+    """Serialise the timeline as `<at> <kind>/<name>/<phase>; ...`.
+
+    **Deliberately not JSON.** The Notion connector rejects a JSON-parseable
+    string written to this text property — `properties.Timeline: Invalid
+    input` — and a failed telemetry write is non-fatal, so the column
+    disappears with no error. Proven live 2026-08-12 against the real
+    database: JSON array, JSON object, and space-prefixed JSON array all
+    rejected; plain text accepted. Run thenorthface-20260812-2328 shipped with
+    a blank Timeline before this was found.
+
+    The format is also denser than the JSON it replaces, so more of a long run
+    survives the cap below.
 
     An over-length property rejects the WHOLE row, and a rejected telemetry
     write is non-fatal by design — so without this guard a long run loses
@@ -94,10 +105,16 @@ def timeline_json(timeline, limit=TIMELINE_LIMIT):
                        and (e.get("name"), e.get("phase"),
                             e.get("at")) in lane_keys)]
 
+    def render(items):
+        return "; ".join(
+            f"{e.get('at')} {e.get('kind')}/{e.get('name')}/{e.get('phase')}"
+            for e in items)
+
     dropped = 0
     while True:
-        payload = ([{"truncated": dropped}] + entries) if dropped else entries
-        text = json.dumps(payload, separators=(",", ":"))
+        text = render(entries)
+        if dropped:
+            text = f"+{dropped} earlier dropped; " + text
         if len(text) <= limit or not entries:
             return text
         entries.pop(0)
@@ -203,7 +220,7 @@ def build_row(run_dir, stage, skill_version=""):
         "Unattributed": timing["unattributed_min"],
         "Event window": timing["event_window_min"],
         "Slowest lane": timing["slowest_lane"],
-        "Timeline": timeline_json(timing["timeline"]),
+        "Timeline": timeline_text(timing["timeline"]),
         "Duration to build": timing["duration_to_build_min"],
         "Largest gap": timing["largest_gap"],
         "Largest gap after": timing["largest_gap_after"],

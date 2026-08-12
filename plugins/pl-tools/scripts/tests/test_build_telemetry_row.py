@@ -213,11 +213,15 @@ class TestTimingColumns(unittest.TestCase):
         self.assertEqual(row["Slowest lane"], "scrape")
         self.assertGreaterEqual(row["Unattributed"], 0)
 
-    def test_timeline_is_serialised_as_json_text(self):
+    def test_timeline_is_serialised_as_non_json_text(self):
+        # Was asserted as JSON until 2026-08-12, when writing JSON to this
+        # column turned out to be exactly what Notion rejects.
         import json
         row = btr.build_row(self._run_dir(), "beat1")
         self.assertIsInstance(row["Timeline"], str)
-        self.assertEqual(len(json.loads(row["Timeline"])), 4)
+        self.assertEqual(len(parse_timeline(row["Timeline"])), 4)
+        with self.assertRaises(ValueError):
+            json.loads(row["Timeline"])
 
     def test_triage_status_starts_untriaged(self):
         # Blank makes unreviewed rows findable only by querying for empty.
@@ -273,21 +277,64 @@ class TestTimingColumns(unittest.TestCase):
 
 
 
-class TestPageColumns(unittest.TestCase):
-    def test_timeline_json_passes_short_timelines_through(self):
+def parse_timeline(text):
+    """Read the column back — the format's other half, exercised by tests."""
+    out = []
+    for chunk in [c for c in text.split("; ") if c]:
+        if chunk.startswith("+") and "earlier dropped" in chunk:
+            continue
+        at, _, rest = chunk.partition(" ")
+        kind, name, phase = rest.split("/")
+        out.append({"kind": kind, "name": name, "phase": phase, "at": at})
+    return out
+
+
+class TestTimelineText(unittest.TestCase):
+    """The column must not be JSON — the Notion connector refuses it.
+
+    Writing a JSON-parseable string to this text property fails with
+    `properties.Timeline: Invalid input`, silently losing the column because a
+    failed telemetry write is non-fatal by design. Proven live 2026-08-12
+    against the real database: a JSON array, a JSON object wrapping the array,
+    and a space-prefixed JSON array were all rejected, while a Python repr and
+    a plain `<at> <kind>/<name>/<phase>` line were both accepted. The run
+    thenorthface-20260812-2328 shipped with a blank Timeline because of it.
+    """
+
+    def test_output_is_not_json_parseable(self):
+        # The whole point: if this ever parses as JSON, Notion drops the column.
         timeline = [{"kind": "gate", "name": "plan", "phase": "asked",
                      "at": "2026-08-12T10:00:00Z"}]
-        self.assertEqual(json.loads(btr.timeline_json(timeline)), timeline)
+        with self.assertRaises(ValueError):
+            json.loads(btr.timeline_text(timeline))
 
-    def test_timeline_json_truncates_oldest_and_marks_the_loss(self):
+    def test_round_trips_a_short_timeline(self):
+        timeline = [{"kind": "gate", "name": "plan", "phase": "asked",
+                     "at": "2026-08-12T10:00:00Z"}]
+        self.assertEqual(parse_timeline(btr.timeline_text(timeline)), timeline)
+
+    def test_round_trips_several_entries_in_order(self):
+        timeline = [
+            {"kind": "lane", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T22:29:58Z"},
+            {"kind": "gate", "name": "template", "phase": "asked",
+             "at": "2026-08-12T22:33:51Z"},
+        ]
+        self.assertEqual(parse_timeline(btr.timeline_text(timeline)), timeline)
+
+    def test_truncates_oldest_and_marks_the_loss(self):
         timeline = [{"kind": "lane", "name": f"lane{i}", "phase": "start",
                      "at": "2026-08-12T10:00:00Z"} for i in range(200)]
-        text = btr.timeline_json(timeline)
+        text = btr.timeline_text(timeline)
         self.assertLessEqual(len(text), 1900)
-        payload = json.loads(text)
-        self.assertIn("truncated", payload[0])
-        self.assertGreater(payload[0]["truncated"], 0)
-        self.assertEqual(payload[-1]["name"], "lane199")
+        self.assertIn("earlier dropped", text)
+        self.assertEqual(parse_timeline(text)[-1]["name"], "lane199")
+
+    def test_truncation_marker_is_still_not_json(self):
+        timeline = [{"kind": "lane", "name": f"lane{i}", "phase": "start",
+                     "at": "2026-08-12T10:00:00Z"} for i in range(200)]
+        with self.assertRaises(ValueError):
+            json.loads(btr.timeline_text(timeline))
 
     def test_agent_entries_duplicating_a_lane_are_dropped(self):
         timeline = [
@@ -296,9 +343,9 @@ class TestPageColumns(unittest.TestCase):
             {"kind": "lane", "name": "scrape", "phase": "start",
              "at": "2026-08-12T09:47:05"},
         ]
-        payload = json.loads(btr.timeline_json(timeline))
-        self.assertEqual(len(payload), 1)
-        self.assertEqual(payload[0]["kind"], "lane")
+        entries = parse_timeline(btr.timeline_text(timeline))
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["kind"], "lane")
 
     def test_agent_entry_with_its_own_timestamp_is_kept(self):
         """Only exact duplicates go. A distinct stamp is real information."""
@@ -308,20 +355,21 @@ class TestPageColumns(unittest.TestCase):
             {"kind": "lane", "name": "scrape", "phase": "start",
              "at": "2026-08-12T09:48:30"},
         ]
-        payload = json.loads(btr.timeline_json(timeline))
-        self.assertEqual(len(payload), 2)
+        self.assertEqual(len(parse_timeline(btr.timeline_text(timeline))), 2)
 
-    def test_compact_separators(self):
-        timeline = [{"kind": "lane", "name": "seed", "phase": "start",
-                     "at": "2026-08-12T10:36:26"}]
-        self.assertNotIn(", ", btr.timeline_json(timeline))
+    def test_empty_timeline_is_empty_string(self):
+        self.assertEqual(btr.timeline_text([]), "")
 
-    def test_truncation_marker_still_applies(self):
-        timeline = [{"kind": "lane", "name": f"lane{i}", "phase": "start",
-                     "at": "2026-08-12T10:36:26"} for i in range(200)]
-        payload = json.loads(btr.timeline_json(timeline))
-        self.assertIn("truncated", payload[0])
-        self.assertLessEqual(len(btr.timeline_json(timeline)), 1900)
+    def test_denser_than_the_json_it_replaces(self):
+        # Density matters: the cap truncates real history, so fewer bytes per
+        # entry means more of the run survives.
+        timeline = [{"kind": "lane", "name": "orders", "phase": "start",
+                     "at": "2026-08-12T22:48:42Z"}] * 10
+        self.assertLess(len(btr.timeline_text(timeline)),
+                        len(json.dumps(timeline, separators=(",", ":"))))
+
+
+class TestPageColumns(unittest.TestCase):
 
     def test_page_counts_and_url_stability(self):
         page = {"renders": [{"at": "2026-08-12T10:00:00Z"}] * 3,
