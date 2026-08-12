@@ -289,6 +289,40 @@ class TestPageColumns(unittest.TestCase):
         self.assertGreater(payload[0]["truncated"], 0)
         self.assertEqual(payload[-1]["name"], "lane199")
 
+    def test_agent_entries_duplicating_a_lane_are_dropped(self):
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:47:05"},
+            {"kind": "lane", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:47:05"},
+        ]
+        payload = json.loads(btr.timeline_json(timeline))
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["kind"], "lane")
+
+    def test_agent_entry_with_its_own_timestamp_is_kept(self):
+        """Only exact duplicates go. A distinct stamp is real information."""
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:47:05"},
+            {"kind": "lane", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:48:30"},
+        ]
+        payload = json.loads(btr.timeline_json(timeline))
+        self.assertEqual(len(payload), 2)
+
+    def test_compact_separators(self):
+        timeline = [{"kind": "lane", "name": "seed", "phase": "start",
+                     "at": "2026-08-12T10:36:26"}]
+        self.assertNotIn(", ", btr.timeline_json(timeline))
+
+    def test_truncation_marker_still_applies(self):
+        timeline = [{"kind": "lane", "name": f"lane{i}", "phase": "start",
+                     "at": "2026-08-12T10:36:26"} for i in range(200)]
+        payload = json.loads(btr.timeline_json(timeline))
+        self.assertIn("truncated", payload[0])
+        self.assertLessEqual(len(btr.timeline_json(timeline)), 1900)
+
     def test_page_counts_and_url_stability(self):
         page = {"renders": [{"at": "2026-08-12T10:00:00Z"}] * 3,
                 "publishes": [
