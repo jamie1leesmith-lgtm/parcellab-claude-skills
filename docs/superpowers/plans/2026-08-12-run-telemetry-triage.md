@@ -1244,7 +1244,6 @@ copy a teammate can open. A failed append is recorded and mentioned once in the
 final report, exactly like a failed row write: telemetry is an observer, never a
 dependency.
 <<<END
-```
 
 - [ ] **Step 6: Verify the instruction landed**
 
