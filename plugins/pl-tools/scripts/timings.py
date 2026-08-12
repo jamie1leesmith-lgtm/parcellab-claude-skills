@@ -95,6 +95,45 @@ def union_seconds(spans):
     return int(total)
 
 
+def largest_gap(spans):
+    """Longest stretch inside the run covered by no instrumented span.
+
+    `Unattributed` already reports the *total* uncovered time. This reports the
+    single worst stretch and the mark it follows, which is what points at a
+    specific defect rather than at a budget.
+
+    The horizon is the last stamp of any kind, not the last closed span: Beat 2
+    records only an `end`, so measuring span-to-span would have missed the
+    2026-08-12 Kapten & Son run's worst gap (18.5 min after `orders:end`, the
+    wait for comms that could not arrive) and reported 11.9 instead.
+
+    Returns (seconds, label) or (None, None) when nothing is measurable.
+    """
+    closed = sorted((s["start"], s["end"], s["name"]) for s in spans
+                    if s["start"] and s["end"])
+    stamps = [t for s in spans for t in (s["start"], s["end"]) if t]
+    if not closed or len(stamps) < 2:
+        return None, None
+
+    best_seconds, best_label = 0, None
+    frontier, frontier_name = closed[0][1], closed[0][2]
+    for start, end, name in closed[1:]:
+        if start > frontier:
+            gap = (start - frontier).total_seconds()
+            if gap > best_seconds:
+                best_seconds, best_label = gap, f"{frontier_name}:end"
+        if end > frontier:
+            frontier, frontier_name = end, name
+
+    horizon = max(stamps)
+    if horizon > frontier:
+        gap = (horizon - frontier).total_seconds()
+        if gap > best_seconds:
+            best_seconds, best_label = gap, f"{frontier_name}:end"
+
+    return (best_seconds, best_label) if best_seconds > 0 else (None, None)
+
+
 def _minutes(seconds):
     return None if seconds is None else round(seconds / 60.0, 1)
 
@@ -238,6 +277,8 @@ def summarise(run_dir):
         measured = union_seconds((s["start"], s["end"]) for s in work)
         waiting = (union_seconds((s["start"], s["end"]) for s in gates)
                    if has_closed(gates) else None)
+        gap_seconds, gap_label = largest_gap(everything)
+        largest_gap_min = _minutes(gap_seconds)
 
         # The window is not known until every driver has finished: falling
         # back to the other drivers' stamps silently shortens it.
@@ -257,6 +298,8 @@ def summarise(run_dir):
         timing_error = str(exc)
         elapsed_min = measured_min = waiting_min = None
         unattributed_min = window_min = None
+        largest_gap_min = None
+        gap_label = None
 
     def by_kind(kind):
         """Minutes per name, unioned across every closed span for that name.
@@ -290,6 +333,8 @@ def summarise(run_dir):
         "waiting_on_user_min": waiting_min,
         "unattributed_min": unattributed_min,
         "event_window_min": window_min,
+        "largest_gap": largest_gap_min,
+        "largest_gap_after": gap_label,
         "duration_to_build_min": _minutes(duration_to_build(timeline)),
         "per_lane": per_lane,
         "per_agent": by_kind("agent"),

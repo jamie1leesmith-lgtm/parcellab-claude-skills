@@ -138,6 +138,38 @@ class TestTimingColumns(unittest.TestCase):
             {"brand": {"name": "Currys"}, "orders": []}))
         return str(d)
 
+    def _kapten_run_dir(self):
+        """A run with a measurable gap extending to the horizon mark.
+
+        The largest gap is 18.5 minutes (1110 seconds) after orders:end.
+        This scenario tests the horizon-extension branch in largest_gap():
+        Beat 2 records only an `end` mark with no matching `start`, which
+        extends the measurement horizon beyond closed spans.
+        """
+        d = pathlib.Path(self._run_dir())
+        state = json.loads((d / "run-state.json").read_text())
+        state["timeline"] = [
+            {"kind": "lane", "name": "orders", "phase": "start",
+             "at": "2026-08-12T10:53:22Z"},
+            {"kind": "lane", "name": "orders", "phase": "end",
+             "at": "2026-08-12T11:09:34Z"},
+            {"kind": "gate", "name": "beat2", "phase": "end",
+             "at": "2026-08-12T11:28:06Z"},
+        ]
+        (d / "run-state.json").write_text(json.dumps(state))
+        return str(d)
+
+    def _single_stamp_run_dir(self):
+        """A run with only one timestamp entry (cannot measure a gap)."""
+        d = pathlib.Path(self._run_dir())
+        state = json.loads((d / "run-state.json").read_text())
+        state["timeline"] = [
+            {"kind": "lane", "name": "orders", "phase": "start",
+             "at": "2026-08-12T20:00:00Z"},
+        ]
+        (d / "run-state.json").write_text(json.dumps(state))
+        return str(d)
+
     def _corrupt_run_dir(self):
         """A run whose lane marks are reversed — an impossible duration."""
         import json
@@ -227,6 +259,18 @@ class TestTimingColumns(unittest.TestCase):
                        "Action taken", "Fix commit", "Verified in run"):
             self.assertNotIn(column, row)
 
+    def test_row_carries_the_largest_gap_columns(self):
+        row = btr.build_row(self._kapten_run_dir(), "beat2", skill_version="abc1234")
+        self.assertEqual(row["Largest gap"], 18.5)
+        self.assertEqual(row["Largest gap after"], "orders:end")
+
+    def test_largest_gap_is_null_when_unmeasurable(self):
+        """A one-stamp run is unmeasured, not instantaneous."""
+        row = btr.build_row(
+            self._single_stamp_run_dir(), "committed", skill_version="abc1234")
+        self.assertIsNone(row["Largest gap"])
+        self.assertIsNone(row["Largest gap after"])
+
 
 
 class TestPageColumns(unittest.TestCase):
@@ -244,6 +288,40 @@ class TestPageColumns(unittest.TestCase):
         self.assertIn("truncated", payload[0])
         self.assertGreater(payload[0]["truncated"], 0)
         self.assertEqual(payload[-1]["name"], "lane199")
+
+    def test_agent_entries_duplicating_a_lane_are_dropped(self):
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:47:05"},
+            {"kind": "lane", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:47:05"},
+        ]
+        payload = json.loads(btr.timeline_json(timeline))
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["kind"], "lane")
+
+    def test_agent_entry_with_its_own_timestamp_is_kept(self):
+        """Only exact duplicates go. A distinct stamp is real information."""
+        timeline = [
+            {"kind": "agent", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:47:05"},
+            {"kind": "lane", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:48:30"},
+        ]
+        payload = json.loads(btr.timeline_json(timeline))
+        self.assertEqual(len(payload), 2)
+
+    def test_compact_separators(self):
+        timeline = [{"kind": "lane", "name": "seed", "phase": "start",
+                     "at": "2026-08-12T10:36:26"}]
+        self.assertNotIn(", ", btr.timeline_json(timeline))
+
+    def test_truncation_marker_still_applies(self):
+        timeline = [{"kind": "lane", "name": f"lane{i}", "phase": "start",
+                     "at": "2026-08-12T10:36:26"} for i in range(200)]
+        payload = json.loads(btr.timeline_json(timeline))
+        self.assertIn("truncated", payload[0])
+        self.assertLessEqual(len(btr.timeline_json(timeline)), 1900)
 
     def test_page_counts_and_url_stability(self):
         page = {"renders": [{"at": "2026-08-12T10:00:00Z"}] * 3,

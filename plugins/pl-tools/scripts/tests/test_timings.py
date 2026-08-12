@@ -492,6 +492,19 @@ class TestSummarise(unittest.TestCase):
         self.assertIsNone(out["total_elapsed_min"])
         self.assertEqual(out["timeline"], [])
 
+    def test_summarise_reports_the_largest_gap(self):
+        run_dir = a_run_dir(timeline=[
+            {"kind": "lane", "name": "orders", "phase": "start",
+             "at": "2026-08-12T10:53:22"},
+            {"kind": "lane", "name": "orders", "phase": "end",
+             "at": "2026-08-12T11:09:34"},
+            {"kind": "gate", "name": "beat2", "phase": "end",
+             "at": "2026-08-12T11:28:06"},
+        ])
+        summary = timings.summarise(run_dir)
+        self.assertEqual(summary["largest_gap"], 18.5)
+        self.assertEqual(summary["largest_gap_after"], "orders:end")
+
 
 class TestCorruptSpanDoesNotDestroyTheRow(unittest.TestCase):
     """A reversed pair of marks costs its durations, not the whole report.
@@ -541,6 +554,76 @@ class TestCorruptSpanDoesNotDestroyTheRow(unittest.TestCase):
     def test_a_clean_run_reports_no_timing_error(self):
         out = timings.summarise(a_run_dir(logs=DRIVER_LOGS))
         self.assertIsNone(out["timing_error"])
+
+
+class LargestGapTests(unittest.TestCase):
+    def _span(self, name, start, end):
+        return {"kind": "lane", "name": name,
+                "start": timings.parse_ts(start) if start else None,
+                "end": timings.parse_ts(end) if end else None}
+
+    def test_none_when_fewer_than_two_stamps(self):
+        spans = [self._span("scrape", "2026-08-12T09:47:05", None)]
+        self.assertEqual(timings.largest_gap(spans), (None, None))
+
+    def test_gap_between_two_spans(self):
+        spans = [self._span("scrape", "2026-08-12T09:00:00",
+                            "2026-08-12T09:10:00"),
+                 self._span("orders", "2026-08-12T09:25:00",
+                            "2026-08-12T09:30:00")]
+        seconds, label = timings.largest_gap(spans)
+        self.assertEqual(seconds, 900.0)
+        self.assertEqual(label, "scrape:end")
+
+    def test_overlapping_spans_do_not_create_a_gap(self):
+        spans = [self._span("seed", "2026-08-12T10:36:26",
+                            "2026-08-12T10:40:36"),
+                 self._span("template", "2026-08-12T10:36:26",
+                            "2026-08-12T10:41:26")]
+        self.assertEqual(timings.largest_gap(spans), (None, None))
+
+    def test_trailing_gap_to_an_unclosed_mark_counts(self):
+        """The Kapten & Son shape: the worst gap ends at a bare `end` mark.
+
+        Beat 2 records only an end, so a gap measured span-to-span misses the
+        18.5-minute wait entirely and reports 11.9 instead.
+        """
+        spans = [self._span("orders", "2026-08-12T10:53:22",
+                            "2026-08-12T11:09:34"),
+                 {"kind": "gate", "name": "beat2", "start": None,
+                  "end": timings.parse_ts("2026-08-12T11:28:06")}]
+        seconds, label = timings.largest_gap(spans)
+        self.assertEqual(round(seconds / 60.0, 1), 18.5)
+        self.assertEqual(label, "orders:end")
+
+    def test_kapten_timeline_end_to_end(self):
+        timeline = [
+            {"kind": "lane", "name": "scrape", "phase": "start",
+             "at": "2026-08-12T09:47:05"},
+            {"kind": "lane", "name": "scrape", "phase": "end",
+             "at": "2026-08-12T10:04:29"},
+            {"kind": "gate", "name": "template", "phase": "asked",
+             "at": "2026-08-12T10:11:08"},
+            {"kind": "gate", "name": "template", "phase": "answered",
+             "at": "2026-08-12T10:29:32"},
+            {"kind": "gate", "name": "plan", "phase": "asked",
+             "at": "2026-08-12T10:31:26"},
+            {"kind": "gate", "name": "plan", "phase": "answered",
+             "at": "2026-08-12T10:32:49"},
+            {"kind": "lane", "name": "template", "phase": "start",
+             "at": "2026-08-12T10:36:26"},
+            {"kind": "lane", "name": "template", "phase": "end",
+             "at": "2026-08-12T10:41:26"},
+            {"kind": "lane", "name": "orders", "phase": "start",
+             "at": "2026-08-12T10:53:22"},
+            {"kind": "lane", "name": "orders", "phase": "end",
+             "at": "2026-08-12T11:09:34"},
+            {"kind": "gate", "name": "beat2", "phase": "end",
+             "at": "2026-08-12T11:28:06"},
+        ]
+        seconds, label = timings.largest_gap(timings.pair_intervals(timeline))
+        self.assertEqual(round(seconds / 60.0, 1), 18.5)
+        self.assertEqual(label, "orders:end")
 
 
 class TestDurationToBuild(unittest.TestCase):

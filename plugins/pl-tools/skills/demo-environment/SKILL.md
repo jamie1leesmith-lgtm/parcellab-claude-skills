@@ -591,6 +591,25 @@ the user): per order,
 public order-info lookup by courier + tracking_number; report checkpoints
 attached vs planned and `contacted_with_messages` vs the expected comms —
 explicitly covering the good AND bad arcs the run promised.
+
+**Before diagnosing a missing comm, check whether the message can send at all.**
+Resolve the journey channel's `messageType` to its message and read
+`hasReleasedVersion` — a message that has never been released renders nothing,
+while the trigger still matches and the event still names it.
+
+Two things that look like causes and are not, both proven live on 2026-08-12:
+
+- **`releaseStatus: draft` does not block sending.** A draft serves its last
+  released version — account 1626718 message 75240 is `draft` and has sent 51
+  emails. `hasReleasedVersion` is the gate, not `releaseStatus`.
+- **`recipientCustomer: false` with `recipientPlTest: true` does not block
+  sending.** That is normal demo-account config. Account 1626718 sent 100 emails
+  with channel config byte-identical to a failing account's.
+
+Re-deriving either one costs a run about twenty minutes. The fuller ledger, with
+the command for each check, is the run-triage skill's
+`references/comms-diagnosis.md` if you have that skill installed.
+
 **Restore the edit-mode guard.** Once every driver has exited and the
 verification above is done, if the guard was repointed for this run, restore it
 to the user's own account — no question, and report it in one line. If the
@@ -609,6 +628,20 @@ Once Beat 2 is posted: record it via `run_state.py`, re-render with `render_run_
 Update the telemetry row (stage `beat2`), filling `Comms expected` and
 `Comms fired` from the verification just performed. `Duration to build` is
 derived from the marks — never compute a duration by hand.
+
+**Then append the run detail to the row's own page**, so the run is readable by
+anyone on the team:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_run_digest.py <run dir>
+```
+
+Append the output to the Notion **row page** — the page the `beat2` update just
+wrote to — not to the database and not to a new page. The run page artifact is
+private to whoever ran it and cannot be shared from here, so this is the only
+copy a teammate can open. A failed append is recorded and mentioned once in the
+final report, exactly like a failed row write: telemetry is an observer, never
+a dependency.
 
 **Then answer these three questions explicitly before writing the row** — they
 are the only source for the self-reported deviations, and an open "did

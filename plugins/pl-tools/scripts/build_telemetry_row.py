@@ -80,12 +80,24 @@ def timeline_json(timeline, limit=TIMELINE_LIMIT):
     write is non-fatal by design — so without this guard a long run loses
     every column silently, not just its timeline. Oldest entries go first;
     the marker makes the loss visible rather than silent.
+
+    An `agent` entry sharing a `lane` entry's name, phase and timestamp carries
+    no information the lane entry does not — the 2026-08-12 Kapten & Son run had
+    four such pairs. They are dropped here, at serialisation, and nowhere else:
+    `pair_intervals` keys on (kind, name), so dropping them upstream would
+    change the spans it computes.
     """
-    entries = list(timeline)
+    lane_keys = {(e.get("name"), e.get("phase"), e.get("at"))
+                 for e in (timeline or []) if e.get("kind") == "lane"}
+    entries = [e for e in (timeline or [])
+               if not (e.get("kind") == "agent"
+                       and (e.get("name"), e.get("phase"),
+                            e.get("at")) in lane_keys)]
+
     dropped = 0
     while True:
         payload = ([{"truncated": dropped}] + entries) if dropped else entries
-        text = json.dumps(payload)
+        text = json.dumps(payload, separators=(",", ":"))
         if len(text) <= limit or not entries:
             return text
         entries.pop(0)
@@ -193,6 +205,8 @@ def build_row(run_dir, stage, skill_version=""):
         "Slowest lane": timing["slowest_lane"],
         "Timeline": timeline_json(timing["timeline"]),
         "Duration to build": timing["duration_to_build_min"],
+        "Largest gap": timing["largest_gap"],
+        "Largest gap after": timing["largest_gap_after"],
     }
     row.update(page_columns(state.get("page"),
                             timings.driver_intervals(run_dir)))

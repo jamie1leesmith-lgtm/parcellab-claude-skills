@@ -57,6 +57,8 @@ Columns, exactly:
 | Max page gap | Number | minutes; longest gap between consecutive publishes inside the driver window. Null while any driver is unfinished |
 | Page URL changes | Number | distinct published URLs − 1. `0` = stable; ≥1 means readers were left on a URL that stopped updating |
 | Page cadence | Text | publish offsets in seconds from the first render, e.g. `0,45,320,610` |
+| Largest gap | Number | minutes; the longest stretch covered by no instrumented span. Null when fewer than two stamps |
+| Largest gap after | Text | the mark that gap follows, e.g. `orders:end` |
 | Deviations | Multi-select | validator_rejected · api_error · retry_needed · gate_reasked · comm_missing · lane_fallback_inline · manual_intervention · instruction_unfollowable · workaround_invented |
 | Error detail | Text | |
 | Issue key | Text | |
@@ -78,6 +80,14 @@ interval; `Waiting on user` is an overlapping view of the same timeline.
 instrumented. On the run this was designed from it would have been ~37 minutes,
 almost all of it the conductor fixing defects rather than the user thinking. It
 shrinks as instrumentation improves, so a large value is a signal worth reading.
+
+**`Largest gap` points at one stretch; `Unattributed` totals them all.** They
+measure the same uninstrumented time from different ends, so they are not
+additive and the largest gap is always the smaller number. On the 2026-08-12
+Kapten & Son run the largest gap was 18.5 minutes after `orders:end` — the wait
+for comms that could not arrive, which was also that run's correctness defect.
+A single large gap points at one event to investigate; a large `Unattributed`
+spread thinly across many small gaps points at missing instrumentation instead.
 
 **`Event window` is concurrent.** Drivers run in parallel, so the window is the
 longest single order, never the sum of every event. The live run's window was

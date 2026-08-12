@@ -1,0 +1,9 @@
+{
+  "name": "pl-private",
+  "description": "Jamie's private parcelLab tooling. Not listed in the marketplace and not distributed to the team.",
+  "author": {
+    "name": "Jamie Lee-Smith",
+    "email": "jamie.lee-smith@parcellab.com"
+  },
+  "keywords": ["parcellab", "pl", "triage", "telemetry", "private"]
+}
