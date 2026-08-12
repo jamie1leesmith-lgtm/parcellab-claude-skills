@@ -141,5 +141,7 @@ never be shared publicly.
 
 ## Milestone hook (the sentence SKILL.md uses)
 
-> record it via `run_state.py`, re-render with `render_run_page.py <run dir>`
-> and republish — non-fatal.
+> record it via `run_state.py`, re-render with `render_run_page.py <run dir>`,
+> republish, then record the publish with
+> `run_state.record_publish(<run dir>, <the URL the Artifact call returned>)`
+> — non-fatal.

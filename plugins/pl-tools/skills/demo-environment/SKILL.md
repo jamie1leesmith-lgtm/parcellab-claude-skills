@@ -91,6 +91,14 @@ carry it into `run.page_url` when step 9 writes the manifest. Values the run
 dir does not yet carry (path, account name) render as `—` and fill in at the
 next republish. Publishing is never load-bearing.
 
+**Republishing includes recording it.** After each Artifact call, record it with
+`run_state.record_publish(<run dir>, <the URL the call returned>)`. Renders
+record themselves; publishes cannot, so an unrecorded publish is
+indistinguishable from one that never happened — and telling those apart is
+what the `Page publishes` / `Page renders` telemetry columns exist for. Passing
+the returned URL is what lets `Page URL changes` show a reader stranded on a
+URL that stopped updating.
+
 ## Phase 0 — Intake (front-loaded)
 
 1. **Create the run directory** `$HOME/parcellab-demo-runs/<handle>-<ts>/`
