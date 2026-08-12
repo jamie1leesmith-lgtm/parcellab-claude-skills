@@ -199,8 +199,9 @@ next republish. Publishing is never load-bearing.
      ask "Using **<name>** (<id>) — correct?"; verify
      `parcellab settings edit-mode show` says `account-restricted` for that
      same account, offering the fix if not. **If the guard was repointed for
-     this run** (e.g. at parcelfashion), note it — Beat 1 offers to restore it
-     to the user's own account. In the same round, check write permissions per
+     this run** (e.g. at parcelfashion), note it — it is restored automatically
+     after Beat 2, once the drivers have stopped pushing events against it. In
+     the same round, check write permissions per
      *Write permissions* above — a missing rule is cheap to fix here and stalls
      the run mid-build if it surfaces after the gate.
    - **CDC config:** read the key matching the target (process env, then
@@ -551,8 +552,9 @@ orders were submitted for linking, the config source (say "caller's default
 config" when `config_source` is `none`), and `generate_orders`/`orders`
 (say plainly whether the CDC was also asked to generate synthetic orders,
 and for which slots). No currency symbols. **If the edit-mode guard was
-repointed for this run** (per Phase 0 step 4's note), offer here to restore
-it to the user's own account. Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends — re-render with `render_run_page.py <run dir>` and republish — non-fatal.
+repointed for this run** (per Phase 0 step 4's note), say so here as a line of fact and state that it is restored after Beat 2
+— not now. The drivers are still pushing events against that account.
+Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends — re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 Update the telemetry row (stage `beat1`) with the build results, if
 `results/telemetry.json` exists.
 
@@ -563,9 +565,20 @@ order's parcel. Reporting at 6 minutes put a wrong defect hypothesis in front of
 the user): per order,
 public order-info lookup by courier + tracking_number; report checkpoints
 attached vs planned and `contacted_with_messages` vs the expected comms —
-explicitly covering the good AND bad arcs the run promised. For every
-unproven event or chain that fired correctly, offer to record it in
-`${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/status-codes.md`.
+explicitly covering the good AND bad arcs the run promised.
+**Restore the edit-mode guard.** Once every driver has exited and the
+verification above is done, if the guard was repointed for this run, restore it
+to the user's own account — no question, and report it in one line. If the
+restore fails, say so explicitly with the error; a guard left pointing at
+another account is exactly the state the next run's Phase 0 check will trip on.
+
+For every unproven event or chain that fired correctly, record it in
+`${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/status-codes.md` —
+automatically, then report what was written. Each entry carries the date, the
+order number and the account, so a later reader can check it. A run edits a
+skill reference file here on purpose: the alternative is proven status codes
+staying labelled unproven because nobody answered a prompt at the end of a
+fifteen-minute run.
 Once Beat 2 is posted: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 
 Update the telemetry row (stage `beat2`), filling `Comms expected` and
