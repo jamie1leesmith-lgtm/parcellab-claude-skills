@@ -160,8 +160,15 @@ reject the entire row. The guard is correct and stays. The mistake was making
 analysis depend on a field designed to be droppable — so the slowest runs, the
 ones most worth optimising, are exactly the ones that lose their timeline.
 
-**Derive at write time, where the full timeline is in the run dir.** Three new
-numeric columns:
+**Derive at write time, where the full timeline is in the run dir.**
+
+> **Amended during planning — two columns shipped, not three.**
+> `timings.summarise()` already computes `Unattributed` as total-minus-covered,
+> which is the same quantity as `Uncovered gaps` below, so that column was
+> dropped as a duplicate. The spans-instead-of-events re-serialisation was also
+> dropped, because the rows already in the database are in event format and the
+> change would have forced the sweep to parse both. See the plan's *Correction to
+> the spec* section.
 
 | Column | Type | Meaning |
 |---|---|---|
