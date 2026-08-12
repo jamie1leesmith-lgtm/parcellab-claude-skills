@@ -146,6 +146,40 @@ class TestValidateManifest(unittest.TestCase):
         m["approvals"]["products_approved_at"] = ""
         self.assertTrue(any("approval" in e for e in validate(m)))
 
+    def test_pre_gate_allows_an_unstamped_product_approval(self):
+        """Phase 0 step 7 validates BEFORE the gate that stamps this.
+
+        The manifest moved ahead of both gates so the run page could render
+        what it asks about, which put validation before the moment products are
+        actually approved. Requiring the stamp there forces a conductor to
+        either fake a timestamp or skip validation — live 2026-08-12 the run
+        carried `null` through the gates and validated a temp copy instead.
+        """
+        m = valid_manifest()
+        m["approvals"]["products_approved_at"] = None
+        self.assertEqual(
+            [e for e in validate(m, pre_gate=True) if "approval" in e], [])
+
+    def test_pre_gate_still_enforces_everything_else(self):
+        # A structural error must not be waved through by the softer mode.
+        m = valid_manifest()
+        m["approvals"]["products_approved_at"] = None
+        m["brand"]["region"] = "FR"
+        self.assertTrue(
+            any("brand.region" in e for e in validate(m, pre_gate=True)))
+
+    def test_pre_gate_still_requires_intake_completion(self):
+        # Intake IS finished by step 7; only the approval stamp is not.
+        m = valid_manifest()
+        m["approvals"]["intake_completed_at"] = ""
+        self.assertTrue(
+            any("intake" in e for e in validate(m, pre_gate=True)))
+
+    def test_post_gate_is_the_default_and_still_demands_the_stamp(self):
+        m = valid_manifest()
+        m["approvals"]["products_approved_at"] = None
+        self.assertTrue(any("approval" in e for e in validate(m)))
+
     def test_bad_brand_region(self):
         m = valid_manifest()
         m["brand"]["region"] = "FR"

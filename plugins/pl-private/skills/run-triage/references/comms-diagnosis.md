@@ -67,15 +67,20 @@ Filter eligibility is necessary, not sufficient — a recipient role in
 See the *Known limitation: recipient roles are a second gate* section of
 `order-lifecycle`'s SKILL.md.
 
-### A missing comm inside the first 15 minutes is not yet evidence
+### A missing comm on a single look is not yet evidence
 
 Comms do not arrive at a uniform lag. `package_delivered_*` is consistently
 slowest — measured at over 10 minutes on one parcel of a split order
 (2026-08-11, account 1626718).
 
 Checking early shows every checkpoint attached with a comm missing, which looks
-exactly like a broken trigger and is not. Wait the full window before forming a
-theory.
+exactly like a broken trigger and is not.
+
+The run window was 15 minutes until 2026-08-12, when it came down to 5. **A
+triage therefore cannot assume a run's own Beat 2 waited long enough for a slow
+split parcel.** Before treating a row's "comm missing" as real, check the gap
+between the final event and the verification, and re-look yourself — a comm that
+has since landed turns the finding into a timing artefact, not a defect.
 
 ## Open questions
 
