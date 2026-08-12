@@ -310,8 +310,12 @@ next republish. Publishing is never load-bearing.
    core 4 (four distinct product types) · per-order product distribution ·
    (retain-shopify) the seed set = core 4 + extras at distinct price points ·
    the order/scenario/fraud matrix with expected comm per event (mark
-   unproven items) · CDC region/category/config source · CDC synthetic
-   generation on/off (+ which slots) · the account by name. One explicit yes
+   unproven items) · CDC region/category/config source ·
+   `CDC synthetic generation: off` (a fixed line, never a question) ·
+   **every extra agreed at Q7, field by field with its actual value** —
+   including each auto-derived article weight listed per article, because an
+   auto-derived value the user never saw is worse than one they rejected ·
+   the account by name. One explicit yes
    covers all of it; any tweak loops back here. When the gate opens: record it
    via `run_state.py` — `mark(d, "gate", "plan", "asked")` as you pose it, and
    again on every re-ask — re-render with `render_run_page.py <run dir>` and
@@ -350,8 +354,15 @@ next republish. Publishing is never load-bearing.
    `brand_tokens{tokens,logo,hero}`, `orders[]` with per-order
    `{label,dir,cdc_slot,fraud_level,customer{name,email},products,
    shipments[{label,scenario,courier,products,events,unproven_events?,
-   unproven_chain?}]}`, `gates{order_lifecycle{gate_b_answered,gate_c,
-   extras}}`, `approvals{products_approved_at,intake_completed_at}`).
+   unproven_chain?}]}`,
+   `gates{order_lifecycle{gate_b_answered, gate_c: "send-as-is"|"extras",
+   extras}}` — `extras` is empty when `gate_c` is `send-as-is`, and non-empty
+   otherwise. Promise dates in `extras` are `YYYY-MM-DD` (a full ISO datetime
+   is rejected by the API). `extras.article_weights` is keyed by product `id`,
+   never SKU — the same rule as everywhere else in the manifest —
+   `{<product id>: {weight: <number>, weight_unit: "kg"|"g"|"lbs"|"oz"}}`.
+   `validate_manifest.py` enforces all of this,
+   `approvals{products_approved_at,intake_completed_at}`).
    On retain-shopify also write `seed/seed-products.json`
    (`{products: core4 ∪ shopify_extra in scrape shape, location_id,
    prospect_handle}`). The scrape lane's raw output stays on disk under the
