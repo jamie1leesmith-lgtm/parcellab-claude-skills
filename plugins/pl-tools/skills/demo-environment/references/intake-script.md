@@ -103,7 +103,9 @@ Match case-insensitively on the `product_type` string; first match wins.
 | home, kitchen, decor, furnish | 800 g |
 | (no match) | 500 g |
 
-Unit is `g` unless the user says otherwise. Write them to
+Unit is `g` unless the user says otherwise, in which case it must be one of
+`kg`, `g`, `lbs`, `oz` — `validate_manifest.py` rejects any other
+`weight_unit`. Write them to
 `extras.article_weights`, keyed by product **`id`** (the goods code) and never
 by SKU — `validate_manifest.py` rejects SKU keys.
 
