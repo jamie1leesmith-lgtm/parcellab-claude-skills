@@ -92,3 +92,9 @@ re-deriving, which defeats the file.
 
 A hypothesis that turned out wrong belongs under *Proven non-causes*, not
 deleted. Knowing what has already been ruled out is most of the value here.
+
+Findings about the sweep or ledger tooling itself — not about why a comm did or
+did not fire — do not belong in this file. See `scripts/triage_sweep.py`'s
+`multi_select()` docstring and its commit `0a72a3a` for an example: the Notion
+connector returns multi-select columns as JSON strings, which inflated every
+severity score until the sweep coerced them.
