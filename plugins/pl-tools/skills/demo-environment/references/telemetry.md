@@ -68,6 +68,7 @@ Columns, exactly:
 | Action taken | Text | |
 | Fix commit | URL | |
 | Verified in run | Text | |
+| Timing note | Text | a factual, non-causal size-and-location summary from run-triage's Phase 2b (`Largest gap`, `Unattributed`) — never a claim about why. Written by review, like the other triage columns above it. See `pl-private`'s `run-triage` skill if installed. |
 
 ### Reading the timing columns
 
