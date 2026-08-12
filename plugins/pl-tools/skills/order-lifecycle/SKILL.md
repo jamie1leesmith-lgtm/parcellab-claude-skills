@@ -582,10 +582,20 @@ plausible-but-wrong diagnosis (the delivered action has
 until you notice the out-for-delivery action that *did* fire carries the
 identical recipient config).
 
-Once the window has elapsed, start from the recorded non-causes rather than from
-config: the run-triage skill's `references/comms-diagnosis.md` lists what has
-already been proven not to block sending, with the account and object each was
-proven against.
+Once the window has elapsed, check whether the message can send at all before
+reading any further config. Resolve the journey channel's `messageType` to its
+message with `parcellab journey message list --account <id>` and read
+`hasReleasedVersion`: a message that has never been released renders nothing,
+while the trigger still matches and the event still names the message it picked.
+Proven live 2026-08-12 on account 1626102, where every delivery message was
+unreleased and the account had sent zero emails.
+
+`releaseStatus` is not that gate — a `draft` message serves its last released
+version, and message 75240 on account 1626718 is `draft` with 51 emails sent.
+
+The fuller ledger of proven causes and non-causes, each with the account it was
+proven against, is the run-triage skill's `references/comms-diagnosis.md` if you
+have that skill installed.
 
 Two things confirmed live on account 1626718, worth not re-deriving:
 

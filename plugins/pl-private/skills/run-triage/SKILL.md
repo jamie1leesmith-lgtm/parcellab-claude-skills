@@ -28,11 +28,23 @@ Query the runs database for rows where `Triage status` is `Untriaged`.
 - Database: `67609211a22643bfaa6bf94ccbd3f391`
 - Data source: `6061c7ca-bbe2-484c-a072-c0a77d9394d3`
 
-Pipe the rows as a JSON array to the ranking script:
+Query with the connector's SQL mode, which returns one flat object per row —
+`{"Run ID": …, "Outcome": …, "Largest gap": …}` — the shape the script reads.
+Write that array to a file, then pipe it in:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/triage_sweep.py
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/triage_sweep.py < rows.json
 ```
+
+The script reads a JSON array on stdin, so it needs a redirect or a pipe. Run
+bare it exits with a `JSONDecodeError` on empty input.
+
+It scores on these keys, using the Notion column names verbatim: `Run ID`,
+`Outcome`, `Reached`, `Comms expected`, `Comms fired`, `Lanes failed`,
+`Deviations`, `Largest gap`, `Total elapsed`. A row whose keys arrive under other
+names scores as though every field were absent — every row comes back with the
+same low score and the ranking is quietly uniform rather than wrong-looking. If
+the table looks suspiciously flat, check the keys before trusting the order.
 
 It scores each row on severity (stalled or failed · comms fired short of comms
 expected · failed lanes · deviations · never reached Beat 2) and breaks ties on

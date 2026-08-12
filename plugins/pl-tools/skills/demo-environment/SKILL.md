@@ -595,10 +595,20 @@ explicitly covering the good AND bad arcs the run promised.
 **Before diagnosing a missing comm, check whether the message can send at all.**
 Resolve the journey channel's `messageType` to its message and read
 `hasReleasedVersion` — a message that has never been released renders nothing,
-while the trigger still matches and the event still names it. Proven causes and
-proven non-causes are listed in the run-triage skill's
-`references/comms-diagnosis.md`; several plausible hypotheses there are already
-disproven, and re-deriving one costs a run about twenty minutes.
+while the trigger still matches and the event still names it.
+
+Two things that look like causes and are not, both proven live on 2026-08-12:
+
+- **`releaseStatus: draft` does not block sending.** A draft serves its last
+  released version — account 1626718 message 75240 is `draft` and has sent 51
+  emails. `hasReleasedVersion` is the gate, not `releaseStatus`.
+- **`recipientCustomer: false` with `recipientPlTest: true` does not block
+  sending.** That is normal demo-account config. Account 1626718 sent 100 emails
+  with channel config byte-identical to a failing account's.
+
+Re-deriving either one costs a run about twenty minutes. The fuller ledger, with
+the command for each check, is the run-triage skill's
+`references/comms-diagnosis.md` if you have that skill installed.
 
 **Restore the edit-mode guard.** Once every driver has exited and the
 verification above is done, if the guard was repointed for this run, restore it
