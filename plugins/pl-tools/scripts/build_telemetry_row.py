@@ -193,6 +193,8 @@ def build_row(run_dir, stage, skill_version=""):
         "Slowest lane": timing["slowest_lane"],
         "Timeline": timeline_json(timing["timeline"]),
         "Duration to build": timing["duration_to_build_min"],
+        "Largest gap": timing["largest_gap"],
+        "Largest gap after": timing["largest_gap_after"],
     }
     row.update(page_columns(state.get("page"),
                             timings.driver_intervals(run_dir)))

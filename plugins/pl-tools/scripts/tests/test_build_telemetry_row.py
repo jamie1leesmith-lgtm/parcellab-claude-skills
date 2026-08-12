@@ -138,6 +138,60 @@ class TestTimingColumns(unittest.TestCase):
             {"brand": {"name": "Currys"}, "orders": []}))
         return str(d)
 
+    def _kapten_run_dir(self):
+        """A run with a measurable gap between orders and comms phases.
+
+        The largest gap is 18.5 minutes (1110 seconds) after orders:end,
+        which is the delay before the comms phase starts.
+        """
+        import json
+        import pathlib
+        import tempfile
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / "orders").mkdir()
+        (d / "results").mkdir()
+        (d / "run-state.json").write_text(json.dumps({
+            "run_id": "kapten-20260812-0001",
+            "lanes": {},
+            "orders": [],
+            "failures": [],
+            "timeline": [
+                {"kind": "lane", "name": "orders", "phase": "start",
+                 "at": "2026-08-12T20:00:00Z"},
+                {"kind": "lane", "name": "orders", "phase": "end",
+                 "at": "2026-08-12T20:05:00Z"},
+                {"kind": "lane", "name": "comms", "phase": "start",
+                 "at": "2026-08-12T20:23:30Z"},
+                {"kind": "lane", "name": "comms", "phase": "end",
+                 "at": "2026-08-12T20:25:00Z"},
+            ],
+        }))
+        (d / "demo-manifest.json").write_text(json.dumps(
+            {"brand": {"name": "Kapten"}, "orders": []}))
+        return str(d)
+
+    def _single_stamp_run_dir(self):
+        """A run with only one timestamp entry (cannot measure a gap)."""
+        import json
+        import pathlib
+        import tempfile
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / "orders").mkdir()
+        (d / "results").mkdir()
+        (d / "run-state.json").write_text(json.dumps({
+            "run_id": "single-1",
+            "lanes": {},
+            "orders": [],
+            "failures": [],
+            "timeline": [
+                {"kind": "lane", "name": "orders", "phase": "start",
+                 "at": "2026-08-12T20:00:00Z"},
+            ],
+        }))
+        (d / "demo-manifest.json").write_text(json.dumps(
+            {"brand": {"name": "Single"}, "orders": []}))
+        return str(d)
+
     def _corrupt_run_dir(self):
         """A run whose lane marks are reversed — an impossible duration."""
         import json
@@ -226,6 +280,18 @@ class TestTimingColumns(unittest.TestCase):
         for column in ("Issue key", "Reviewed at", "Reviewed by",
                        "Action taken", "Fix commit", "Verified in run"):
             self.assertNotIn(column, row)
+
+    def test_row_carries_the_largest_gap_columns(self):
+        row = btr.build_row(self._kapten_run_dir(), "beat2", skill_version="abc1234")
+        self.assertEqual(row["Largest gap"], 18.5)
+        self.assertEqual(row["Largest gap after"], "orders:end")
+
+    def test_largest_gap_is_null_when_unmeasurable(self):
+        """A one-stamp run is unmeasured, not instantaneous."""
+        row = btr.build_row(
+            self._single_stamp_run_dir(), "committed", skill_version="abc1234")
+        self.assertIsNone(row["Largest gap"])
+        self.assertIsNone(row["Largest gap after"])
 
 
 
