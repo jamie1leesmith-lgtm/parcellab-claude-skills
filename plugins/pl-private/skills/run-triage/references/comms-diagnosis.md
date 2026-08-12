@@ -79,10 +79,13 @@ theory.
 
 ## Open questions
 
-- **`Delivered` (messageType 30891) on account 1626102** has
-  `hasReleasedVersion: true` but has never been exercised. The 2026-08-12 run's
-  arc was `TrackingCreated → Dispatch → InTransit → WarehouseDelay`, so
-  `Delivered` was never pushed. Whether it sends on that account is untested.
+- (Resolved 2026-08-12, closed rather than deleted so the history is visible.)
+  ~~`Delivered` (messageType 30891) on account 1626102 has `hasReleasedVersion:
+  true` but has never been exercised...~~ Moot: journey `13736` and messageType
+  30891 no longer exist. The account was rebuilt into two new journeys
+  (`Outbound Email Flow` 17475, `Return Experience Flow` 17476), published
+  `2026-08-12T12:24`, with every message `hasReleasedVersion: true`. Two test
+  sends at `13:21` confirm delivery-stage comms now work on this account.
 
 ## Adding an entry
 
