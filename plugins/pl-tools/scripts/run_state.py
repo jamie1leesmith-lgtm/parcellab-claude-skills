@@ -81,12 +81,25 @@ def set_meta(run_dir, path=None, account_name=None):
     return _amend(run_dir, apply)
 
 
-def mark(run_dir, kind, name, phase):
-    """Append one timeline entry. Never replaces an existing one.
+# A lane mark moves the pill too, but must never flatten a status that says
+# more than "it finished". `failed` is the run page's whole point; `published`
+# and `skipped` are lane outcomes plain `ok` cannot express.
+_RICHER_THAN_OK = ("failed", "published", "skipped")
 
-    This is the record durations are derived from. `set_lane` keeps only the
-    latest transition — correct for the run page's status pills, useless for
-    measuring how long anything took.
+
+def mark(run_dir, kind, name, phase):
+    """Append one timeline entry, and for a lane, move its status pill.
+
+    This is the record durations are derived from — append-only, so it never
+    replaces an existing entry.
+
+    A `kind="lane"` mark **also** updates `state["lanes"][name]`, which is what
+    the run page's pills render from: `start` → running, `end` → ok. The two
+    used to be separate calls, and SKILL.md documents only this one, so every
+    real run left its pills on "pending" while the tests — which call
+    `set_lane` directly — stayed green. Call `set_lane` explicitly for an
+    outcome richer than ok (published, skipped, failed); a later `end` mark
+    will not overwrite it.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown kind {kind!r}; expected one of {KINDS}")
@@ -96,6 +109,16 @@ def mark(run_dir, kind, name, phase):
     def apply(state):
         state.setdefault("timeline", []).append(
             {"kind": kind, "name": name, "phase": phase, "at": _now()})
+        if kind != "lane" or name not in LANES:
+            return
+        lanes = state.setdefault("lanes", {})
+        current = (lanes.get(name) or {}).get("status")
+        if current in _RICHER_THAN_OK:
+            return
+        status = {"start": "running", "end": "ok"}.get(phase)
+        if status:
+            lanes[name] = dict(lanes.get(name) or {},
+                               status=status, at=_now())
 
     return _amend(run_dir, apply)
 

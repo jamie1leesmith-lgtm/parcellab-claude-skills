@@ -1,4 +1,6 @@
 """Unit tests for render_run_page. Stdlib unittest — no pytest."""
+import io
+import json
 import pathlib
 import sys
 import tempfile
@@ -7,6 +9,22 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import render_run_page  # noqa: E402
 import run_state  # noqa: E402
+
+
+def at_plan_gate(state):
+    """The state a plan-content test means: the ✋ gate is open.
+
+    The plan card is revealed by the plan gate being asked, not by the manifest
+    existing — the manifest is written before both gates so the page can render
+    what it asks about, and state 2b (the ★ template gate) must not show the
+    plan yet. A test about what the plan *contains* therefore has to say which
+    gate it is standing at.
+    """
+    state = dict(state)
+    state["timeline"] = list(state.get("timeline", [])) + [
+        {"kind": "gate", "name": "plan", "phase": "asked",
+         "at": "2026-08-11T18:39:00Z"}]
+    return state
 
 
 def a_state(finished=False):
@@ -124,7 +142,7 @@ class TestRenderRunPage(unittest.TestCase):
         never ran. Checks the specific columns the row's own description named:
         customer, fraud level, scenario, and the event chain.
         """
-        html = render_run_page.render(a_state(), manifest=a_manifest())
+        html = render_run_page.render(at_plan_gate(a_state()), manifest=a_manifest())
         self.assertIn("Run plan", html)
         self.assertIn("Jane Doe", html)
         self.assertIn("low", html)
@@ -132,7 +150,7 @@ class TestRenderRunPage(unittest.TestCase):
         self.assertIn("InTransit → OutForDelivery → Delivered", html)
 
     def test_plan_gate_renders_the_run_facts(self):
-        html = render_run_page.render(a_state(), manifest=a_manifest())
+        html = render_run_page.render(at_plan_gate(a_state()), manifest=a_manifest())
         self.assertIn("retain-shopify", html)
         self.assertIn("Currys demo", html)
         self.assertIn("currys-demo.myshopify.com", html)
@@ -266,20 +284,20 @@ class TestImageLogo(unittest.TestCase):
 
 class TestPlan(unittest.TestCase):
     def test_orders_render_with_customer_scenario_and_events(self):
-        html = render_run_page.render(a_state(), manifest=MANIFEST)
+        html = render_run_page.render(at_plan_gate(a_state()), manifest=MANIFEST)
         self.assertIn("Emily Turner", html)
         self.assertIn("happy", html)
         self.assertIn("InTransit", html)
         self.assertIn("low", html)
 
     def test_selected_products_are_labelled_core_and_extra(self):
-        html = render_run_page.render(a_state(), manifest=MANIFEST)
+        html = render_run_page.render(at_plan_gate(a_state()), manifest=MANIFEST)
         self.assertIn("Jug Kettle", html)
         self.assertIn("core", html)
         self.assertIn("extra", html)
 
     def test_plan_shows_destination_and_pace(self):
-        html = render_run_page.render(a_state(), manifest=MANIFEST)
+        html = render_run_page.render(at_plan_gate(a_state()), manifest=MANIFEST)
         self.assertIn("GB", html)
         self.assertIn("standard", html)
 
@@ -287,12 +305,12 @@ class TestPlan(unittest.TestCase):
         # The default gap the driver actually uses. Stated on the page so a
         # reader can predict when the next event lands; kept in a test so the
         # page and run-lifecycle.sh cannot drift apart silently.
-        html = render_run_page.render(a_state(), manifest=MANIFEST)
+        html = render_run_page.render(at_plan_gate(a_state()), manifest=MANIFEST)
         self.assertIn("200s between events", html)
 
     def test_fast_pace_is_60_seconds(self):
         manifest = dict(MANIFEST, run={"pace": "fast"})
-        html = render_run_page.render(a_state(), manifest=manifest)
+        html = render_run_page.render(at_plan_gate(a_state()), manifest=manifest)
         self.assertIn("60s between events", html)
 
     def test_products_card_shows_only_the_selected_set(self):
@@ -302,8 +320,8 @@ class TestPlan(unittest.TestCase):
             **{"REJECTED-1": {"name": "Not Chosen", "price": "1.00",
                               "product_type": "Other", "pdp_url": "",
                               "image_url": "", "data_uri": None}}))
-        html = render_run_page.render(a_state(), manifest=MANIFEST,
-                                      assets=assets)
+        html = render_run_page.render(at_plan_gate(a_state()),
+                                      manifest=MANIFEST, assets=assets)
         self.assertNotIn("Not Chosen", html)
 
     def test_unknown_account_renders_a_dash_not_the_word_none(self):
@@ -320,6 +338,158 @@ class TestPlan(unittest.TestCase):
     def test_no_manifest_still_renders(self):
         html = render_run_page.render(a_state(), assets=ASSETS)
         self.assertIn("uniqlo-20260811-1913", html)
+
+
+class TestGatesCanRenderWhatTheyAsk(unittest.TestCase):
+    """The page must show the thing it is asking the user to approve.
+
+    Both approval gates render from data written *after* them: the ★ template
+    gate is Phase 0 step 7 and the ✋ plan gate is step 8, while the manifest —
+    which `main()` needs to find the template HTML, and which `_plan` renders
+    from — is written at step 9. So the page was blank at exactly the two
+    moments a decision was asked for (thenorthface 2026-08-12: the user
+    approved a template against a page showing nothing).
+
+    The fix writes the manifest before the gates, which makes the reveal
+    ordering load-bearing: state 2b says the template gate shows the preview
+    and swatches ONLY. That is now derived from the timeline — the plan appears
+    once the plan gate has actually been asked.
+    """
+
+    def _run_dir(self, brand="The North Face"):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "thenorthface-20260812-2243", "retain-shopify",
+                       "Demo - JLS")
+        manifest = dict(MANIFEST, brand=dict(MANIFEST["brand"], name=brand))
+        (pathlib.Path(d) / "demo-manifest.json").write_text(
+            json.dumps(manifest))
+        return d
+
+    def _render_main(self, run_dir):
+        argv = sys.argv
+        sys.argv = ["render_run_page.py", str(run_dir)]
+        try:
+            render_run_page.main()
+        finally:
+            sys.argv = argv
+        return (pathlib.Path(run_dir) / "run-page.html").read_text()
+
+    def test_plan_is_hidden_until_the_plan_gate_is_asked(self):
+        # State 2b: the template gate shows the preview and swatches only.
+        # Deliberately NOT at_plan_gate() — the manifest exists by now, and the
+        # manifest alone must not reveal the plan.
+        html = render_run_page.render(a_state(), manifest=MANIFEST)
+        self.assertNotIn("Run plan", html)
+
+    def test_plan_appears_once_the_plan_gate_is_asked(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", "retain-shopify", "Demo - JLS")
+        run_state.mark(d, "gate", "plan", "asked")
+        html = render_run_page.render(run_state.load(d), manifest=MANIFEST)
+        self.assertIn("Run plan", html)
+        self.assertIn("Emily Turner", html)
+
+    def test_plan_stays_visible_after_the_gate_is_answered(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", "retain-shopify", "Demo - JLS")
+        run_state.mark(d, "gate", "plan", "asked")
+        run_state.mark(d, "gate", "plan", "answered")
+        html = render_run_page.render(run_state.load(d), manifest=MANIFEST)
+        self.assertIn("Run plan", html)
+
+    def test_template_renders_from_the_run_id_when_no_brand_is_known(self):
+        # The template gate can precede a manifest brand; the run id's handle
+        # is the same string branded-template names the file with.
+        d = tempfile.mkdtemp()
+        run_state.init(d, "thenorthface-20260812-2243", "retain-shopify",
+                       "Demo - JLS")
+        self.assertEqual(
+            render_run_page.template_basenames(run_state.load(d), None),
+            ["thenorthface"])
+
+    def test_template_prefers_the_manifest_brand_when_present(self):
+        d = self._run_dir(brand="Pets at Home")
+        state = run_state.load(d)
+        manifest = json.loads(
+            (pathlib.Path(d) / "demo-manifest.json").read_text())
+        names = render_run_page.template_basenames(state, manifest)
+        self.assertIn("petsathome", names)
+
+    def test_main_finds_the_template_without_a_manifest(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "zzbrandtest-20260812-0001", "engage", "Demo - JLS")
+        previews = pathlib.Path.home() / "parcellab-previews"
+        previews.mkdir(parents=True, exist_ok=True)
+        stub = previews / "zzbrandtest-parcellab-layout.html"
+        stub.write_text("<html><body>STUBTEMPLATE</body></html>")
+        try:
+            html = self._render_main(d)
+        finally:
+            stub.unlink()
+        self.assertIn("<iframe", html)
+        self.assertIn("Email template", html)
+
+
+class TestMissingAssetsIsLoud(unittest.TestCase):
+    """A scrape that succeeded but was never inlined renders an empty page.
+
+    `inline_assets.py` is one bullet inside Phase 0 step 6; skipping it leaves
+    `scrape/assets.json` absent, and both `_brand_header` and `_products` open
+    with `if not assets: return ""`. The render still "succeeds", so the
+    conductor republishes a blank page and only the user notices
+    (thenorthface 2026-08-12).
+    """
+
+    def _run_dir_with_scrape_ok(self):
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", "engage", "Demo - JLS")
+        results = pathlib.Path(d) / "results"
+        results.mkdir(parents=True, exist_ok=True)
+        (results / "scrape.json").write_text(
+            json.dumps({"status": "ok", "error": None}))
+        return d
+
+    def test_render_warns_when_scrape_is_ok_but_assets_are_missing(self):
+        d = self._run_dir_with_scrape_ok()
+        argv, stderr = sys.argv, sys.stderr
+        sys.argv = ["render_run_page.py", str(d)]
+        sys.stderr = io.StringIO()
+        try:
+            render_run_page.main()
+            captured = sys.stderr.getvalue()
+        finally:
+            sys.argv, sys.stderr = argv, stderr
+        self.assertIn("assets.json", captured)
+        self.assertIn("inline_assets.py", captured)
+
+    def test_no_warning_once_assets_exist(self):
+        d = self._run_dir_with_scrape_ok()
+        scrape = pathlib.Path(d) / "scrape"
+        scrape.mkdir(parents=True, exist_ok=True)
+        (scrape / "assets.json").write_text(json.dumps(ASSETS))
+        argv, stderr = sys.argv, sys.stderr
+        sys.argv = ["render_run_page.py", str(d)]
+        sys.stderr = io.StringIO()
+        try:
+            render_run_page.main()
+            captured = sys.stderr.getvalue()
+        finally:
+            sys.argv, sys.stderr = argv, stderr
+        self.assertEqual(captured, "")
+
+    def test_no_warning_before_the_scrape_has_finished(self):
+        # States 1 and 2 legitimately have no assets yet.
+        d = tempfile.mkdtemp()
+        run_state.init(d, "currys-1", "engage", "Demo - JLS")
+        argv, stderr = sys.argv, sys.stderr
+        sys.argv = ["render_run_page.py", str(d)]
+        sys.stderr = io.StringIO()
+        try:
+            render_run_page.main()
+            captured = sys.stderr.getvalue()
+        finally:
+            sys.argv, sys.stderr = argv, stderr
+        self.assertEqual(captured, "")
 
 
 class TestClock(unittest.TestCase):
