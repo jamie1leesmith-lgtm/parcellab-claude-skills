@@ -112,15 +112,16 @@ fixing its own defects" rather than a genuine bottleneck, and with two rows in
 the database a confident guess at which one this is would likely be wrong —
 and would undercut every other claim this skill makes.
 
-Run the script against the row's own timing columns:
+Write the top row's own JSON object — not the Phase 1 array — to `row.json`,
+then run the script against it:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/timing_note.py < row.json
 ```
 
 It reads `Total elapsed`, `Largest gap`, `Largest gap after`, and
-`Unattributed`, using the Notion column names verbatim, and prints a fixed
-two-sentence note — or nothing, when the row predates timing instrumentation
+`Unattributed`, using the Notion column names verbatim, and prints a note of up
+to three sentences — or nothing, when the row predates timing instrumentation
 (Currys' shape: `Total elapsed` is null).
 
 If it prints nothing, say so in the triage output and write nothing to
