@@ -591,6 +591,14 @@ the user): per order,
 public order-info lookup by courier + tracking_number; report checkpoints
 attached vs planned and `contacted_with_messages` vs the expected comms —
 explicitly covering the good AND bad arcs the run promised.
+
+**Before diagnosing a missing comm, check whether the message can send at all.**
+Resolve the journey channel's `messageType` to its message and read
+`hasReleasedVersion` — a message that has never been released renders nothing,
+while the trigger still matches and the event still names it. Proven causes and
+proven non-causes are listed in the run-triage skill's
+`references/comms-diagnosis.md`; several plausible hypotheses there are already
+disproven, and re-deriving one costs a run about twenty minutes.
 **Restore the edit-mode guard.** Once every driver has exited and the
 verification above is done, if the guard was repointed for this run, restore it
 to the user's own account — no question, and report it in one line. If the

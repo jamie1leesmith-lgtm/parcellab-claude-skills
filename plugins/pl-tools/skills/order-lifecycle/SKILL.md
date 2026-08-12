@@ -582,6 +582,11 @@ plausible-but-wrong diagnosis (the delivered action has
 until you notice the out-for-delivery action that *did* fire carries the
 identical recipient config).
 
+Once the window has elapsed, start from the recorded non-causes rather than from
+config: the run-triage skill's `references/comms-diagnosis.md` lists what has
+already been proven not to block sending, with the account and object each was
+proven against.
+
 Two things confirmed live on account 1626718, worth not re-deriving:
 
 - **`delivery_location_type: "Unknown"` is fine.** The `Delivered` trigger's event
