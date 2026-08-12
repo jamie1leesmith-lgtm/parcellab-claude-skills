@@ -150,3 +150,42 @@ class TestTimeline(unittest.TestCase):
         run_state._write(d, state)
         run_state.mark(d, "gate", "plan", "asked")
         self.assertEqual(len(run_state.load(d)["timeline"]), 1)
+
+
+class TestPageTelemetry(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        run_state.init(self.dir, "uniqlo-20260811-1913", "engage", "Demo - JLS")
+
+    def test_init_seeds_an_empty_page_section(self):
+        state = run_state.load(self.dir)
+        self.assertEqual(state["page"], {"renders": [], "publishes": []})
+
+    def test_record_render_appends_a_stamp(self):
+        state = run_state.record_render(self.dir)
+        self.assertEqual(len(state["page"]["renders"]), 1)
+        self.assertRegex(state["page"]["renders"][0]["at"],
+                         r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+    def test_record_publish_keeps_the_url(self):
+        state = run_state.record_publish(self.dir, "https://x.test/a")
+        self.assertEqual(state["page"]["publishes"][0]["url"],
+                         "https://x.test/a")
+
+    def test_recorders_append_never_replace(self):
+        run_state.record_render(self.dir)
+        run_state.record_render(self.dir)
+        run_state.record_publish(self.dir, "https://x.test/a")
+        state = run_state.record_publish(self.dir, "https://x.test/b")
+        self.assertEqual(len(state["page"]["renders"]), 2)
+        self.assertEqual([p["url"] for p in state["page"]["publishes"]],
+                         ["https://x.test/a", "https://x.test/b"])
+
+    def test_recorders_survive_a_state_written_before_page_existed(self):
+        state = run_state.load(self.dir)
+        del state["page"]
+        run_state._write(self.dir, state)
+        state = run_state.record_render(self.dir)
+        self.assertEqual(len(state["page"]["renders"]), 1)
+        state = run_state.record_publish(self.dir, "https://x.test/a")
+        self.assertEqual(len(state["page"]["publishes"]), 1)

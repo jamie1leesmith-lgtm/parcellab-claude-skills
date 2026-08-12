@@ -55,6 +55,7 @@ def init(run_dir, run_id, path, account_name):
         "timeline": [],
         "orders": [],
         "schedule": {},
+        "page": {"renders": [], "publishes": []},
         "failures": [],
     }
     return _write(run_dir, state)
@@ -156,6 +157,35 @@ def set_schedule(run_dir, started_at, gap_seconds):
     def apply(state):
         state["schedule"] = {"started_at": started_at,
                              "gap_seconds": int(gap_seconds)}
+
+    return _amend(run_dir, apply)
+
+
+def _page(state):
+    return state.setdefault("page", {"renders": [], "publishes": []})
+
+
+def record_render(run_dir):
+    """Stamp a completed render. Called by render_run_page.py itself, so a
+    render cannot happen unrecorded — this is the trustworthy half of the
+    page telemetry, against which self-reported publishes are compared.
+    """
+    def apply(state):
+        _page(state).setdefault("renders", []).append({"at": _now()})
+
+    return _amend(run_dir, apply)
+
+
+def record_publish(run_dir, url):
+    """Stamp an Artifact call and the URL it returned.
+
+    Self-reported: only the conductor knows a publish happened. A publish
+    count below the render count is therefore the signal that the Artifact
+    call was skipped.
+    """
+    def apply(state):
+        _page(state).setdefault("publishes", []).append(
+            {"at": _now(), "url": url})
 
     return _amend(run_dir, apply)
 
