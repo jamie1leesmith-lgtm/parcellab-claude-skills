@@ -11,9 +11,72 @@ def row(**kw):
     return base
 
 
+class MultiSelectTests(unittest.TestCase):
+    """The connector's SQL mode returns multi-select columns as JSON strings.
+
+    Found on the first live sweep, 2026-08-12: `len()` on the string counted
+    characters, so a 2-deviation row scored 38 and a 4-deviation row 86 —
+    ranking by string length, with the order inverted and the numbers still
+    looking plausible.
+    """
+
+    def test_json_string_counts_items_not_characters(self):
+        value = '["comm_missing","workaround_invented"]'
+        self.assertEqual(triage_sweep.multi_select(value),
+                         ["comm_missing", "workaround_invented"])
+        self.assertEqual(len(triage_sweep.multi_select(value)), 2)
+
+    def test_real_list_passes_through(self):
+        self.assertEqual(triage_sweep.multi_select(["scrape"]), ["scrape"])
+
+    def test_none_is_no_items(self):
+        self.assertEqual(triage_sweep.multi_select(None), [])
+
+    def test_empty_json_array_string_is_no_items(self):
+        self.assertEqual(triage_sweep.multi_select("[]"), [])
+
+    def test_malformed_string_is_no_items_not_a_crash(self):
+        """A malformed cell must not decide the ranking, or raise."""
+        self.assertEqual(triage_sweep.multi_select("not json"), [])
+
+    def test_non_list_json_is_no_items(self):
+        self.assertEqual(triage_sweep.multi_select('"comm_missing"'), [])
+
+
 class SeverityTests(unittest.TestCase):
     def test_clean_run_scores_zero(self):
         self.assertEqual(triage_sweep.severity(row()), 0)
+
+    def test_deviations_as_a_json_string_score_per_item(self):
+        """The live-data shape: two deviations must score 2, not 38."""
+        scored = triage_sweep.severity(
+            row(Deviations='["comm_missing","workaround_invented"]'))
+        self.assertEqual(scored, 2)
+
+    def test_failed_lanes_as_a_json_string_score_two_each(self):
+        scored = triage_sweep.severity(
+            row(**{"Lanes failed": '["orders","cdc"]'}))
+        self.assertEqual(scored, 4)
+
+    def test_the_two_real_rows_keep_their_order(self):
+        """Regression guard for the inversion.
+
+        Before the fix Currys scored ~88 to Kapten's ~45 on deviation-string
+        length alone, putting a completed run above a stalled one that mailed
+        nobody.
+        """
+        kapten = triage_sweep.severity(row(
+            Outcome="Stalled", Reached="Beat 2",
+            Deviations='["comm_missing","workaround_invented"]',
+            **{"Comms expected": 12, "Comms fired": 0}))
+        currys = triage_sweep.severity(row(
+            Outcome="Built", Reached="Beat 1",
+            Deviations='["manual_intervention","instruction_unfollowable",'
+                       '"workaround_invented","gate_reasked"]',
+            **{"Comms expected": None, "Comms fired": None}))
+        self.assertEqual(kapten, 9)
+        self.assertEqual(currys, 6)
+        self.assertGreater(kapten, currys)
 
     def test_stalled_outcome_scores(self):
         self.assertEqual(triage_sweep.severity(row(Outcome="Stalled")), 4)

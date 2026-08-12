@@ -11,6 +11,30 @@ import sys
 SEVERE_OUTCOMES = ("Stalled", "Failed")
 
 
+def multi_select(value):
+    """Items in a Notion multi-select, whichever shape it arrives in.
+
+    The connector's SQL mode returns multi-select columns as a JSON *string*,
+    not a list — `'["comm_missing","workaround_invented"]'`. Calling `len()` on
+    that counts characters, so the first live sweep (2026-08-12) scored a
+    two-deviation row as 38 and a four-deviation row as 86, ranking them by
+    string length and inverting the order. The scores looked plausible, which is
+    what made it worth guarding rather than documenting.
+
+    Anything unparseable counts as no items: a malformed cell should not decide
+    the ranking.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return list(value)
+
+
 def severity(row):
     """Higher is worse.
 
@@ -38,8 +62,8 @@ def severity(row):
     if row.get("Reached") != "Beat 2":
         score += 2
 
-    score += 2 * len(row.get("Lanes failed") or [])
-    score += len(row.get("Deviations") or [])
+    score += 2 * len(multi_select(row.get("Lanes failed")))
+    score += len(multi_select(row.get("Deviations")))
     return score
 
 
