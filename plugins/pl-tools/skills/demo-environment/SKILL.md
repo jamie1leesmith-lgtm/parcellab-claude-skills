@@ -319,8 +319,19 @@ URL that stopped updating.
    approved a template against a page showing nothing at all.
 7. **Write and validate the manifest — before either gate.** The manifest is
    the plan, so it has to exist before the page can render the plan. Write it
-   per the schema in step 9 below, then validate it with the command given there. Fix any
-   `MANIFEST INVALID` gaps now, while nothing has been asked or sent.
+   per the schema in step 9 below, then validate it **with `--pre-gate`**:
+
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py --pre-gate <run>/demo-manifest.json
+   ```
+
+   Fix any `MANIFEST INVALID` gaps now, while nothing has been asked or sent.
+
+   `--pre-gate` defers exactly one check: `approvals.products_approved_at`,
+   which cannot honestly exist until the ✋ gate stamps it. Write that field as
+   `null` here — **never back-date it to make a validator pass**. Step 9
+   re-validates without the flag once the yes arrives, and Phase 1 still
+   demands a fully valid manifest.
 
    Validating here rather than after the gate means a schema error is caught
    before the user is asked to approve anything, instead of forcing an
@@ -386,18 +397,32 @@ URL that stopped updating.
    it in chat as a markdown table then, and say the page is unavailable. The
    page being non-fatal never means the user approves something unseen.
 
-   **Once approved:** record it via `run_state.py` —
-   `mark(d, "gate", "plan", "answered")` at the moment the yes arrives, which
-   is where `Duration to build` starts — re-render, and republish
-   again — non-fatal. **Then open the telemetry row** (skip entirely when
-   `PL_RUN_TELEMETRY_DB` is unset): build the payload with
-   `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_telemetry_row.py <run dir> committed
-   --skill-version "$(git -C ${CLAUDE_PLUGIN_ROOT}/../.. rev-parse --short HEAD)"`,
-   then create the page in the telemetry database via the Notion connector,
-   setting `Date` to today and `Ran by` to the current user. Record the
-   returned page id in the run dir as `results/telemetry.json` so Beats 1 and 2
-   can update the same row. See
-   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/telemetry.md`.
+   **Once approved**, do these four things before any build work starts:
+
+   1. `mark(d, "gate", "plan", "answered")` at the moment the yes arrives —
+      this is where `Duration to build` starts.
+   2. Re-validate **without** `--pre-gate` (the approval stamp exists now):
+      `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py <run>/demo-manifest.json`.
+   3. Re-render and republish — non-fatal.
+   4. **Open the telemetry row.** Skip only when `PL_RUN_TELEMETRY_DB` is
+      unset — check it, do not assume:
+
+      ```bash
+      python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_telemetry_row.py <run dir> committed \
+        --skill-version "$(git -C ${CLAUDE_PLUGIN_ROOT}/../.. rev-parse --short HEAD)"
+      ```
+
+      Create the page in the telemetry database via the Notion connector,
+      setting `Date` to today and `Ran by` to the current user, then write the
+      returned page id to `results/telemetry.json` so Beats 1 and 2 update that
+      same row. See
+      `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/telemetry.md`.
+
+      **`results/telemetry.json` existing is the proof this happened** — Beats
+      1 and 2 both branch on that file, so skipping here silently disables
+      telemetry for the whole run. Live 2026-08-12 the row was never opened
+      despite `PL_RUN_TELEMETRY_DB` being set, and the omission only surfaced
+      at Beat 2, when the row had to be back-filled from the timeline.
 
    This is the first outward-facing write of the run, and it happens only after
    the gate — never before.
@@ -642,14 +667,60 @@ Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1"
 Update the telemetry row (stage `beat1`) with the build results, if
 `results/telemetry.json` exists.
 
-**Beat 2 — verified** (after each order's driver finishes AND **≥15 minutes**
-after its final event — comms lag, and delivered comms the longest: measured
-2026-08-11 at 3-4 minutes on single-parcel orders but over 10 minutes on a split
-order's parcel. Reporting at 6 minutes put a wrong defect hypothesis in front of
-the user): per order,
-public order-info lookup by courier + tracking_number; report checkpoints
+**Then arm Beat 2's wake-up, in the same turn.** Nothing else will:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wait_for_beat2.py <run dir>
+```
+
+Launch it as a **tracked background task** (`run_in_background: true`, no
+`nohup`). It sleeps until 5 minutes past the newest event across every order's
+`events.jsonl`, then exits — and that exit notification is what re-invokes you
+to run Beat 2.
+
+**A conductor only acts when something invokes it.** By Beat 1 every driver and
+watcher has finished, so unless this task is running there is no pending event
+left to wake anyone, and the run simply stops one beat short. Live 2026-08-12
+that left a completed environment sitting unverified for 19 minutes until the
+user asked why Beat 2 had not fired — the run page said `cdc ok` and nothing
+further. Arming this is not optional bookkeeping; it is the only thing that
+makes Beat 2 happen at all.
+
+If the task is somehow lost, say so plainly and run Beat 2 as soon as you next
+act — a late Beat 2 beats a silent one.
+
+**Beat 2 — verified** (after each order's driver finishes AND **≥5 minutes**
+after its final event): per order,
+order-info lookup; report checkpoints
 attached vs planned and `contacted_with_messages` vs the expected comms —
 explicitly covering the good AND bad arcs the run promised.
+
+**Read these from the response's real paths** — none of the three sit where the
+obvious name suggests, and guessing produces an empty report that reads as a
+failed run:
+
+| What | Path on the order-info response |
+|---|---|
+| Checkpoint status | `trackings[].checkpoints[].status_code` (not `status`) |
+| Comms fired | `trackings[].reporting_info.contacted_with_messages` |
+| pL courier | `trackings[].courier_info.courier` |
+
+Look the order up by **`order_number` + `account`**. The
+`courier` + `tracking_number` form this step used to specify returns
+`Unauthorized` on a conductor's credentials (live 2026-08-12, same token that
+served the `order_number` form seconds earlier).
+
+**A comm still missing at 5 minutes is not yet a defect — re-check before you
+call it one.** Wait a further 5 minutes and look again; only report a comm as
+missing once a second look agrees. This floor was 15 minutes precisely because
+an early report is worse than a late one: measured 2026-08-11, comms landed in
+3-4 minutes on single-parcel orders but took over 10 on a split order's parcel,
+and reporting at 6 minutes put a wrong defect hypothesis in front of the user.
+The floor came down to 5 on 2026-08-12 (verified against the operator's own
+inbox), so **the re-check now carries the protection the longer wait used to** —
+it is what makes 5 minutes safe, not an optional extra. A run that reports
+"comm missing" without a second look has skipped the step, and the split
+parcel is where that will bite first.
 
 **Before diagnosing a missing comm, check whether the message can send at all.**
 Resolve the journey channel's `messageType` to its message and read

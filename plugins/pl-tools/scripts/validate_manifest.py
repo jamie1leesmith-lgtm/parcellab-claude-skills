@@ -32,7 +32,17 @@ PROVEN_SEQUENCES = (
 )
 
 
-def validate(m):
+def validate(m, pre_gate=False):
+    """Collect every problem with the manifest.
+
+    `pre_gate=True` is Phase 0 step 7, which validates BEFORE the ✋ gate so a
+    schema error surfaces while nothing has been asked or sent. The one field
+    that cannot honestly exist yet is `approvals.products_approved_at` — the
+    gate that stamps it has not happened — so that check alone is deferred.
+    Everything else applies identically; the run re-validates without the flag
+    once the stamp is written, and Phase 1 still requires a fully valid
+    manifest.
+    """
     errs = []
 
     def need(cond, msg):
@@ -183,8 +193,9 @@ def validate(m):
              f"{sorted(WEIGHT_UNITS)} (got {entry.get('weight_unit')!r})")
 
     approvals = m.get("approvals", {})
-    need(bool(approvals.get("products_approved_at")),
-         "product approval timestamp missing")
+    if not pre_gate:
+        need(bool(approvals.get("products_approved_at")),
+             "product approval timestamp missing")
     need(bool(approvals.get("intake_completed_at")),
          "intake approval timestamp missing")
 
@@ -195,15 +206,17 @@ def validate(m):
 
 
 def main():
-    if len(sys.argv) != 2:
-        sys.exit("usage: validate_manifest.py <manifest-path>")
-    manifest = json.loads(open(sys.argv[1]).read())
-    errs = validate(manifest)
+    args = [a for a in sys.argv[1:] if a != "--pre-gate"]
+    pre_gate = "--pre-gate" in sys.argv[1:]
+    if len(args) != 1:
+        sys.exit("usage: validate_manifest.py [--pre-gate] <manifest-path>")
+    manifest = json.loads(open(args[0]).read())
+    errs = validate(manifest, pre_gate=pre_gate)
     if errs:
         for e in errs:
             print(f"MANIFEST INVALID: {e}")
         sys.exit(1)
-    print("MANIFEST OK")
+    print("MANIFEST OK (pre-gate)" if pre_gate else "MANIFEST OK")
 
 
 if __name__ == "__main__":

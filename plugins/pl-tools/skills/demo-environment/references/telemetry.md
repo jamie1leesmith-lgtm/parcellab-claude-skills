@@ -144,6 +144,18 @@ only on completion, every run that died would never appear, and the table would
 systematically over-represent success — hiding exactly the failures it exists to
 surface. A stalled run leaves a row with no Beat 2, which is the signal.
 
+**That signal only works if the row is opened on time.** A run that creates its
+row late — at Beat 2, say — was never capable of recording its own stall, and a
+run that skips creation entirely is invisible rather than merely incomplete.
+`results/telemetry.json` is the marker: Beats 1 and 2 branch on it, so its
+absence disables telemetry silently for the rest of the run (live 2026-08-12).
+
+**A large `Largest gap` after `cdc:end` means Beat 2's wake-up was not armed.**
+Beat 1 launches `scripts/wait_for_beat2.py` as a tracked background task; its
+exit is what re-invokes the conductor. Without it the run stops one beat short
+with every lane green, which reads as success — the 19.2-minute gap on
+`thenorthface-20260812-2328` is that failure's fingerprint.
+
 ## Rules
 
 - **Never write the triage columns from a run**, with one exception. They

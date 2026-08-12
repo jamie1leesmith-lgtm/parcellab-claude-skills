@@ -559,14 +559,22 @@ order-info lookup (account + courier/tracking_number) and report the actual
 checkpoint list and `contacted_with_messages` — that is the real proof of
 success, not the 204s.
 
-**Wait at least 15 minutes after the final event before treating a missing comm as
-a problem.** Comms do not arrive at a uniform lag: in live runs the order
-confirmation, dispatch and out-for-delivery comms each appeared within ~3-4
-minutes of their event, but `package_delivered_*` is consistently the slowest —
-3-4 minutes on single-parcel orders, and **over 10 minutes** on one parcel of a
-split order (measured 2026-08-11, account 1626718, three orders / four parcels).
-Checking early shows every checkpoint attached with a comm missing, which looks
-exactly like a broken delivered trigger and isn't.
+**Wait at least 5 minutes after the final event before treating a missing comm as
+a problem, then re-check once before reporting it.** Comms do not arrive at a
+uniform lag: in live runs the order confirmation, dispatch and out-for-delivery
+comms each appeared within ~3-4 minutes of their event, but
+`package_delivered_*` is consistently the slowest — 3-4 minutes on single-parcel
+orders, and **over 10 minutes** on one parcel of a split order (measured
+2026-08-11, account 1626718, three orders / four parcels). Checking early shows
+every checkpoint attached with a comm missing, which looks exactly like a broken
+delivered trigger and isn't.
+
+That spread is why the wait was 15 minutes until 2026-08-12, when it came down
+to 5 against the operator's own inbox. **The re-check replaces the margin the
+longer wait used to provide:** at 5 minutes a slow `package_delivered_*` on a
+split parcel may genuinely not have landed yet, so look a second time (a further
+~5 minutes) before calling anything missing. One look at 5 minutes is not a
+finding.
 
 **This window was 5 minutes and that was too short.** On the 2026-08-11 run a
 conductor checked at ~6 minutes, found the delivered comm missing, and reported
