@@ -111,11 +111,12 @@ next republish. Publishing is never load-bearing.
    an edit is overwritten by the next render. Record facts through
    `run_state.py` and re-render — that is what makes republishing cheap enough
    to do a dozen times per run.
-2. **Path + brand round:** take the prospect URL and ask ONLY the path
-   questions (returns in scope? · Shopify opp? — per *Paths*) plus, when one
-   applies, the reuse offer below — the minimum needed to know what to
-   collect, and everything that has to be settled before the scrape agent is
-   dispatched.
+2. **Path + brand round:** take the prospect URL and ask **Round 1** of
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/intake-script.md`
+   — the path questions plus, when one applies, the reuse offer. Ask them in
+   that file's order, with that file's wording. That is the minimum needed to
+   know what to collect, and everything that has to be settled before the
+   scrape agent is dispatched.
    **Prior-pool detection:** scan `$HOME/parcellab-demo-runs/` for a
    directory whose `<handle>-<ts>` handle equals this run's handle and which
    contains both `scrape/brand-tokens.json` and `scrape/product-pool.json`;
@@ -167,29 +168,24 @@ next republish. Publishing is never load-bearing.
    step 6 waits on a precondition nothing else will ever satisfy. Once
    `results/scrape.json` shows
    `ok`: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py` — `mark(d, "agent", "scrape", "end")` the moment the file lands, plus `mark(d, "lane", "scrape", "end")` — then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and republish the artifact — non-fatal. **Never hand-edit `run-page.html`;** it is derived, and the next render overwrites it.
-4. **Interview concurrently, in chat** (batch with AskUserQuestion where
-   possible) — the remaining rounds, while the scrape agent runs:
-   - destination country — **never assume it**
-   - order plan: how many orders (1–5, default 3), and per order a fraud
-     level + scenario. Offer the default matrix first: #1 low/happy,
-     #2 medium/split (A happy, B stuck-delay), #3 high/recovered. On
-     retain paths offer #4 manual_return and #5 return_tracking (both
-     happy → Delivered). Scenario vocabulary: happy · stuck-delay ·
-     recovered (`InTransit → WarehouseDelay → OutForDelivery → Delivered`,
-     proven live 2026-08-11 — no unproven label) · locker (`… → Delivered-ParcelLocker`, label:
-     status unproven) · custom (user-specified sequence, label per
-     order-lifecycle's confidence rules). Runs of 2+ orders need at least
-     one split-shipment order. Every order gets a distinct synthetic
-     customer (region-appropriate name + email) — generate and show them.
-   - **pace:** `standard` (200 s gaps, comm-ordering safe — the default) or
-     `fast` (60 s gaps, comms may arrive out of order — say so when
-     offering it). Record as the manifest's `run.pace`.
-   - CDC region (US|UK|DE) and category (Home|Electronics|Fashion) —
-     inferred from the site later, confirmed at the approval gate.
-   - **Shopify resolution (retain-shopify only):** First `command -v shopify` — if the CLI is missing, stop and point the user at `/pl-setup`'s optional Shopify CLI section (install + full-scope store auth) rather than improvising an install mid-intake; the auth must carry the order/fulfilment scopes or the order engine hits a re-consent wall later. Confirm the dev store by
-     name from `~/.claude/parcellab-shopify-seed.env` (else
-     `shopify store auth list`), then resolve the location GID immediately —
-     follow shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
+4. **Interview concurrently, in chat** — ask **Round 2** of
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/intake-script.md`
+   while the scrape agent runs, batching with AskUserQuestion where the
+   questions are independent. Ask them in that file's order, with that file's
+   wording; it also carries the default order matrix, the Gate C menu rules and
+   the article-weight derivation table. The mechanics below are not questions —
+   they are the lookups and verifications those answers depend on.
+   - **Shopify resolution (retain-shopify only):** First `command -v shopify` —
+     if the CLI is missing, stop and point the user at `/pl-setup`'s optional
+     Shopify CLI section (install + full-scope store auth) rather than
+     improvising an install mid-intake; the auth must carry the
+     order/fulfilment scopes or the order engine hits a re-consent wall later.
+     Then resolve the store **without asking**: read
+     `~/.claude/parcellab-shopify-seed.env`, else `shopify store auth list`.
+     Exactly one store → use it and state it at the ✋ gate. None → stop and
+     point at `/pl-setup`. Two or more → this is the only case that asks
+     (intake-script Q14). Then resolve the location GID immediately — follow
+     shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
      preference rules. Record both in the manifest.
    - **Target account + confirmation (every run):** the demo's target is a
      run-level choice — the user's own demo account
@@ -224,14 +220,12 @@ next republish. Publishing is never load-bearing.
      use the caller's default — say so in the final report, and note linking
      then resolves in whatever account that default config targets).
      `config_source` values: `default | parcelfashion | shopify | none`.
-     `generate_orders` is **false** unless the user asks the CDC to also
-     generate synthetic orders alongside the run's real ones — in that case
-     compose `cdc.orders` (`{name?, items?: [{product_index, quantity?}]}`,
-     0-based into the submitted products; the API has no order-type enum, only
-     free-form names). When `linked_orders` will be sent, the config matters:
-     the CDC resolves linked order numbers in the config's target account, so
-     a mismatched config fails linking with "No parcelLab order found"
-     (live-verified 2026-08-11).
+     `generate_orders` is always `false` and `cdc.orders` always `[]` — the run
+     never asks the CDC to generate synthetic orders alongside its real ones,
+     and the ✋ gate states this as a fixed line so it stays visible. The
+     config still matters for linking: the CDC resolves linked order numbers in
+     the config's target account, so a mismatched config fails linking with
+     "No parcelLab order found" (live-verified 2026-08-11).
 5. **Repeat-brand template shortcut:** look for an existing layout for this
    brand on the target account and, if one verifies live, offer to skip the
    template lane.
