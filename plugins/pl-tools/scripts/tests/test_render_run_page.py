@@ -29,6 +29,36 @@ def a_state(finished=False):
     return run_state.load(d)
 
 
+def a_manifest():
+    """A minimal but realistic plan-gate manifest — one order, one shipment.
+
+    Shaped like the payload the intake interview builds, not a synthetic
+    dict-of-strings: this is what `_plan_orders`/`_plan_facts` actually receive
+    at the plan gate (state 3), the surface a 2026-08-11 live run reported as
+    "the renderer had no code to draw" (Currys row, triaged 2026-08-12 — see
+    references/comms-diagnosis.md's sibling investigation notes). No test
+    exercised `render(..., manifest=...)` before this one.
+    """
+    return {
+        "path": "retain-shopify",
+        "destination_country": "GBR",
+        "account": {"name": "Currys demo", "id": 1626718},
+        "run": {"pace": "standard"},
+        "brand": {"name": "Currys", "region": "UK", "category": "electronics"},
+        "shopify": {"enabled": True, "store": "currys-demo.myshopify.com"},
+        "cdc": {"config_source": "manual", "generate_orders": False},
+        "products": [{"id": "p1", "sku": "CUR-1", "name": "Soundbar"}],
+        "orders": [
+            {"label": "A", "customer": {"name": "Jane Doe"},
+             "fraud_level": "low",
+             "shipments": [
+                 {"label": "A", "products": ["p1"], "scenario": "clean",
+                  "events": ["InTransit", "OutForDelivery", "Delivered"]},
+             ]},
+        ],
+    }
+
+
 class TestRenderRunPage(unittest.TestCase):
     def test_renders_run_id_and_account(self):
         html = render_run_page.render(a_state())
@@ -86,6 +116,32 @@ class TestRenderRunPage(unittest.TestCase):
         # mojibake ("â€"", "Â·") when served without a charset header.
         self.assertIn('<meta charset="utf-8">',
                       render_run_page.render(a_state()))
+
+    def test_plan_gate_renders_the_order_matrix(self):
+        """The plan-gate content a 2026-08-11 run reported as undrawable.
+
+        Every prior test in this file omits `manifest`, so `_plan`/`_plan_orders`
+        never ran. Checks the specific columns the row's own description named:
+        customer, fraud level, scenario, and the event chain.
+        """
+        html = render_run_page.render(a_state(), manifest=a_manifest())
+        self.assertIn("Run plan", html)
+        self.assertIn("Jane Doe", html)
+        self.assertIn("low", html)
+        self.assertIn("clean", html)
+        self.assertIn("InTransit → OutForDelivery → Delivered", html)
+
+    def test_plan_gate_renders_the_run_facts(self):
+        html = render_run_page.render(a_state(), manifest=a_manifest())
+        self.assertIn("retain-shopify", html)
+        self.assertIn("Currys demo", html)
+        self.assertIn("currys-demo.myshopify.com", html)
+
+    def test_no_manifest_omits_the_plan_card_without_crashing(self):
+        """Every state before the plan gate calls render() with no manifest —
+        this must degrade to nothing, not raise."""
+        html = render_run_page.render(a_state())
+        self.assertNotIn("Run plan", html)
 
 
 ASSETS = {
