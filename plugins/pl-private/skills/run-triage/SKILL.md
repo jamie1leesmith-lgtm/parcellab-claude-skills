@@ -101,8 +101,10 @@ confident guess would have been.
 
 Both are review's own records. `references/telemetry.md` in `demo-environment`
 states that a *run* never writes the triage columns, because a run that could
-write them could also silently destroy them. This skill is the review side of
-that rule, so it is the intended writer.
+write them could also silently destroy them — with one exception: a run sets
+`Triage status` to `Untriaged` at row creation, so unreviewed rows are findable
+by value rather than by querying for empty. This skill is the review side of
+that rule, so it is the intended writer of the rest.
 
 ### Ask first
 
