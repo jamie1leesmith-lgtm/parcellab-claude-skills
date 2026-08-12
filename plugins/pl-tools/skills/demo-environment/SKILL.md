@@ -361,7 +361,9 @@ next republish. Publishing is never load-bearing.
    otherwise. Promise dates in `extras` are `YYYY-MM-DD` (a full ISO datetime
    is rejected by the API). `extras.article_weights` is keyed by product `id`,
    never SKU — the same rule as everywhere else in the manifest —
-   `{<product id>: {weight: <number>, weight_unit: "kg"|"g"|"lbs"|"oz"}}`.
+   `{<product id>: {weight: <number greater than 0>, weight_unit:
+   "kg"|"g"|"lbs"|"oz"}}` — `weight_unit` is always written explicitly; a
+   missing one is rejected.
    `validate_manifest.py` enforces all of this,
    `approvals{products_approved_at,intake_completed_at}`).
    On retain-shopify also write `seed/seed-products.json`
@@ -447,10 +449,27 @@ files.)
 
 1. Fraud fragment: run `prepare_fraud_fragment.py` for the order's level and
    merge `tags` + `additional_attributes` into `create.json`.
+
+   **Union, never replace.** When `gates.order_lifecycle.extras` also carries
+   `tags` or `additional_attributes`, the order's value is the union of the
+   intake's and the fragment's — neither side overwrites the other. Taking the
+   intake value alone strips the fraud data from every order, and the
+   fraud-driven Journey triggers then never fire; the API's success response
+   looks identical either way.
 2. Build `create.json` + the single PUT with all `add_tracking` mutations
    (order-lifecycle's payload rules verbatim: randomised format-correct
    tracking numbers, courier per shipment, `tracking.articles` mirrored,
    split rules for 2-shipment orders).
+
+   **`extras.article_weights` is a lookup, not a field to copy.** Every other
+   extra's manifest key is already the Order API field name; this one is a
+   synthetic container. `extras.article_weights[<product id>]` sets `weight`
+   and `weight_unit` on **every article whose product is that id**, at both the
+   `articles_order` level and every `add_tracking`'s `tracking.articles` — the
+   same dual-level rule as any other article field. The manifest keys by
+   product `id` (the goods code) while payload articles key by `line_item_id`,
+   which is the SKU, so resolve through the order's product, not the article
+   key. No top-level `article_weights` is ever written to a payload.
 3. Write the `NN-<status>.json` event files from the shipment's `events`.
 4. `DRYRUN=1` pass; then launch `run-lifecycle.sh` as a **tracked background
    task — one Bash call per order with `run_in_background: true`, and NO
@@ -548,10 +567,8 @@ repeated verbatim) · per order: number, customer, fraud level, slot,
 courier(s) + tracking number(s), scenario, and the expected comm per event
 with confidence labels · (retain-shopify) the seed table + demos +
 adjustments from `results/shopify-seed.json` · CDC request id/URL, which
-orders were submitted for linking, the config source (say "caller's default
-config" when `config_source` is `none`), and `generate_orders`/`orders`
-(say plainly whether the CDC was also asked to generate synthetic orders,
-and for which slots). No currency symbols. **If the edit-mode guard was
+orders were submitted for linking, and the config source (say "caller's
+default config" when `config_source` is `none`). No currency symbols. **If the edit-mode guard was
 repointed for this run** (per Phase 0 step 4's note), say so here as a line of fact and state that it is restored after Beat 2
 — not now. The drivers are still pushing events against that account.
 Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends — re-render with `render_run_page.py <run dir>` and republish — non-fatal.

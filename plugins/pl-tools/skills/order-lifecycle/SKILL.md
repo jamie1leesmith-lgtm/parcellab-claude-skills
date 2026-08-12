@@ -652,7 +652,15 @@ given at the conductor's intake (this is not inference):
   silently reorder a sequence.
 - **Gate C** (enrichment): `gates.order_lifecycle.gate_c` — `"send-as-is"`
   unless `extras` carries fields, which are applied exactly as the Gate C
-  table specifies.
+  table specifies. Each key is the Order API field name, with one exception:
+  `extras.article_weights` is a synthetic container. Its entry
+  `article_weights[<product id>]` sets `weight` and `weight_unit` on **every
+  article whose product is that id**, at both the `articles_order` level and
+  every `add_tracking`'s `tracking.articles` — the *Article physical data* row
+  above. The manifest keys by product `id` (the goods code) while payload
+  articles key by `line_item_id`, which is the SKU, so the lookup goes through
+  the product, not the article key. Nothing named `article_weights` is written
+  to a payload.
 - **Destination country** comes from `destination_country`; the account was
   confirmed by name at intake — do not re-confirm mid-run.
 - **Account:** every payload's `account` field and the driver's environment

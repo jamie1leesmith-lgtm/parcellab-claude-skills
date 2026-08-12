@@ -140,6 +140,10 @@ def validate(m):
 
     gate_c = gates.get("gate_c")
     extras = gates.get("extras") or {}
+    if not isinstance(extras, dict):
+        need(False, f"gates.order_lifecycle.extras must be an object "
+                    f"(got {type(extras).__name__})")
+        extras = {}
     need(gate_c in GATE_C_VALUES,
          f"gate C answer must be one of {sorted(GATE_C_VALUES)} (got {gate_c!r})")
     if gate_c == "extras":
@@ -156,11 +160,19 @@ def validate(m):
                  f"datetime (got {value!r})")
 
     weights = extras.get("article_weights") or {}
+    if not isinstance(weights, dict):
+        need(False, f"extras.article_weights must be an object keyed by "
+                    f"product id (got {type(weights).__name__})")
+        weights = {}
     for pid, entry in weights.items():
         need(pid in products,
              f"extras.article_weights: unknown product {pid} — key by "
              f"product id, not SKU")
         entry = entry or {}
+        if not isinstance(entry, dict):
+            need(False, f"extras.article_weights[{pid}] must be an object "
+                        f"with weight and weight_unit (got {entry!r})")
+            continue
         weight = entry.get("weight")
         need(isinstance(weight, (int, float)) and not isinstance(weight, bool)
              and weight > 0,

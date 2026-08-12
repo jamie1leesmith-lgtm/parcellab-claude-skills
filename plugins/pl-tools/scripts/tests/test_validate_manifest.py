@@ -249,6 +249,43 @@ class TestValidateManifest(unittest.TestCase):
                     "p1": {"weight": "300", "weight_unit": "g"}}})))
         self.assertTrue(any("weight" in e for e in errs))
 
+    def test_article_weight_rejects_zero(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras",
+                extras={"article_weights": {
+                    "p1": {"weight": 0, "weight_unit": "g"}}})))
+        self.assertTrue(any("positive" in e for e in errs))
+
+    def test_article_weight_rejects_bool(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras",
+                extras={"article_weights": {
+                    "p1": {"weight": True, "weight_unit": "g"}}})))
+        self.assertTrue(any("positive" in e for e in errs))
+
+    def test_non_dict_extras_reports_instead_of_raising(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras", extras=["announced_delivery_date"])))
+        self.assertTrue(any("extras must be an object" in e for e in errs))
+
+    def test_non_dict_article_weights_reports_instead_of_raising(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras", extras={"article_weights": ["p1"]})))
+        self.assertTrue(
+            any("article_weights must be an object" in e for e in errs))
+
+    def test_non_dict_article_weight_entry_reports_instead_of_raising(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras",
+                extras={"article_weights": {"p1": "300g"}})))
+        self.assertTrue(
+            any("article_weights[p1] must be an object" in e for e in errs))
+
     def test_article_weight_key_must_be_a_known_product_id(self):
         errs = validate(broken(
             lambda m: m["gates"]["order_lifecycle"].update(

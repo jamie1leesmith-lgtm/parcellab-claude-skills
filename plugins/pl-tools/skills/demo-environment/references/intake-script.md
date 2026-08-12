@@ -84,7 +84,7 @@ Record the answer as `gates.order_lifecycle.gate_c` (`"send-as-is"` or
 `"extras"`) plus `extras`. Promise dates are resolved to absolute `YYYY-MM-DD`
 at manifest-write time — a full ISO datetime is rejected by the API.
 
-### Q7 — deriving article weights
+### Q7 follow-up — deriving article weights
 
 When the user turns on article physical data, do not ask for a value per
 product. Derive one per article from its `product_type` and show every derived
@@ -103,9 +103,11 @@ Match case-insensitively on the `product_type` string; first match wins.
 | home, kitchen, decor, furnish | 800 g |
 | (no match) | 500 g |
 
-Unit is `g` unless the user says otherwise, in which case it must be one of
-`kg`, `g`, `lbs`, `oz` — `validate_manifest.py` rejects any other
-`weight_unit`. Write them to
+**`weight_unit` is always written, never left out** — `validate_manifest.py`
+rejects a missing one (`{weight: 300}` → "must be one of [...] (got None)").
+Write `g` unless the user says otherwise, in which case it must be one of
+`kg`, `g`, `lbs`, `oz`; any other value is rejected too. Weights are numbers
+greater than zero. Write them to
 `extras.article_weights`, keyed by product **`id`** (the goods code) and never
 by SKU — `validate_manifest.py` rejects SKU keys.
 
