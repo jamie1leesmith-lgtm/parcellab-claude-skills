@@ -514,9 +514,15 @@ the chosen journey eligible) appears here pre-filled and is **not** optional.
 | Extra articles | more `articles_order` entries, each with a unique `line_item_id` | Mirror them into every `add_tracking`'s `tracking.articles` or the shipment comms render an empty article table |
 | Tags / custom fields | `tags`, `additional_attributes` | What filter-driven Journey triggers key on |
 | Delivery detail | `delivery_method`, `courier_service_level`, `requires_signature` | Mostly cosmetic in comms |
+| Article physical data | `weight`, `weight_unit` on each article | Article-level, not order-level — set at **both** levels, `articles_order` and every `add_tracking`'s `tracking.articles`, like every other article field. `weight_unit` is one of `kg` / `g` / `lbs` / `oz` and defaults to `g` (v4 Order API docs, `https://product-api.parcellab.com/v4/docs/markdown/order/`). snake_case only: `weight` has no legacy camelCase twin, so if a comm template renders it blank, check the dual-family rule before adding a value. |
 
 **Split shipments are not offered here** — they are chosen at Gate B, because a
 split needs a scenario per shipment.
+
+**Article dimensions are not offered.** The v4 docs describe `width`, `height`
+and `length` as millimetres while `length_unit` is a `const` of `cm`. Until one
+live order settles which is right, a size rendered in a demo could be wrong by a
+factor of ten. Add them once a run proves the unit.
 
 After the menu, show the final plan and wait for approval. It itemises, field by
 field:
