@@ -1225,7 +1225,11 @@ Expected: PASS across the whole suite.
 In `plugins/pl-tools/skills/demo-environment/SKILL.md`, in the Beat 2 telemetry
 step, after the row update:
 
-```markdown
+Insert exactly the block below — everything between the `<<<BEGIN` and `<<<END`
+markers, which are delimiters for this plan and are **not** part of the text to
+insert. The inner fence is a real fence and belongs in the SKILL.md.
+
+<<<BEGIN
 **Then append the run detail to the row's own page**, so the run is readable by
 anyone on the team:
 
@@ -1239,6 +1243,7 @@ private to whoever ran it and cannot be shared from here, so this is the only
 copy a teammate can open. A failed append is recorded and mentioned once in the
 final report, exactly like a failed row write: telemetry is an observer, never a
 dependency.
+<<<END
 ```
 
 - [ ] **Step 6: Verify the instruction landed**
