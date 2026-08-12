@@ -6,6 +6,7 @@ Every rule mirrors the spec's Order model + manifest section. Exit 0 with
 """
 
 import json
+import re
 import sys
 
 PROVEN_EVENTS = {"InTransit", "OutForDelivery", "Delivered", "WarehouseDelay"}
@@ -16,6 +17,12 @@ PATHS = {"engage", "retain", "retain-shopify"}
 BRAND_REGIONS = {"US", "UK", "DE"}
 BRAND_CATEGORIES = {"Home", "Electronics", "Fashion"}
 PACES = {"standard", "fast"}
+GATE_C_VALUES = {"send-as-is", "extras"}
+WEIGHT_UNITS = {"kg", "g", "lbs", "oz"}
+PROMISE_DATE_FIELDS = ("announced_delivery_date",
+                       "announced_delivery_date_min",
+                       "announced_delivery_date_max")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 PROVEN_SEQUENCES = (
     ("InTransit", "OutForDelivery", "Delivered"),
     ("InTransit", "WarehouseDelay"),
@@ -130,6 +137,39 @@ def validate(m):
 
     gates = m.get("gates", {}).get("order_lifecycle", {})
     need(gates.get("gate_b_answered") is True, "gate B answer missing")
+
+    gate_c = gates.get("gate_c")
+    extras = gates.get("extras") or {}
+    need(gate_c in GATE_C_VALUES,
+         f"gate C answer must be one of {sorted(GATE_C_VALUES)} (got {gate_c!r})")
+    if gate_c == "extras":
+        need(bool(extras), "gate C is 'extras' but extras is empty")
+    if gate_c == "send-as-is":
+        need(not extras,
+             "gate C is 'send-as-is' but extras carries fields")
+
+    for field in PROMISE_DATE_FIELDS:
+        value = extras.get(field)
+        if value is not None:
+            need(isinstance(value, str) and bool(DATE_RE.match(value)),
+                 f"extras.{field} must be YYYY-MM-DD, not a full ISO "
+                 f"datetime (got {value!r})")
+
+    weights = extras.get("article_weights") or {}
+    for pid, entry in weights.items():
+        need(pid in products,
+             f"extras.article_weights: unknown product {pid} — key by "
+             f"product id, not SKU")
+        entry = entry or {}
+        weight = entry.get("weight")
+        need(isinstance(weight, (int, float)) and not isinstance(weight, bool)
+             and weight > 0,
+             f"extras.article_weights[{pid}].weight must be a positive "
+             f"number (got {weight!r})")
+        need(entry.get("weight_unit") in WEIGHT_UNITS,
+             f"extras.article_weights[{pid}].weight_unit must be one of "
+             f"{sorted(WEIGHT_UNITS)} (got {entry.get('weight_unit')!r})")
+
     approvals = m.get("approvals", {})
     need(bool(approvals.get("products_approved_at")),
          "product approval timestamp missing")

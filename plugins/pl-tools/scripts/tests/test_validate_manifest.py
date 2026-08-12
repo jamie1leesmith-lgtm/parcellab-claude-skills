@@ -202,6 +202,69 @@ class TestValidateManifest(unittest.TestCase):
         m["run"]["pace"] = "leisurely"
         self.assertTrue(any("pace" in e for e in validate(m)))
 
+    def test_gate_c_value_must_be_known(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(gate_c="maybe")))
+        self.assertTrue(any("gate C" in e for e in errs))
+
+    def test_gate_c_extras_requires_non_empty_extras(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras", extras={})))
+        self.assertTrue(any("extras" in e for e in errs))
+
+    def test_send_as_is_rejects_populated_extras(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="send-as-is",
+                extras={"announced_delivery_date": "2026-08-15"})))
+        self.assertTrue(any("send-as-is" in e for e in errs))
+
+    def test_promise_date_rejects_full_iso(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras",
+                extras={"announced_delivery_date": "2026-08-15T10:00:00Z"})))
+        self.assertTrue(any("YYYY-MM-DD" in e for e in errs))
+
+    def test_promise_date_accepts_plain_date(self):
+        m = valid_manifest()
+        m["gates"]["order_lifecycle"].update(
+            gate_c="extras", extras={"announced_delivery_date": "2026-08-15"})
+        self.assertEqual(validate(m), [])
+
+    def test_article_weight_unit_enum(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras",
+                extras={"article_weights": {
+                    "p1": {"weight": 300, "weight_unit": "stone"}}})))
+        self.assertTrue(any("weight_unit" in e for e in errs))
+
+    def test_article_weight_must_be_a_positive_number(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras",
+                extras={"article_weights": {
+                    "p1": {"weight": "300", "weight_unit": "g"}}})))
+        self.assertTrue(any("weight" in e for e in errs))
+
+    def test_article_weight_key_must_be_a_known_product_id(self):
+        errs = validate(broken(
+            lambda m: m["gates"]["order_lifecycle"].update(
+                gate_c="extras",
+                extras={"article_weights": {
+                    "sku1": {"weight": 300, "weight_unit": "g"}}})))
+        self.assertTrue(any("unknown product" in e for e in errs))
+
+    def test_article_weights_accepted_when_well_formed(self):
+        m = valid_manifest()
+        m["gates"]["order_lifecycle"].update(
+            gate_c="extras",
+            extras={"article_weights": {"p1": {"weight": 300,
+                                               "weight_unit": "g"}}})
+        self.assertEqual(validate(m), [])
+
 
 if __name__ == "__main__":
     unittest.main()
