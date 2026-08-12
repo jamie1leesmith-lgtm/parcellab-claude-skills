@@ -152,6 +152,78 @@ class TestTimeline(unittest.TestCase):
         self.assertEqual(len(run_state.load(d)["timeline"]), 1)
 
 
+class TestMarkDrivesTheLanePills(unittest.TestCase):
+    """A lane mark must also move the pill the run page renders.
+
+    SKILL.md tells the conductor to call `mark(d, "lane", <name>, …)` at every
+    lane boundary and never mentions `set_lane` — it has never appeared in the
+    skill in any commit. The page renders `state["lanes"]`, which only
+    `set_lane` wrote, so a conductor following the skill exactly left all five
+    lanes on `init()`'s "pending" for the whole run (thenorthface 2026-08-12).
+    Earlier runs show the mirror image: Currys and UNIQLO have correct pills
+    and an empty timeline, because those conductors called `set_lane` and never
+    marked. No run has ever produced both halves.
+
+    These tests are why the defect survived: every existing render test seeds
+    its state with `set_lane` directly, so the renderer was only ever checked
+    against a state the documented workflow cannot produce.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        run_state.init(self.dir, "currys-1", "engage", "Demo - JLS")
+
+    def test_lane_start_marks_the_lane_running(self):
+        run_state.mark(self.dir, "lane", "scrape", "start")
+        self.assertEqual(
+            run_state.load(self.dir)["lanes"]["scrape"]["status"], "running")
+
+    def test_lane_end_marks_the_lane_ok(self):
+        run_state.mark(self.dir, "lane", "scrape", "start")
+        run_state.mark(self.dir, "lane", "scrape", "end")
+        self.assertEqual(
+            run_state.load(self.dir)["lanes"]["scrape"]["status"], "ok")
+
+    def test_lane_end_never_downgrades_a_failed_lane(self):
+        # A lane can fail and still reach its "end" boundary. Reporting that as
+        # ok would erase the failure the run page exists to surface.
+        run_state.set_lane(self.dir, "cdc", "failed")
+        run_state.mark(self.dir, "lane", "cdc", "end")
+        self.assertEqual(
+            run_state.load(self.dir)["lanes"]["cdc"]["status"], "failed")
+
+    def test_lane_end_never_downgrades_a_richer_status(self):
+        # The template lane ends "published"; seed can end "skipped". Neither
+        # is improved by being flattened to plain ok.
+        run_state.set_lane(self.dir, "template", "published", layout_id=20701)
+        run_state.mark(self.dir, "lane", "template", "end")
+        lane = run_state.load(self.dir)["lanes"]["template"]
+        self.assertEqual(lane["status"], "published")
+        self.assertEqual(lane["layout_id"], 20701)
+
+    def test_marking_still_records_the_timeline_entry(self):
+        # The durations half must survive the pills fix.
+        run_state.mark(self.dir, "lane", "scrape", "start")
+        run_state.mark(self.dir, "lane", "scrape", "end")
+        lane_marks = [e for e in run_state.load(self.dir)["timeline"]
+                      if e["kind"] == "lane"]
+        self.assertEqual([e["phase"] for e in lane_marks], ["start", "end"])
+
+    def test_agent_and_gate_marks_do_not_touch_lanes(self):
+        # "scrape" is both an agent name and a lane name; only the lane kind
+        # may move a pill.
+        run_state.mark(self.dir, "agent", "scrape", "start")
+        run_state.mark(self.dir, "gate", "plan", "asked")
+        self.assertEqual(
+            run_state.load(self.dir)["lanes"]["scrape"]["status"], "pending")
+
+    def test_a_lane_mark_outside_the_known_lanes_is_ignored_not_fatal(self):
+        # `mark` accepts any name by design (it is a free-text timeline label);
+        # only the five real lanes have pills.
+        run_state.mark(self.dir, "lane", "not-a-lane", "start")
+        self.assertNotIn("not-a-lane", run_state.load(self.dir)["lanes"])
+
+
 class TestPageTelemetry(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()

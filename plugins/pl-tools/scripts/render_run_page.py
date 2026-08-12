@@ -317,8 +317,20 @@ def _plan_products(manifest):
     return f'<div class="overflow"><table>{head}{"".join(rows)}</table></div>'
 
 
-def _plan(manifest):
-    if not manifest:
+def _plan_gate_asked(state):
+    """Has the ✋ plan gate been posed yet?
+
+    The manifest is written before both gates so the page can render what it
+    asks about, which means its presence no longer marks the plan gate. State
+    2b — the ★ template gate — must show the preview and swatches only, so the
+    plan waits for its own gate to be asked.
+    """
+    return any(e.get("kind") == "gate" and e.get("name") == "plan"
+               for e in (state or {}).get("timeline", []))
+
+
+def _plan(manifest, state=None):
+    if not manifest or not _plan_gate_asked(state):
         return ""
     return ('<div class="card"><h2>Run plan</h2>'
             + _plan_facts(manifest)
@@ -428,7 +440,7 @@ def _template_card(template_html, assets):
 
 def _showcase(state, manifest, assets, template_html):
     return (_brand_header(assets)
-            + _plan(manifest)
+            + _plan(manifest, state)
             + _template_card(template_html, assets)
             + _products(assets, manifest))
 
@@ -455,6 +467,61 @@ def render(state, manifest=None, assets=None, template_html=None):
             f"<title>{e(title)}</title><style>{CSS}</style>" + "".join(body))
 
 
+def template_basenames(state, manifest):
+    """Candidate `{brand}` prefixes for a `{brand}-parcellab-layout.html` file.
+
+    The ★ template gate runs before the plan gate, so the template must be
+    findable without a manifest — the run id's handle (`thenorthface` from
+    `thenorthface-20260812-2243`) is the same string branded-template's Step 7
+    names the file with. The manifest's brand is preferred when present, since
+    a brand whose handle differs from its lowercased name (Pets at Home →
+    petsathome) resolves either way.
+    """
+    names = []
+    brand = ((manifest or {}).get("brand", {}).get("name") or "").lower()
+    brand = re.sub(r"[^a-z0-9]", "", brand)
+    if brand:
+        names.append(brand)
+    run_id = (state or {}).get("run_id") or ""
+    handle = run_id.rsplit("-", 2)[0] if "-" in run_id else run_id
+    if handle and handle not in names:
+        names.append(handle)
+    return names
+
+
+def _find_template(state, manifest):
+    previews = pathlib.Path.home() / "parcellab-previews"
+    for name in template_basenames(state, manifest):
+        candidate = previews / f"{name}-parcellab-layout.html"
+        if candidate.exists():
+            return candidate.read_text()
+    return None
+
+
+def _warn_missing_assets(run_dir, assets):
+    """A finished scrape with no inlined assets renders an empty page.
+
+    Silent by construction: `_brand_header` and `_products` both return "" when
+    assets are absent, so the render succeeds and the conductor republishes a
+    blank page. Only the reader finds out.
+    """
+    if assets is not None:
+        return
+    scrape_result = run_dir / "results" / "scrape.json"
+    if not scrape_result.exists():
+        return
+    try:
+        status = json.loads(scrape_result.read_text()).get("status")
+    except (ValueError, OSError):
+        return
+    if status != "ok":
+        return
+    print(f"WARNING: {run_dir / 'scrape' / 'assets.json'} is missing while "
+          f"results/scrape.json says ok — the brand header and product grid "
+          f"will render empty. Run: python3 inline_assets.py {run_dir}",
+          file=sys.stderr)
+
+
 def main():
     if len(sys.argv) != 2:
         print("usage: render_run_page.py <run_dir>")
@@ -471,14 +538,9 @@ def main():
     assets_path = run_dir / "scrape" / "assets.json"
     if assets_path.exists():
         assets = json.loads(assets_path.read_text())
+    _warn_missing_assets(run_dir, assets)
 
-    template_html = None
-    if manifest:
-        brand = (manifest.get("brand", {}).get("name") or "").lower()
-        candidate = (pathlib.Path.home() / "parcellab-previews"
-                     / f"{brand}-parcellab-layout.html")
-        if candidate.exists():
-            template_html = candidate.read_text()
+    template_html = _find_template(state, manifest)
 
     (run_dir / "run-page.html").write_text(
         render(state, manifest, assets, template_html))

@@ -10,6 +10,13 @@ VIEW; chat is the only approval mechanism.
 `scripts/render_run_page.py <run dir>`. Publishing is one Artifact call on the
 rendered file. Never hand-edit `run-page.html` — the next render overwrites it.
 
+**The product grid and brand header need `scrape/assets.json`**, written by
+`scripts/inline_assets.py` at Phase 0 step 6. Without it both cards render as
+empty strings and the page publishes successfully with nothing on it — so
+`render_run_page.py` warns on stderr whenever `results/scrape.json` says ok and
+that file is absent. Treat the warning as a stop, not a note: a republished
+blank page reads to the user as a frozen run.
+
 **Why this replaced a rule.** Earlier versions of this file carried a rule —
 *"the page must never be more than one milestone behind"* — plus escalating
 warnings about how often it had been broken. It was then broken four more
@@ -74,8 +81,21 @@ republish. Never delay a publish waiting for a value, and never invent one.
 |---|---|---|
 | 1 | Run dir created | Header (brand, path, account by name, run id — path and account are still unanswered at this point, so render them `—`), "collecting products + brand styling", interview underway |
 | 2 | `results/scrape.json` ok | Product pool grid (name, type, price, verified badge, PDP link), brand-token swatch strip |
-| 2b | ★ template preview (step 7) | The template preview and brand-token swatches ONLY — no plan, no order matrix, no seed set. The first deliverable is approved on its own; showing downstream detail the user cannot act on yet is what made the first smoke run confusing. Skipped when the repeat-brand shortcut was taken. |
+| 2b | ★ template preview (step 8) | The template preview and brand-token swatches ONLY — no plan, no order matrix, no seed set. The first deliverable is approved on its own; showing downstream detail the user cannot act on yet is what made the first smoke run confusing. Skipped when the repeat-brand shortcut was taken. |
 | 3 | ✋ plan gate opens | The proposed plan: core-4 grid · order matrix table (label, customer, fraud, scenario, products, expected comms with confidence labels) · CDC settings (config source, generate_orders) · pace · a banner: "⏳ Approval waiting in chat" |
+
+**Both gates render from the manifest, so the manifest is written before
+them** (Phase 0 step 7), not after. It used to be written at step 9 — after
+both — so `_plan` had nothing to draw at the plan gate and `main()` could not
+even locate the template HTML at the template gate. The page was therefore
+blank at exactly the two moments it asked for a decision, and on 2026-08-12 a
+user approved a template against an empty page.
+
+Because the manifest now exists before both gates, **its presence no longer
+marks which gate we are at.** The reveal is derived from the timeline instead:
+the plan card appears once `mark(d, "gate", "plan", "asked")` is recorded,
+which is what keeps state 2b showing the template alone. Never gate page
+content on whether a file happens to exist yet.
 | 4 | Gate approved / sends firing | Lane cards — template (push → publish → assign), seed (retain-shopify only), per-order chips (created → tracked → events queued); each chip flips as its results land |
 | 5 | Drivers launched, then on **every watcher return** | Per order: the planned event list, each step confirmed / expected / pending, with a countdown to the next event. Confirmations come from `orders/*/events.jsonl` via `run_state.confirm_event`, ingested each time `wait_for_event.sh` returns — roughly 8–12 republishes per run, not one |
 | 6 | Beat 1 | The environment-built summary: layout id/status/store, per-order table, CDC request id + link |

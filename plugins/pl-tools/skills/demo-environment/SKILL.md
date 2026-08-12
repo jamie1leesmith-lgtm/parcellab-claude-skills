@@ -81,13 +81,28 @@ A missing mark yields a null, never a wrong number. Never reconstruct a mark
 after the fact: a stamp written later records when you remembered, not when it
 happened.
 
+**A lane mark also moves that lane's status pill** on the run page — `start` →
+running, `end` → ok. One call does both. When a lane ends as something richer
+than ok, say so explicitly with `set_lane` and the mark will not flatten it:
+
+| Lane outcome | Call |
+|---|---|
+| template published | `set_lane(d, "template", "published", layout_id=<id>, store="<name>")` |
+| seed skipped (non-Shopify path) | `set_lane(d, "seed", "skipped")` |
+| any lane failed | `set_lane(d, "<lane>", "failed")` (or `add_failure`) |
+
+These two used to be independent, and only `mark` was documented — so every
+run left all five pills on "pending" while the tests, which call `set_lane`
+directly, stayed green (found 2026-08-12; Currys and UNIQLO show the mirror
+image, correct pills and an empty timeline).
+
 ## The run page
 
 Every run keeps one progress artifact — see
 `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md` for
 the states and skeleton. Publish state 1 right after creating the run dir;
 republish at each numbered state; keep the URL the first publish returns and
-carry it into `run.page_url` when step 9 writes the manifest. Values the run
+carry it into `run.page_url` when step 7 writes the manifest. Values the run
 dir does not yet carry (path, account name) render as `—` and fill in at the
 next republish. Publishing is never load-bearing.
 
@@ -294,7 +309,28 @@ URL that stopped updating.
    the agent dies), run the browser pass inline now — brand tokens, product
    pool, image validation, exactly as the scrape brief specifies — and carry
    on. The agent is an accelerator, never load-bearing.
-7. ★ **Show the template and get it approved — before anything else is
+
+   **Verify the page is not blank before you show it to anyone.** After
+   `inline_assets.py`, `scrape/assets.json` must exist. `render_run_page.py`
+   warns on stderr when `results/scrape.json` says ok and that file is missing;
+   treat the warning as a stop. Both `_brand_header` and `_products` open with
+   `if not assets: return ""`, so skipping the inline step renders an empty
+   showcase that still publishes successfully — live 2026-08-12 the user
+   approved a template against a page showing nothing at all.
+7. **Write and validate the manifest — before either gate.** The manifest is
+   the plan, so it has to exist before the page can render the plan. Write it
+   per the schema in step 9 below, then validate it with the command given there. Fix any
+   `MANIFEST INVALID` gaps now, while nothing has been asked or sent.
+
+   Validating here rather than after the gate means a schema error is caught
+   before the user is asked to approve anything, instead of forcing an
+   approve → validate → fix → re-approve loop.
+
+   **This does not reveal the plan.** The run page shows the plan card only
+   once `mark(d, "gate", "plan", "asked")` is in the timeline, so state 2b
+   below still shows the template and swatches alone. Ordering is enforced by
+   the timeline, not by which files happen to exist.
+8. ★ **Show the template and get it approved — before anything else is
    proposed.** The HTML exists on disk from step 6, so serve it and put it in
    front of the user now: follow branded-template Step 8 (launch config →
    `preview_start` → navigate → screenshot), ask *"Does this look right before
@@ -302,6 +338,12 @@ URL that stopped updating.
    ask, `"answered"` when they reply — and iterate on the file until they say yes. This
    is the run's first deliverable and it gates every comm the environment will
    send, so it is approved on its own, ahead of the plan.
+   - **Re-render and republish the page before asking.** The template preview
+     is rendered from
+     `$HOME/parcellab-previews/{brand}-parcellab-layout.html`, which the
+     renderer resolves from the manifest's brand or the run id's handle. Asking
+     for approval against a page that does not show the thing being approved is
+     the defect this ordering exists to prevent.
    - **Hold the run page here.** Publish a template-only state — the preview,
      the brand-token swatches, and nothing downstream. Do not show the plan,
      the order matrix or the seed set yet: putting detail on screen that the
@@ -312,10 +354,20 @@ URL that stopped updating.
      preview and `results/branded-template.json` already exists.
    - **Approval here covers the push.** Phase 1's branded-template run does not
      ask again; its own Step 8 checkpoint is already satisfied.
-8. **Propose the plan** and gate on approval (✋ — the sends gate;
+9. **Propose the plan** and gate on approval (✋ — the sends gate;
    one yes releases the sends, and nothing before this step has *sent
    anything to* parcelLab, Shopify or the CDC — the only prior calls are
-   read-only lookups plus the edit-mode guard):
+   read-only lookups plus the edit-mode guard).
+
+   **The plan is shown on the run page, not typed into the question.** Mark the
+   gate asked, re-render, republish — that publishes the plan card, which
+   renders every item below from the manifest written at step 7. Then ask in
+   chat for a short approve-or-change, and link the page. A plan pasted into an
+   AskUserQuestion option label is unreadable, and it was pasted there on
+   2026-08-12 *because* the page could not render it — fixing the page is what
+   makes the short question honest.
+
+   The page's plan card covers:
    core 4 (four distinct product types) · per-order product distribution ·
    (retain-shopify) the seed set = core 4 + extras at distinct price points ·
    the order/scenario/fraud matrix with expected comm per event (mark
@@ -329,6 +381,10 @@ URL that stopped updating.
    via `run_state.py` — `mark(d, "gate", "plan", "asked")` as you pose it, and
    again on every re-ask — re-render with `render_run_page.py <run dir>` and
    republish — non-fatal.
+
+   **If the page failed to publish, the plan still has to be readable** — post
+   it in chat as a markdown table then, and say the page is unavailable. The
+   page being non-fatal never means the user approves something unseen.
 
    **Once approved:** record it via `run_state.py` —
    `mark(d, "gate", "plan", "answered")` at the moment the yes arrives, which
@@ -345,7 +401,8 @@ URL that stopped updating.
 
    This is the first outward-facing write of the run, and it happens only after
    the gate — never before.
-9. **Write the manifest** to `demo-manifest.json` (schema:
+   **The manifest schema** (written at step 7, above — kept here because this
+   is where its fields were settled). `demo-manifest.json`:
    `run{…, pace: "standard"|"fast" — absent means standard, page_url —
    recorded after the first run-page publish}`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
@@ -373,14 +430,16 @@ URL that stopped updating.
    "kg"|"g"|"lbs"|"oz"}}` — `weight_unit` is always written explicitly; a
    missing one is rejected.
    `validate_manifest.py` enforces all of this,
-   `approvals{products_approved_at,intake_completed_at}`).
+   `approvals{products_approved_at,intake_completed_at}` — the approval stamps
+   are the one part written after their gates, since that is when they happen).
    On retain-shopify also write `seed/seed-products.json`
    (`{products: core4 ∪ shopify_extra in scrape shape, location_id,
    prospect_handle}`). The scrape lane's raw output stays on disk under the
    run dir's `scrape/` (`brand-tokens.json`, `product-pool.json`) with its
    outcome in `results/scrape.json`; the manifest carries the selected
    subset.
-10. **Validate:**
+
+   **The validate command** (run at step 7, before the gates):
    `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py <run>/demo-manifest.json`
    — on `MANIFEST INVALID`, fix the named gaps (re-asking if needed) and
    re-validate. **Never start Phase 1 on an invalid manifest.**
@@ -419,7 +478,7 @@ contract consumes the manifest's `brand_tokens` and account, and reuses the
 HTML pre-built at Phase 0 step 6 at Step 7's own path
 `$HOME/parcellab-previews/{brand-name-lowercase}-parcellab-layout.html`
 rather than building it again. **Its Step 8 preview question is already
-answered** — the ★ checkpoint ran at Phase 0 step 7, before the plan gate, and
+answered** — the ★ checkpoint ran at Phase 0 step 8, before the plan gate, and
 the user approved that exact file. Do not ask again: go straight to Step 9's
 push and publish. It finishes by writing `results/branded-template.json`.
 
