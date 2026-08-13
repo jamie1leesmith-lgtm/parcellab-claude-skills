@@ -115,5 +115,50 @@ class ResolveAutoFieldsTests(unittest.TestCase):
         self.assertNotIn("shopify_opp", result)
 
 
+class CliProductPoolShapeTests(unittest.TestCase):
+    """scrape/product-pool.json may be a bare list or {"products": [...]} —
+    inline_assets.py already accepts both; the CLI must too (live-verified
+    2026-08-13: the Patagonia scrape agent wrote the wrapped shape and the
+    CLI crashed with AttributeError: 'str' object has no attribute 'get',
+    since iterating a dict yields its keys, not its values)."""
+
+    def _run_cli(self, pool_payload):
+        import json
+        import subprocess
+        import tempfile
+
+        script = Path(__file__).resolve().parents[1] / "resolve_auto_defaults.py"
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as f:
+            json.dump(pool_payload, f)
+            pool_path = f.name
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--prospect-url",
+                "https://brand.com",
+                "--product-pool-file",
+                pool_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        Path(pool_path).unlink()
+        return result
+
+    def test_bare_list_shape(self):
+        result = self._run_cli([{"name": "Tee", "price": "$10", "product_type": "Shirt"}])
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_wrapped_products_shape(self):
+        result = self._run_cli(
+            {"products": [{"name": "Tee", "price": "$10", "product_type": "Shirt"}]}
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

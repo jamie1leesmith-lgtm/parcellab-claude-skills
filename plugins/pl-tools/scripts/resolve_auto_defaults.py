@@ -141,6 +141,9 @@ def main():
 
     try:
         pool = json.loads(Path(args.product_pool_file).read_text())
+        # scrape/product-pool.json may be a bare list or {"products": [...]}
+        # — inline_assets.py already accepts both shapes; match that here.
+        pool = pool if isinstance(pool, list) else pool["products"]
         answers = None
         if args.answers_doc_file:
             answers = json.loads(Path(args.answers_doc_file).read_text())
