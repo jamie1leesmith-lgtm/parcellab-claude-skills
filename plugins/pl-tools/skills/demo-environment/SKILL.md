@@ -692,8 +692,9 @@ act — a late Beat 2 beats a silent one.
 **Beat 2 — verified** (after each order's driver finishes AND **≥5 minutes**
 after its final event): per order,
 order-info lookup; report checkpoints
-attached vs planned and `contacted_with_messages` vs the expected comms —
-explicitly covering the good AND bad arcs the run promised.
+attached vs planned, and — for *which* comm each tracking selected —
+`contacted_with_messages` vs the expected comms, explicitly covering the good
+AND bad arcs the run promised.
 
 **Read these from the response's real paths** — none of the three sit where the
 obvious name suggests, and guessing produces an empty report that reads as a
@@ -702,8 +703,32 @@ failed run:
 | What | Path on the order-info response |
 |---|---|
 | Checkpoint status | `trackings[].checkpoints[].status_code` (not `status`) |
-| Comms fired | `trackings[].reporting_info.contacted_with_messages` |
+| Which comm a tracking selected | `trackings[].reporting_info.contacted_with_messages` |
 | pL courier | `trackings[].courier_info.courier` |
+
+**Never count total sends from `contacted_with_messages`.** It lives per
+tracking and is deduplicated within that tracking's own array, so an
+order-level comm (`order_confirmation`, `shipping_confirmation`) that fires
+once per tracking on a multi-tracking order reads as one accounted-for entry
+in each tracking's list — not as the same physical send referenced twice. A
+split-shipment order therefore always undercounts by one send per extra
+tracking if this field is treated as the count.
+
+**Proven live 2026-08-13**, account 1626718, run `adidas-20260813-1033`: split
+order `ADI-1786614815` actually sent `order_confirmation_1093` twice — once
+per tracking, at 09:55:16 and 09:55:47, both to the same recipient. Beat 2
+reported 15 comms for the run from `contacted_with_messages`; the account had
+actually sent 16. Get the real count from raw send records instead:
+
+```bash
+parcellab track email list --account <id> --page-size 50 -o json \
+  --jmes 'results[?createdAt>=`<run start>`].{mt:messageType,at:createdAt}'
+```
+
+Count sends per `messageType` across the run window and report that as
+"comms fired" — a split order will legitimately show two sends of the same
+order-level `messageType`, and that is the true count, not a bug to explain
+away.
 
 Look the order up by **`order_number` + `account`**. The
 `courier` + `tracking_number` form this step used to specify returns
