@@ -38,9 +38,13 @@ from plain language, never a flag syntax. Record the choice as
 `run.mode: "auto"` in the manifest (absent means babysit, matching
 `run.pace`'s own convention).
 
-In auto mode: Q1 and Q2 are still asked live (see
-`references/intake-script.md`'s "Auto mode never changes Round 1").
-Every other Round 2 question resolves via
+In auto mode: only Q1 and Q2 are asked live (see
+`references/intake-script.md`'s "Auto mode never changes Q1/Q2").
+Every other Round 1/2 question resolves unattended — including Q3
+(reuse the prior scrape pool), which auto-resolves to reuse whenever a
+candidate exists and falls through to a fresh scrape only when there is
+none, exactly as intake-script.md's Round 1 table already conditions
+the offer. Q4 onward resolve via
 `${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py`, called once
 the scrape lane's `product-pool.json` exists:
 
@@ -54,10 +58,20 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py \
 Write every resolved field into the manifest exactly where its
 question already writes it (Q4 → `destination_country`, Q6 →
 `run.pace`, Q7 → `gates.order_lifecycle.gate_c`, Q8 →
-`cdc.region`/`cdc.category`, Q11 → the edit-mode fix decision) — Phase
-1–4 and `validate_manifest.py` do not distinguish an auto-resolved
-field from a human-answered one. If an answers doc was supplied, also
-record `run.answers_doc: "<path>"` in the manifest.
+`brand.region`/`brand.category`) — Phase 1–4 and `validate_manifest.py`
+do not distinguish an auto-resolved field from a human-answered one. If
+an answers doc was supplied, also record `run.answers_doc: "<path>"` in
+the manifest.
+
+Q11's resolved value (`resolve_auto_defaults.py`'s `edit_mode_fix`
+output) is not itself a manifest field — there is no `edit_mode_fix`
+slot to write. It is an internal signal that drives the edit-mode-guard
+fix *action* directly: when true, run the same fix Phase 0 step 4
+offers in babysit mode. That action's outcome is what populates
+`account.edit_mode_verified`, exactly as babysit mode's own Q11 answer
+does — the auto-resolved value and a human "Fix it" answer both flow
+into the same existing field through the same action, not through two
+different write paths.
 
 **Both hard gates are auto-approved in auto mode**: at ★ (Phase 0 step
 8), accept the pre-built template HTML as-is — no screenshot

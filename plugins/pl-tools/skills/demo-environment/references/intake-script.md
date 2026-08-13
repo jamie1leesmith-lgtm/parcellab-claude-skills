@@ -10,10 +10,11 @@ answers, and the run page and telemetry compare runs to each other.
 
 ## Round 1 — before the scrape agent is dispatched
 
-**Auto mode never changes Round 1.** Q1 (returns in scope) and Q2 (Shopify
+**Auto mode never changes Q1/Q2.** Q1 (returns in scope) and Q2 (Shopify
 opp) are always asked live, exactly as below, in both babysit and auto mode —
 they decide the build path and are never defaulted or read from an answers
-doc.
+doc. Q3, below, is a different case: it is also part of Round 1, but auto
+mode *does* auto-resolve it — see the note under the table.
 
 Everything that has to be settled before the scrape brief can be written.
 
@@ -22,6 +23,12 @@ Everything that has to be settled before the scrape brief can be written.
 | 1 | Are returns in scope for this demo? | No · Yes | always |
 | 2 | Is this a Shopify opp? | No · Yes | Q1 = yes |
 | 3 | Reuse the pool scraped for **\<brand\>** on \<date\>, or scrape fresh? | Reuse · Scrape fresh | a prior run dir with the same handle holds both `scrape/brand-tokens.json` and `scrape/product-pool.json` |
+
+**Q3 in auto mode:** auto-resolves, it is not asked. Reuse the pool
+automatically whenever the same candidate exists (the condition column
+above), and scrape fresh only when there is no candidate to reuse — the
+same reuse-if-a-candidate-exists rule babysit mode's offer encodes,
+just accepted without a chat round-trip.
 
 Q1 no → **engage**. Q1 yes + Q2 no → **retain**. Q1 yes + Q2 yes →
 **retain-shopify**. An Engage-only run never asks Q2; Retain covers the Engage
@@ -35,7 +42,7 @@ story automatically.
 | 5 | How many orders, and which scenario and fraud level for each? | the default matrix below | always | Existing default matrix, unchanged |
 | 6 | What pace should the journeys run at? | Standard (200 s gaps, comm ordering safe) · Fast (60 s gaps, comms may arrive out of order) | always | `standard` |
 | 7 | Anything else to add to every order, or send as-is? | the Gate C menu below | always | `send-as-is` |
-| 8 | Which region and category should the CDC request use? | US/UK/DE × Home/Electronics/Fashion | always | Region = Q4's resolved value; category via `resolve_auto_defaults.infer_category` |
+| 8 | Which region and category should the CDC request use? | US/UK/DE × Home/Electronics/Fashion | always | Region = Q4's resolved value, written to `brand.region`; category via `resolve_auto_defaults.infer_category`, written to `brand.category` |
 | 9 | Which account should this demo build in? | \<user's own demo account\> · parcelfashion | always — parcelfashion is offered only when `CDC_ACCOUNT_CONFIG_PARCELFASHION` is stored, and never on retain-shopify | User's own demo account (existing default) |
 | 10 | Using **\<name\>** (\<id\>) — correct? | Yes · Pick another | always | Auto-confirmed |
 | 11 | The edit-mode guard is not restricted to this account. Fix it? | Fix it · Leave it | `parcellab settings edit-mode show` is not `account-restricted` for the target | Fix it |
