@@ -17,6 +17,7 @@ PATHS = {"engage", "retain", "retain-shopify"}
 BRAND_REGIONS = {"US", "UK", "DE"}
 BRAND_CATEGORIES = {"Home", "Electronics", "Fashion"}
 PACES = {"standard", "fast"}
+MODES = {"babysit", "auto"}
 GATE_C_VALUES = {"send-as-is", "extras"}
 WEIGHT_UNITS = {"kg", "g", "lbs", "oz"}
 PROMISE_DATE_FIELDS = ("announced_delivery_date",
@@ -54,6 +55,17 @@ def validate(m, pre_gate=False):
     pace = m.get("run", {}).get("pace")
     if pace is not None:
         need(pace in PACES, f"run.pace must be one of {sorted(PACES)}")
+
+    mode = m.get("run", {}).get("mode")
+    if mode is not None:
+        need(mode in MODES, f"run.mode must be one of {sorted(MODES)}")
+
+    answers_doc = m.get("run", {}).get("answers_doc")
+    if answers_doc is not None:
+        need(
+            isinstance(answers_doc, str) and answers_doc.strip(),
+            "run.answers_doc must be a non-empty string when present",
+        )
 
     brand = m.get("brand", {})
     need(bool(brand.get("name")), "brand.name must be non-empty")
