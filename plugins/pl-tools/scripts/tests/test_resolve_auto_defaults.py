@@ -34,6 +34,31 @@ class InferCountryTests(unittest.TestCase):
         pool = [{"name": "Tee", "price": "$29.00"}]
         self.assertEqual(infer_country("https://brand.de", pool), "DE")
 
+    def test_path_locale_gb_segment(self):
+        # live-verified 2026-08-13: eu.patagonia.com/gb/en/home has a .com
+        # TLD (no signal) but a /gb/ locale segment identifying the UK site.
+        self.assertEqual(
+            infer_country("https://eu.patagonia.com/gb/en/home", []), "UK"
+        )
+
+    def test_path_locale_de_segment(self):
+        self.assertEqual(
+            infer_country("https://eu.brand.com/de/de/home", []), "DE"
+        )
+
+    def test_tld_wins_over_path_locale(self):
+        # a .de TLD is decisive even if the path also names a different
+        # country's locale segment.
+        self.assertEqual(
+            infer_country("https://brand.de/gb/en/home", []), "DE"
+        )
+
+    def test_path_locale_wins_over_currency(self):
+        pool = [{"name": "Tee", "price": "$29.00"}]
+        self.assertEqual(
+            infer_country("https://eu.brand.com/gb/en/home", pool), "UK"
+        )
+
 
 class InferCategoryTests(unittest.TestCase):
     def test_electronics_match(self):
