@@ -26,6 +26,50 @@ Ask **"Are returns in scope for this demo?"** first.
   **retain-shopify**. An Engage-only run never asks the Shopify question;
   Retain covers the Engage story automatically.
 
+## Mode selection
+
+**Babysit** (default): today's behavior, unchanged — every Round 1/2
+question is asked, both hard gates pause for a human yes.
+
+**Auto**: triggered only by an explicit phrase in the invoking message
+(e.g. "run this in auto mode for Acme", "auto-build the demo for
+Acme") — detect it the same way the prospect URL itself is detected,
+from plain language, never a flag syntax. Record the choice as
+`run.mode: "auto"` in the manifest (absent means babysit, matching
+`run.pace`'s own convention).
+
+In auto mode: Q1 and Q2 are still asked live (see
+`references/intake-script.md`'s "Auto mode never changes Round 1").
+Every other Round 2 question resolves via
+`${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py`, called once
+the scrape lane's `product-pool.json` exists:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py \
+  --prospect-url "<url>" \
+  --product-pool-file "<run dir>/scrape/product-pool.json" \
+  --answers-doc-file "<path, if the operator supplied one>"
+```
+
+Write every resolved field into the manifest exactly where its
+question already writes it (Q4 → `destination_country`, Q6 →
+`run.pace`, Q7 → `gates.order_lifecycle.gate_c`, Q8 →
+`cdc.region`/`cdc.category`, Q11 → the edit-mode fix decision) — Phase
+1–4 and `validate_manifest.py` do not distinguish an auto-resolved
+field from a human-answered one. If an answers doc was supplied, also
+record `run.answers_doc: "<path>"` in the manifest.
+
+**Both hard gates are auto-approved in auto mode**: at ★ (Phase 0 step
+8), accept the pre-built template HTML as-is — no screenshot
+round-trip, no chat question. At ✋ (Phase 0 step 9), once
+`validate_manifest.py --pre-gate` passes, treat the plan as approved
+without a chat round-trip. The `mark(d, "gate", ...)` calls still fire
+exactly as documented above, `asked` immediately followed by
+`answered` — telemetry and the run page see no difference from a fast
+human yes. A gate whose underlying artifact failed to render or
+validate is never auto-approved — that becomes a blocker (below), not
+a silent skip.
+
 ## Write permissions — settle these BEFORE the gate
 
 A run is read-only until the ✋ gate, then fires a dense burst of writes. If write
@@ -428,7 +472,9 @@ URL that stopped updating.
    the gate — never before.
    **The manifest schema** (written at step 7, above — kept here because this
    is where its fields were settled). `demo-manifest.json`:
-   `run{…, pace: "standard"|"fast" — absent means standard, page_url —
+   `run{…, pace: "standard"|"fast" — absent means standard,
+   mode: "babysit"|"auto" — absent means babysit, answers_doc — present
+   only when auto mode used one, page_url —
    recorded after the first run-page publish}`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
    edit_mode_verified}`, `cdc{selected_account_config_id,config_source,
@@ -663,6 +709,13 @@ orders were submitted for linking, and the config source (say "caller's
 default config" when `config_source` is `none`). No currency symbols. **If the edit-mode guard was
 repointed for this run** (per Phase 0 step 4's note), say so here as a line of fact and state that it is restored after Beat 2
 — not now. The drivers are still pushing events against that account.
+**In auto mode, Beat 1 also lists every auto-resolved field** — one
+line per field from `resolve_auto_defaults.py`'s output, showing its
+value and source (`default` | `inferred` | `doc`), in the same
+plan-card list style as the rest of Beat 1. Any answers-doc key that
+did not match a known field (`resolve_auto_fields`'s
+`_ignored_doc_keys`) is listed once here as ignored — not an error,
+not a blocker.
 Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends — re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 Update the telemetry row (stage `beat1`) with the build results, if
 `results/telemetry.json` exists.
@@ -813,6 +866,26 @@ Answer them from the actual run, not from intent. Live 2026-08-11 all three
 would have been answered "no" by a conductor that had in fact wrapped its
 drivers in `nohup` against the skill's instruction, leaving the user staring
 at an empty task list — question 3 is the one that would have caught it.
+
+## Blockers (auto mode)
+
+A blocker is anything auto mode cannot resolve with a default, an
+inference, or the skill's existing retry/fallback rules. On a
+blocker: stop the run, report exactly what is blocked and why (the
+same detail babysit mode's equivalent prompt would give), and wait for
+the operator. This does not change what counts as unrecoverable —
+every case below is already a hard-stop or a reported failure in
+babysit mode; auto mode just reaches it without having asked anything
+else first.
+
+| Blocker | Same as babysit's... |
+|---|---|
+| Q12 — missing write permissions | the existing write-permissions prompt |
+| Q14 — 2+ Shopify stores, no env pin | intake-script Q14 |
+| Missing Shopify CLI | the existing `/pl-setup` pointer |
+| Template publish failure after retry | the publish gate's three-way offer |
+| A lane failure the "Failure handling" table below already reports | that table's own response — reported, run continues past it, never new blocking behavior |
+| A scrape/interview data gap with no resolution rule above | the scrape-failure inline fallback; if that also fails, stop and report |
 
 ## Failure handling
 
