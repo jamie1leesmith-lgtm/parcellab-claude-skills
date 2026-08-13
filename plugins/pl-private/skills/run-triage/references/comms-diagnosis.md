@@ -58,6 +58,28 @@ byte-identical to the failing account's — `recipientCustomer: false`,
 This is the hypothesis the Kapten & Son row proposed. It had already been
 disproven once before that.
 
+### A message-level `layout` pin does not override the client auto-template
+
+A message can carry an explicit `layout` id (not `null`), left over from an
+earlier run that built it. This looks like it would win over the account's
+`autoLayout` mapping — it doesn't. The client auto-template still governs what
+actually renders.
+
+**Proven 2026-08-13**, account 1626718, message 75240
+(`out_for_delivery_00d7`), run `adidas-20260813-1033`. Message 75240 carries
+`layout: 19453` (a Moonpig layout, left from an earlier run). The client
+auto-template for the store this run used was set to the adidas layout
+(20736). A triage inferred from the pin alone that the fired emails would
+render as Moonpig — **wrong**: visual inspection in the app confirmed every
+email rendered as adidas.
+
+**There is no read-only API check for this.** `track email list` /
+`track email show` expose only a storage path to the rendered HTML, and
+`track notification`'s `body` field returns the messageType key, not content.
+**A message's `layout` field is not evidence of what actually renders — treat
+it as unverifiable without opening the email in the portal, and say so rather
+than inferring an outcome.**
+
 ### An empty `filterExpression` does not mean a journey will mail anyone
 
 Filter eligibility is necessary, not sufficient — a recipient role in
@@ -81,6 +103,30 @@ triage therefore cannot assume a run's own Beat 2 waited long enough for a slow
 split parcel.** Before treating a row's "comm missing" as real, check the gap
 between the final event and the verification, and re-look yourself — a comm that
 has since landed turns the finding into a timing artefact, not a defect.
+
+### `contacted_with_messages` undercounts sends — never count comms from it
+
+`trackings[].reporting_info.contacted_with_messages` is **per tracking and
+deduplicated**, so an order-level comm appears once in each tracking's array and
+reads as a single send. On a split-shipment order that hides a real duplicate.
+
+**Proven 2026-08-13**, account 1626718, run `adidas-20260813-1033`. Order
+`ADI-1786614815` has two trackings, each listing `order_confirmation_1093` once.
+The run's own Beat 2 therefore reported 15 comms. The account actually sent 16:
+
+```bash
+parcellab track email list --account 1626718 --page-size 30 -o json \
+  --jmes 'results[].{mt:messageType,at:createdAt}'
+```
+
+Four `order_confirmation_1093` sends, two of them for `ADI-1786614815`
+(09:55:16 and 09:55:47) — one per tracking. The customer receives the same
+order-confirmation email twice for one order number.
+
+`contacted_with_messages` is still the right source for *which* comm a tracking
+selected. It is the wrong source for *how many* were sent — use
+`track email list` for counts, and expect an extra order-level comm per extra
+tracking.
 
 ## Open questions
 
