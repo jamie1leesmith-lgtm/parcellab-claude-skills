@@ -77,8 +77,10 @@ def infer_category(product_pool):
         return DEFAULT_CATEGORY
 
     best = max(counts.values())
-    winners = sorted(c for c, n in counts.items() if n == best)
-    return winners[0]
+    winners = [c for c, n in counts.items() if n == best]
+    if len(winners) == 1:
+        return winners[0]
+    return DEFAULT_CATEGORY
 
 
 # Every field auto-mode can resolve without asking, and its non-doc default.
@@ -109,8 +111,8 @@ def resolve_auto_fields(prospect_url, product_pool, answers_doc=None):
 
     fields = {
         "destination_country": {"value": country, "source": "inferred"},
-        "cdc.region": {"value": country, "source": "inferred"},
-        "cdc.category": {"value": category, "source": "inferred"},
+        "brand.region": {"value": country, "source": "inferred"},
+        "brand.category": {"value": category, "source": "inferred"},
     }
     for key, value in _STATIC_DEFAULTS.items():
         fields[key] = {"value": value, "source": "default"}

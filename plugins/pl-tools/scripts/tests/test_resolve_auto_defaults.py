@@ -63,6 +63,18 @@ class InferCategoryTests(unittest.TestCase):
         ]
         self.assertEqual(infer_category(pool), "Fashion")
 
+    def test_tie_falls_back_to_default_category_not_alphabetical(self):
+        # One product matches Electronics; the other has no keyword match,
+        # which counts as Fashion per the majority-voting behavior above.
+        # That is a 1-1 tie, not a clear match, so it must fall back to
+        # DEFAULT_CATEGORY ("Fashion") rather than picking "Electronics"
+        # just because it sorts first alphabetically.
+        pool = [
+            {"name": "Phone case", "product_type": "Electronic Accessory"},
+            {"name": "Mystery Item", "product_type": "Widget"},
+        ]
+        self.assertEqual(infer_category(pool), "Fashion")
+
 
 class ResolveAutoFieldsTests(unittest.TestCase):
     def setUp(self):
@@ -72,8 +84,8 @@ class ResolveAutoFieldsTests(unittest.TestCase):
     def test_defaults_with_no_answers_doc(self):
         result = resolve_auto_fields(self.url, self.pool)
         self.assertEqual(result["destination_country"], {"value": "DE", "source": "inferred"})
-        self.assertEqual(result["cdc.region"], {"value": "DE", "source": "inferred"})
-        self.assertEqual(result["cdc.category"], {"value": "Home", "source": "inferred"})
+        self.assertEqual(result["brand.region"], {"value": "DE", "source": "inferred"})
+        self.assertEqual(result["brand.category"], {"value": "Home", "source": "inferred"})
         self.assertEqual(result["run.pace"], {"value": "standard", "source": "default"})
         self.assertEqual(
             result["gates.order_lifecycle.gate_c"], {"value": "send-as-is", "source": "default"}
