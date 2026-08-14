@@ -35,28 +35,66 @@ def _load(path, default=None):
 
 
 def derive_deviations(state, results):
-    """Mechanical signals only.
+    """Mechanical signals, unioned with whatever the conductor logged live.
 
-    The three self-report deviations (manual_intervention,
-    instruction_unfollowable, workaround_invented) are never derived here — the
-    conductor adds them at Beat 2 if it can. Treat them as a bonus signal: an
-    agent reporting its own mistakes under-reports exactly the cases worth
-    catching (live 2026-08-11: a conductor launched drivers with `nohup`
-    against the skill's instruction and did not notice until the user asked).
+    `state["deviations"]` is `run_state.add_deviation()`'s own record —
+    logged inline, the moment the conductor notices a variance, not
+    reconstructed from memory at Beat 2. It is the primary source now; the
+    checks below catch a few mechanical signals a conductor might not think
+    to log itself (a failed lane, an inline scrape/seed fallback), and stay
+    as a floor under the live log rather than a replacement for it.
+
+    Before `add_deviation()` existed, `manual_intervention`,
+    `instruction_unfollowable`, and `workaround_invented` were never derived
+    here at all — the conductor could only add them at Beat 2, from memory,
+    which under-reports exactly the cases worth catching (live 2026-08-11: a
+    conductor launched drivers with `nohup` against the skill's instruction
+    and did not notice until the user asked). They are logged the same way as
+    every other category now, so they no longer need special-casing here.
     """
-    found = []
-    if state.get("failures"):
+    found = list({d["category"] for d in state.get("deviations", [])
+                  if d.get("category")})
+    if state.get("failures") and "api_error" not in found:
         found.append("api_error")
     for lane in state.get("lanes", {}).values():
         if lane.get("status") == "failed" and "api_error" not in found:
             found.append("api_error")
     for name in ("scrape", "seed"):
         lane = state.get("lanes", {}).get(name, {})
-        if lane.get("fallback_inline"):
+        if lane.get("fallback_inline") and "lane_fallback_inline" not in found:
             found.append("lane_fallback_inline")
-    if (results or {}).get("validator_rejected"):
+    if (results or {}).get("validator_rejected") and "validator_rejected" not in found:
         found.append("validator_rejected")
     return found
+
+
+DEVIATION_NOTES_LIMIT = 1900
+
+
+def deviation_notes_text(deviations, limit=DEVIATION_NOTES_LIMIT):
+    """Render the free-text detail behind each logged deviation.
+
+    Same shape and cap as `timeline_text` and for the same reason: an
+    over-length text property rejects the whole row, and a rejected write is
+    non-fatal by design, so this must self-limit rather than rely on the
+    caller. Oldest entries drop first, with the same visible marker.
+    """
+    entries = list(deviations or [])
+
+    def render(items):
+        return "; ".join(
+            f"{d.get('at')} {d.get('category')}: {d.get('detail')}"
+            for d in items)
+
+    dropped = 0
+    while True:
+        text = render(entries)
+        if dropped:
+            text = f"+{dropped} earlier dropped; " + text
+        if len(text) <= limit or not entries:
+            return text
+        entries.pop(0)
+        dropped += 1
 
 
 def _counts(state, manifest):
@@ -205,6 +243,7 @@ def build_row(run_dir, stage, skill_version=""):
         "Account": account.get("id"),
         "Skill version": skill_version,
         "Run page": manifest.get("run", {}).get("page_url"),
+        "Mode": manifest.get("run", {}).get("mode") or "babysit",
         "Outcome": outcome,
         "Reached": STAGE_REACHED.get(stage, "Gate"),
         "Lanes failed": lanes_failed,
@@ -213,6 +252,7 @@ def build_row(run_dir, stage, skill_version=""):
         "Events pushed": pushed,
         "Events planned": planned,
         "Deviations": derive_deviations(state, results),
+        "Deviation notes": deviation_notes_text(state.get("deviations")),
         "Error detail": "; ".join(errors),
         "Total elapsed": timing["total_elapsed_min"],
         "Measured working time": timing["measured_min"],

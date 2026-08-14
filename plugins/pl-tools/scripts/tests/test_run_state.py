@@ -75,6 +75,31 @@ class TestRunState(unittest.TestCase):
         run_state.add_failure(self.dir, "seed", "no store")
         self.assertEqual(len(run_state.load(self.dir)["failures"]), 2)
 
+    def test_add_deviation_accumulates(self):
+        run_state.add_deviation(self.dir, "gate_reasked", "plan tweaked once")
+        run_state.add_deviation(self.dir, "workaround_invented", "relabeled core4 types")
+        deviations = run_state.load(self.dir)["deviations"]
+        self.assertEqual(len(deviations), 2)
+        self.assertEqual(deviations[0]["category"], "gate_reasked")
+        self.assertEqual(deviations[0]["detail"], "plan tweaked once")
+        self.assertIn("at", deviations[0])
+
+    def test_add_deviation_rejects_unknown_category(self):
+        with self.assertRaises(ValueError):
+            run_state.add_deviation(self.dir, "not_a_real_category", "x")
+
+    def test_init_seeds_an_empty_deviations_list(self):
+        self.assertEqual(run_state.load(self.dir)["deviations"], [])
+
+    def test_add_deviation_works_on_a_state_predating_deviations(self):
+        path = pathlib.Path(self.dir) / "run-state.json"
+        state = json.loads(path.read_text())
+        del state["deviations"]
+        path.write_text(json.dumps(state))
+
+        run_state.add_deviation(self.dir, "api_error", "publish 500")
+        self.assertEqual(len(run_state.load(self.dir)["deviations"]), 1)
+
     def test_writes_are_valid_json_on_disk(self):
         run_state.set_lane(self.dir, "scrape", "ok")
         raw = (pathlib.Path(self.dir) / "run-state.json").read_text()

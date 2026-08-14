@@ -158,6 +158,35 @@ run left all five pills on "pending" while the tests, which call `set_lane`
 directly, stayed green (found 2026-08-12; Currys and UNIQLO show the mirror
 image, correct pills and an empty timeline).
 
+## Deviation logging — the moment you notice, not at Beat 2
+
+A variance that did not stop the run is exactly the kind of fact a conductor
+forgets by the time it reaches Beat 2's three questions (below) — it never
+caused a visible problem, so there is nothing prompting recall. Call
+`run_state.add_deviation(d, "<category>", "<one-line detail>")` **inline, at
+the moment you notice the variance**, the same way a timing mark is one line
+beside work you are already doing. Beat 2's three questions then become a
+final backstop read of what this log already holds, not the sole source of
+it — and a run whose log is empty going into Beat 2 has actually had a clean
+run, not an unexamined one.
+
+`category` is one of the 9 values the telemetry `Deviations` column already
+uses. This table is not exhaustive — log any real variance in its category —
+but these are the moments already named elsewhere in this skill that call for
+it:
+
+| Category | Log it when |
+|---|---|
+| `validator_rejected` | `validate_manifest.py` returns `MANIFEST INVALID` and you fix and re-validate (Phase 0 step 7) |
+| `gate_reasked` | a hard gate genuinely gets asked again — a second ★ preview round, a plan tweak that loops back to step 9 — never on the first ask |
+| `lane_fallback_inline` | the scrape-failure inline fallback or the seed-agent inline re-run fires (Failure handling) |
+| `api_error` | a publish failure, a per-order failure (direct or Shopify engine), or a CDC 500 is caught and the run carries on past it |
+| `manual_intervention` | in babysit mode, the operator has to step in beyond the normal script (auto mode's blockers stop-and-report instead — that is not this) |
+| `instruction_unfollowable` | this skill's own text could not be followed exactly as written and you had to deviate — e.g. a prospect catalog that cannot literally satisfy "four distinct product types" |
+| `workaround_invented` | you improvised something this skill does not describe to get past a real-world mismatch, including the fix for an `instruction_unfollowable` case above |
+| `comm_missing` | Beat 2's second look still shows a comm missing (Phase 4) |
+| `retry_needed` | anything above needed more than one attempt before it succeeded |
+
 ## The run page
 
 Every run keeps one progress artifact — see
@@ -388,6 +417,9 @@ URL that stopped updating.
    ```
 
    Fix any `MANIFEST INVALID` gaps now, while nothing has been asked or sent.
+   Log each one via `add_deviation(d, "validator_rejected", ...)` as you fix
+   it (see *Deviation logging* above) — this loop running at all is itself
+   the fact worth capturing, whether or not it changed the outcome.
 
    `--pre-gate` defers exactly one check: `approvals.products_approved_at`,
    which cannot honestly exist until the ✋ gate stamps it. Write that field as
@@ -408,7 +440,8 @@ URL that stopped updating.
    front of the user now: follow branded-template Step 8 (launch config →
    `preview_start` → navigate → screenshot), ask *"Does this look right before
    I push it to parcelLab?"* — `mark(d, "gate", "template", "asked")` as you
-   ask, `"answered"` when they reply — and iterate on the file until they say yes. This
+   ask, `"answered"` when they reply — and iterate on the file until they say yes,
+logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`. This
    is the run's first deliverable and it gates every comm the environment will
    send, so it is approved on its own, ahead of the plan.
    - **Re-render and republish the page before asking.** The template preview
@@ -452,8 +485,9 @@ URL that stopped updating.
    the account by name. One explicit yes
    covers all of it; any tweak loops back here. When the gate opens: record it
    via `run_state.py` — `mark(d, "gate", "plan", "asked")` as you pose it, and
-   again on every re-ask — re-render with `render_run_page.py <run dir>` and
-   republish — non-fatal.
+   again on every re-ask (also `add_deviation(d, "gate_reasked", ...)` each
+   time, per *Deviation logging* above) — re-render with
+   `render_run_page.py <run dir>` and republish — non-fatal.
 
    **If the page failed to publish, the plan still has to be readable** — post
    it in chat as a markdown table then, and say the page is unavailable. The
@@ -588,6 +622,10 @@ template means that first email goes out unbranded. If it says
 3. explicitly proceed accepting unbranded comms (record the choice in the
    report).
 
+Whichever path this takes, log it via `add_deviation(d, "api_error", ...)` —
+the publish failing at all is the variance, independent of how it was
+resolved.
+
 **retain-shopify additionally waits for the seed**: `results/shopify-seed.json`
 must show `"status": "ok"` before Shopify orders are created (their line
 items reference seeded variants). A failed seed lane stops only the order
@@ -673,7 +711,8 @@ label derived from the slot (`fraud_low` → "Fraud risk: low", `manual_return`
 → "Manual return", `return_tracking` → "Return tracking"); `cdc_slot` itself
 never goes to the API (its enum was removed 2026-08-11).
 An order whose creation failed is excluded (and reported); one order's
-failure never stops another's driver.
+failure never stops another's driver. Log any such failure via
+`add_deviation(d, "api_error", ...)`.
 
 ## Phase 2 — Orders (Shopify engine: retain-shopify path)
 
@@ -703,7 +742,8 @@ order name, e.g. "#1001") and, once all orders are processed, build
 Per-order failure isolation: ingestion timeout, enrichment failure or
 fulfilment failure marks THAT order partial in `order.json`
 (`"status": "partial", "failed_at": "<step>"`) — its events are not pushed,
-other orders continue, and the report says exactly which step failed.
+other orders continue, and the report says exactly which step failed. Log it
+via `add_deviation(d, "api_error", ...)`.
 
 ## Phase 3 — The one CDC call
 
@@ -713,7 +753,8 @@ Invoke the pl-tools:demo-request skill's "Orchestrated runs
 (demo-environment)" contract against the run dir: it builds the payload
 from the manifest + `results/linked-orders.json` and submits once — bracket
 the invocation with `mark(d, "lane", "cdc", "start")` and `"end"`. Do not
-retry a 500 (the request already exists — the results file records it).
+retry a 500 (the request already exists — the results file records it), but
+do log it via `add_deviation(d, "api_error", ...)`.
 
 ## Phase 4 — Report
 
@@ -821,6 +862,10 @@ it is what makes 5 minutes safe, not an optional extra. A run that reports
 "comm missing" without a second look has skipped the step, and the split
 parcel is where that will bite first.
 
+Once a second look confirms it, log it immediately via
+`add_deviation(d, "comm_missing", ...)` — do not wait for the three questions
+below; by then it is already known and logging it now is one line.
+
 **Before diagnosing a missing comm, check whether the message can send at all.**
 Resolve the journey channel's `messageType` to its message and read
 `hasReleasedVersion` — a message that has never been released renders nothing,
@@ -872,9 +917,13 @@ copy a teammate can open. A failed append is recorded and mentioned once in the
 final report, exactly like a failed row write: telemetry is an observer, never
 a dependency.
 
-**Then answer these three questions explicitly before writing the row** — they
-are the only source for the self-reported deviations, and an open "did
-anything go wrong?" reliably returns "no":
+**Then answer these three questions explicitly before writing the row.** By
+now, most of what they ask should already be sitting in `state["deviations"]`
+from `add_deviation()` calls made live through the run (*Deviation logging*,
+above) — these questions are a final backstop pass, not the only source. Read
+the log first, then ask whether anything is still missing from it. An open
+"did anything go wrong?" reliably returns "no"; these stay specific on
+purpose:
 
 1. Did any instruction fail to work as written? If so, which file and line?
    → `instruction_unfollowable`
@@ -886,7 +935,11 @@ anything go wrong?" reliably returns "no":
 Answer them from the actual run, not from intent. Live 2026-08-11 all three
 would have been answered "no" by a conductor that had in fact wrapped its
 drivers in `nohup` against the skill's instruction, leaving the user staring
-at an empty task list — question 3 is the one that would have caught it.
+at an empty task list — question 3 is the one that would have caught it (this
+is exactly why the log is now built live rather than relying on this pass
+alone). If any answer surfaces something not already in the log, call
+`add_deviation()` for it now, before writing the row — the Notion `Deviations`
+and `Deviation notes` columns are derived from that log, not typed by hand.
 
 ## Blockers (auto mode)
 
@@ -918,7 +971,11 @@ else first.
 | one order (any engine) | nothing else | mark partial in its order.json; report the exact step |
 | CDC call | nothing | report; 500 = request exists, retry manually in-app |
 
-On any failure above: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
+On any failure above: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal. Also log it via
+`add_deviation()` — `lane_fallback_inline` for the scrape/seed rows,
+`api_error` for template publish, one order, or the CDC call — even though
+none of these stop the run; that is precisely what this log exists to catch
+(*Deviation logging*, above).
 
 Fallback rule (Approach B): any agent lane can be re-run inline in the main
 session from the same manifest — the brief and the contract are identical.

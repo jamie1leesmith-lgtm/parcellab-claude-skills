@@ -58,6 +58,18 @@ class TestBuildTelemetryRow(unittest.TestCase):
         self.assertEqual(row["Account"], 1626718)
         self.assertEqual(row["Skill version"], "f0ee309")
 
+    def test_mode_defaults_to_babysit_when_absent_from_manifest(self):
+        # MANIFEST's run{} carries no "mode" key — matching run.pace's own
+        # absent-means-standard convention.
+        self.assertEqual(btr.build_row(a_run(), "beat2")["Mode"], "babysit")
+
+    def test_mode_reads_auto_straight_from_the_manifest(self):
+        d = a_run()
+        manifest = json.loads((d / "demo-manifest.json").read_text())
+        manifest["run"]["mode"] = "auto"
+        (d / "demo-manifest.json").write_text(json.dumps(manifest))
+        self.assertEqual(btr.build_row(d, "beat2")["Mode"], "auto")
+
     def test_stage_sets_outcome_and_reached(self):
         self.assertEqual(btr.build_row(a_run(), "committed")["Outcome"],
                          "Committed")
@@ -90,6 +102,34 @@ class TestBuildTelemetryRow(unittest.TestCase):
         d = a_run(with_failure=True)
         for dev in btr.derive_deviations(run_state.load(d), {}):
             self.assertIn(dev, btr.DEVIATIONS)
+
+    def test_logged_deviations_are_the_primary_source(self):
+        # add_deviation() is the live-logging path (Deviation logging in
+        # SKILL.md) — this must surface in Deviations without needing any of
+        # the mechanical fallback signals (failed lanes, inline fallbacks).
+        d = a_run()
+        run_state.add_deviation(d, "workaround_invented", "relabeled core4 types")
+        run_state.add_deviation(d, "gate_reasked", "plan tweaked once")
+        deviations = btr.derive_deviations(run_state.load(d), {})
+        self.assertIn("workaround_invented", deviations)
+        self.assertIn("gate_reasked", deviations)
+
+    def test_logged_and_mechanical_deviations_union_without_duplicates(self):
+        d = a_run(with_failure=True)
+        run_state.add_deviation(d, "api_error", "cdc 500")
+        deviations = btr.derive_deviations(run_state.load(d), {})
+        self.assertEqual(deviations.count("api_error"), 1)
+
+    def test_deviation_notes_render_category_and_detail(self):
+        d = a_run()
+        run_state.add_deviation(d, "comm_missing", "order_confirmation absent")
+        row = btr.build_row(d, "beat2")
+        self.assertIn("comm_missing: order_confirmation absent",
+                      row["Deviation notes"])
+
+    def test_deviation_notes_empty_string_on_a_clean_run(self):
+        row = btr.build_row(a_run(), "beat2")
+        self.assertEqual(row["Deviation notes"], "")
 
     def test_row_contains_no_triage_columns(self):
         # Triage is written by review, never by a run — a run must not be able

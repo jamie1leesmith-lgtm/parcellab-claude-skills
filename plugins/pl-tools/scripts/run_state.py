@@ -18,6 +18,11 @@ LANES = ("scrape", "template", "seed", "orders", "cdc")
 STATUSES = ("pending", "running", "ok", "published", "skipped", "failed")
 KINDS = ("lane", "agent", "gate")
 PHASES = ("start", "end", "asked", "answered")
+DEVIATION_CATEGORIES = (
+    "validator_rejected", "api_error", "retry_needed", "gate_reasked",
+    "comm_missing", "lane_fallback_inline", "manual_intervention",
+    "instruction_unfollowable", "workaround_invented",
+)
 
 
 def _path(run_dir):
@@ -57,6 +62,7 @@ def init(run_dir, run_id, path, account_name):
         "schedule": {},
         "page": {"renders": [], "publishes": []},
         "failures": [],
+        "deviations": [],
     }
     return _write(run_dir, state)
 
@@ -217,6 +223,34 @@ def add_failure(run_dir, lane, detail):
     def apply(state):
         state["failures"].append({"lane": lane, "detail": detail,
                                   "at": _now()})
+
+    return _amend(run_dir, apply)
+
+
+def add_deviation(run_dir, category, detail):
+    """Log a variance the moment the conductor notices it, not at Beat 2.
+
+    Beat 2's three closed questions ("did any instruction fail to work as
+    written?") depend entirely on the conductor remembering, at the end of a
+    run, something that happened much earlier and did not stop anything —
+    exactly the kind of fact that gets lost. Call this inline, right where
+    the deviation actually happens: a manifest fix-and-retry, a workaround, a
+    subagent skipping an instruction, a gate re-asked, an API error handled
+    gracefully. Beat 2 then reviews this list rather than reconstructing it
+    from memory.
+
+    `category` must be one of DEVIATION_CATEGORIES — the same enum the
+    Notion `Deviations` column already uses, so nothing new to reconcile
+    downstream.
+    """
+    if category not in DEVIATION_CATEGORIES:
+        raise ValueError(
+            f"unknown deviation category {category!r}; "
+            f"expected one of {DEVIATION_CATEGORIES}")
+
+    def apply(state):
+        state.setdefault("deviations", []).append(
+            {"category": category, "detail": detail, "at": _now()})
 
     return _amend(run_dir, apply)
 

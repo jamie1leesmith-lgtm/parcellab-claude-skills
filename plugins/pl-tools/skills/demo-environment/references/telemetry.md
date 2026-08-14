@@ -35,6 +35,7 @@ Columns, exactly:
 | Account | Number | |
 | Skill version | Text | |
 | Run page | URL | |
+| Mode | Select | babysit · auto — read straight from the manifest's `run.mode` (absent means babysit) |
 | Outcome | Select | Committed · Built · Verified · Stalled · Failed |
 | Reached | Select | Gate · Template · Orders · CDC · Beat 1 · Beat 2 |
 | Lanes failed | Multi-select | scrape · template · seed · orders · cdc |
@@ -59,7 +60,8 @@ Columns, exactly:
 | Page cadence | Text | publish offsets in seconds from the first render, e.g. `0,45,320,610` |
 | Largest gap | Number | minutes; the longest stretch covered by no instrumented span. Null when fewer than two stamps |
 | Largest gap after | Text | the mark that gap follows, e.g. `orders:end` |
-| Deviations | Multi-select | validator_rejected · api_error · retry_needed · gate_reasked · comm_missing · lane_fallback_inline · manual_intervention · instruction_unfollowable · workaround_invented |
+| Deviations | Multi-select | validator_rejected · api_error · retry_needed · gate_reasked · comm_missing · lane_fallback_inline · manual_intervention · instruction_unfollowable · workaround_invented — derived from `run_state.add_deviation()` calls logged live through the run (see SKILL.md's *Deviation logging*), unioned with a few mechanical signals (failed lanes, inline fallbacks) |
+| Deviation notes | Text | one line per logged deviation, `<at> <category>: <detail>`, same 1900-char cap and oldest-drop convention as `Timeline` — the free-text detail behind each `Deviations` entry |
 | Error detail | Text | |
 | Issue key | Text | |
 | Triage status | Select | Untriaged · Reviewed - no action · Fix planned · Fix shipped · Can't reproduce |
@@ -182,10 +184,18 @@ with every lane green, which reads as success — the 19.2-minute gap on
 - **A failed Notion write never fails a run.** Record it in the run dir, mention
   it once in the final report, carry on. Telemetry is an observer, never a
   dependency.
-- **Self-reported deviations are the weak link.** `manual_intervention`,
-  `instruction_unfollowable` and `workaround_invented` cannot be derived and
-  depend on the conductor noticing its own mistakes. Live 2026-08-11 a conductor
-  launched drivers with `nohup` against the skill's intent and did not notice
-  until the user asked. Ask the closed questions at Beat 2 — "did any instruction
-  fail to work as written? which line?" — rather than an open "did anything go
-  wrong?", and treat the answers as a bonus signal, never as coverage.
+- **Deviations are logged live now, not reconstructed at Beat 2.**
+  `manual_intervention`, `instruction_unfollowable`, `workaround_invented`, and
+  every other category still depend on the conductor noticing its own
+  variances — that has not changed — but noticing no longer has to survive
+  until the end of a fifteen-minute run. SKILL.md's *Deviation logging*
+  section calls for `add_deviation()` the moment a variance is noticed, at
+  each of the specific points already named in this skill (a validator
+  retry, a re-asked gate, an inline fallback, a caught API error, a comm
+  still missing after the second look). Beat 2's three closed questions —
+  "did any instruction fail to work as written? which line?" rather than an
+  open "did anything go wrong?" — are now a backstop review of that log, not
+  its only source. Live 2026-08-11 a conductor launched drivers with `nohup`
+  against the skill's intent and did not notice until the user asked; that
+  case is exactly what logging inline, rather than waiting for Beat 2's
+  memory to hold it, is meant to catch.
