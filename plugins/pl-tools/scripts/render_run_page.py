@@ -46,9 +46,31 @@ body { color:var(--fg); background:var(--bg); font:15px/1.55 system-ui,sans-seri
 table { border-collapse:collapse; width:100%; }
 td,th { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); }
 .stamp { font-size:12px; color:var(--muted); margin-top:12px; }
+.auto-banner { background:linear-gradient(90deg,#ff6b35,#f7931e); color:#111;
+        font-size:20px; font-weight:800; text-align:center; padding:14px 20px;
+        border-radius:12px; margin:0 0 16px; letter-spacing:.02em; }
+.auto-banner .sub { display:block; font-size:13px; font-weight:600;
+        margin-top:4px; letter-spacing:normal; }
 @media (max-width: 768px) { .layout { display:block; }
   .rail { position:static; margin-bottom:16px; } }
 """
+
+AUTO_BANNER = (
+    '<div class="auto-banner">🤖 AUTO MODE'
+    '<span class="sub">Nobody\'s babysitting this one — it drove itself, '
+    'and it\'s not even sorry.</span></div>'
+)
+
+
+def _auto_banner(manifest):
+    """Flash the fact this run is unattended. Absent mode means babysit,
+    matching run.pace's own convention, so no manifest or no explicit
+    "auto" means no banner."""
+    if not manifest:
+        return ""
+    if (manifest.get("run") or {}).get("mode") != "auto":
+        return ""
+    return AUTO_BANNER
 
 
 CLOCK_JS = """
@@ -451,6 +473,7 @@ def render(state, manifest=None, assets=None, template_html=None):
     # `or` rather than a .get default: these keys are present-but-None until
     # intake resolves them, which a default never catches.
     body = [
+        _auto_banner(manifest),
         f'<h1>{e(state.get("account_name") or "—")} '
         f'<span style="color:var(--muted);font-size:16px">— {e(title)}</span>'
         f'</h1>',
