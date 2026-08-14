@@ -552,5 +552,32 @@ class TestRenderRecordsItself(unittest.TestCase):
         self.assertEqual(len(run_state.load(run_dir)["page"]["renders"]), 2)
 
 
+class TestAutoModeBanner(unittest.TestCase):
+    def test_auto_mode_shows_the_banner(self):
+        manifest = a_manifest()
+        manifest["run"]["mode"] = "auto"
+        html = render_run_page.render(a_state(), manifest=manifest)
+        self.assertIn('<div class="auto-banner">', html)
+        self.assertIn("AUTO MODE", html)
+
+    def test_babysit_mode_has_no_banner(self):
+        manifest = a_manifest()
+        manifest["run"]["mode"] = "babysit"
+        html = render_run_page.render(a_state(), manifest=manifest)
+        self.assertNotIn('<div class="auto-banner">', html)
+        self.assertNotIn("AUTO MODE", html)
+
+    def test_absent_mode_has_no_banner(self):
+        # Absent means babysit, matching run.pace's own convention.
+        manifest = a_manifest()
+        html = render_run_page.render(a_state(), manifest=manifest)
+        self.assertNotIn('<div class="auto-banner">', html)
+
+    def test_no_manifest_has_no_banner(self):
+        # The template gate (state 2b) renders before a manifest exists.
+        html = render_run_page.render(a_state())
+        self.assertNotIn('<div class="auto-banner">', html)
+
+
 if __name__ == "__main__":
     unittest.main()
