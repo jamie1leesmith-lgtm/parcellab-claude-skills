@@ -33,6 +33,73 @@ read `hasReleasedVersion`:
 parcellab journey message list --account <id> --page-size 200 -o json
 ```
 
+### `order_confirmation` does not fire for Shopify-integration orders — by design, not a defect
+
+On the retain-shopify path, orders arrive at parcelLab through the live Shopify
+integration sync, not through the direct engine's `PUT /v4/track/orders/`. The
+`order_confirmation` journey (trigger `onOrderCreated`) is not configured to
+fire for these orders, because Shopify itself sends the customer its own
+native order-confirmation email — parcelLab sending a second one would
+duplicate it. This is expected account setup, not a misconfigured trigger or
+an unreleased message.
+
+**Proven 2026-08-14**, account 1626718, run `hotelchocolat-20260814-1128`,
+message 33876 (`order_confirmation_1093`, journey 15924). The message is
+`releaseStatus: published` and `active: true` for `en` — ruling out the
+"message not released" cause before it's even considered. `order_confirmation`
+fired zero times across all three retain-shopify orders (`pl-1035`, `pl-1036`,
+`pl-1037`), while `shipping_confirmation`, `out_for_delivery`,
+`package_delivered`, and `delay_update` all fired exactly as expected. Earlier
+runs on the same account that used the **direct** engine (not Shopify) did
+receive `order_confirmation_1093` sends — confirming the split is by engine
+path, not a broken trigger.
+
+**How to check:** if `order_confirmation` (or any order-level, pre-tracking
+comm) is missing only on a retain-shopify run, check the path before treating
+it as a defect — this is expected on that path and needs no fix.
+
+### A `WarehouseDelay` checkpoint does not reach a "Delivery delayed" journey without an account-specific `onDeliveryStatus` trigger-event
+
+`WarehouseDelay` is pushed via the events API on the `onDeliveryStatus` slot,
+the same slot `InTransit`/`OutForDelivery` use. The **global** `🟡 Delay: Any
+reason` trigger-event (id `3808`) that most "Delivery delayed" journeys are
+wired to listens on the `onDelay` slot instead, matching semantic delay-*reason*
+event types (`OperationalError`, `AddressIssue`, `TrafficProblems`, ...) — not
+the raw checkpoint status. A journey trigger built only on event `3808` never
+fires for a `WarehouseDelay` push, no matter how the message/journey itself is
+configured.
+
+**Proven 2026-08-14**, comparing account **1626102** (failing, run
+`grailed-20260814-1256`) against account **1626718** (control, run
+`hotelchocolat-20260814-1128`, where the equivalent comm fired twice
+successfully). 1626718 carries an **account-specific** trigger-event, `🟡
+Delivery status: warehouse delay or exception` (id `17372`), explicitly mapping
+`eventTypes: ["WarehouseDelay","Exception"]` onto `slotTypes: ["onDeliveryStatus"]`
+— that mapping is what lets its delay journey react to a raw `WarehouseDelay`
+checkpoint at all. Account 1626102's full trigger-event list (63 rows, all
+global `account: 1`) has no such mapping; its "Delivery delayed" journey
+(config `17475`, trigger `54666`) is wired only to event `3808`. Message 35988
+(`parcel_delayed_all_b612`) is `published`/`active` — ruling out the
+release-status cause before it's even considered. Result: `WarehouseDelay`
+checkpoints attached correctly on both shipments (order `#1090` parcel-b/fedex,
+order `#1091`/usps), the message could send, but the trigger never matched, so
+zero of two eligible sends went out.
+
+**How to check:** if a delay/exception-style comm is missing and the message
+is confirmed released, check whether the account has an account-specific
+trigger-event mapping the raw checkpoint status (`WarehouseDelay`, `Exception`,
+etc.) onto `onDeliveryStatus` — do not assume the global `onDelay` "Delay: Any
+reason" event covers it, because it doesn't.
+
+```bash
+parcellab api request GET "/v4/journey/trigger-events/?account=<id>" -o json \
+  --jmes "results[?account==<id>]"
+```
+
+An empty result means the account has no custom mapping and relies entirely on
+global trigger-events — which do not cover raw delivery-status delay
+checkpoints.
+
 ## Proven non-causes — spend no calls re-deriving these
 
 ### `releaseStatus: draft` does not block sending
