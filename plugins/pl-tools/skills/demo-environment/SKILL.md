@@ -31,6 +31,10 @@ Ask **"Are returns in scope for this demo?"** first.
 **Babysit** (default): today's behavior, unchanged — every Round 1/2
 question is asked, both hard gates pause for a human yes.
 
+When `run.mode` is `"auto"`, `render_run_page.py` flashes a large banner at
+the top of the run page — the run is unattended, and the page should say so
+before anyone reads a single lane pill.
+
 **Auto**: triggered only by an explicit phrase in the invoking message
 (e.g. "run this in auto mode for Acme", "auto-build the demo for
 Acme") — detect it the same way the prospect URL itself is detected,
@@ -713,7 +717,10 @@ retry a 500 (the request already exists — the results file records it).
 
 ## Phase 4 — Report
 
-**Beat 1 — environment built** (immediately after Phase 3): layout id +
+**Beat 1 — environment built** (immediately after Phase 3). **In auto mode,
+open with a line flagging that this ran unattended** — the same fact the run
+page's banner already flashes, so the chat report doesn't undersell what the
+page shouts. Then: layout id +
 release status + store assignment (+ any 9b country-override warning,
 repeated verbatim) · per order: number, customer, fraud level, slot,
 courier(s) + tracking number(s), scenario, and the expected comm per event

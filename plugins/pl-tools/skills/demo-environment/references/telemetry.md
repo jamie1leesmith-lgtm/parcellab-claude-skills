@@ -139,6 +139,15 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_telemetry_row.py <run dir> <stage> \
   --skill-version "$(git -C <plugin repo> rev-parse --short HEAD)"
 ```
 
+**Send the object this prints straight through to the Notion write, every key,
+unmodified.** Never hand-select a subset of its fields — an omitted property
+reads back as null forever, indistinguishable from one the script never
+computed at all. Live 2026-08-13/14 a conductor did exactly this on both the
+`beat1` and `beat2` writes, and `Timeline`, `Lanes failed`, `Error detail`,
+`Waiting on user`, and `Page URL changes` were all correctly computed but
+never reached the row — the run had to be triaged and backfilled afterward to
+recover data the script had already produced.
+
 **Why the row is created at gate approval, not at the end.** If it were written
 only on completion, every run that died would never appear, and the table would
 systematically over-represent success — hiding exactly the failures it exists to
