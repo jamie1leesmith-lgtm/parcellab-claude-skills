@@ -92,15 +92,109 @@ etc.) onto `onDeliveryStatus` — do not assume the global `onDelay` "Delay: Any
 reason" event covers it, because it doesn't.
 
 ```bash
-parcellab api request GET "/v4/journey/trigger-events/?account=<id>" -o json \
-  --jmes "results[?account==<id>]"
+parcellab journey event list --account <id> --page-size 200 -o json
 ```
 
-An empty result means the account has no custom mapping and relies entirely on
-global trigger-events — which do not cover raw delivery-status delay
-checkpoints.
+An empty account-specific result (every row `account: 1`) means the account has
+no custom mapping and relies entirely on global trigger-events — which do not
+cover raw delivery-status delay checkpoints.
+
+> **Command corrected 2026-08-17.** This entry originally documented
+> `parcellab api request GET "/v4/journey/trigger-events/?account=<id>"`. That
+> path returns a **404 Resolver404** — the resource is `journey event`, not
+> `journey trigger-events`. The ledger's own rule is that an entry a later
+> reader cannot re-check is one they will re-derive; a 404 in the "How to check"
+> block is exactly that, so the working command replaces it above.
+
+### The same slot mismatch recurred on 1626102 three days later — unfixed accounts re-offend
+
+**Re-proven 2026-08-17**, account 1626102, run `windsor-20260817-0956`. Identical
+symptom (`WarehouseDelay` pushed on orders #1094-B and #1095, "Parcel delayed -
+all" never fired, rechecked twice), identical cause, same account as the
+2026-08-14 `grailed` proof above. Nothing had changed: `journey event list`
+still returns 63 rows, all global `account: 1`, while the control 1626718 still
+carries account-specific event 17372.
+
+The trigger is **54636** `Emails | Delay: Parcel delayed - all`, wired only to
+global event 3808 (`onDelay`). Message check: messageType 35988
+(`parcel_delayed_all_b612`), message 82254, `releaseStatus: published` /
+`hasReleasedVersion: true` / `active: true`.
+
+**The rule this adds:** a demo-environment run on an account with a known,
+unremediated trigger-event gap will reproduce the same missing comm every time.
+Before triaging a delay comm on account 1626102, check this ledger first — the
+answer is already here, and the account write that would fix it has not been
+made.
+
+### A shop not set up to process messages sends nothing, while journey, messages and triggers all read healthy
+
+The whole comms chain can check out — journey `published`, every message
+`hasReleasedVersion: true`, triggers wired to the right events, checkpoints
+attached, delivery status reaching `Delivered` — and the account still sends
+zero emails, because the **shop/client** the orders belong to was not configured
+to process messages. Every object this file tells you to check is downstream of
+that, so all of them look correct.
+
+**Account 1622522, run `footlocker-20260814-1256`.** Reported by the account
+owner on 2026-08-17: *"the shop was incorrectly setup to process messages"*, and
+fixed by them that morning, confirmed by a test send
+(`package_delivered_f4dd`, 2026-08-17T09:48) — the account's only email up to
+that point.
+
+**Recorded as owner-reported, not triage-proven.** The repair landed hours
+before the triage read the account, so the broken state was never inspected
+read-only and no command here demonstrates it. It is written down because the
+*shape* is what costs time: this triage spent calls confirming journey, message
+release state and trigger wiring were all fine, which was true and irrelevant.
+
+**How to check:** when comms are zero **account-wide** — not one comm missing,
+but nothing at all — check the shop/client object before working down the
+journey chain:
+
+```bash
+parcellab config client list --account <id> -o json
+```
+
+A per-message or per-trigger fault cannot explain an account that has never sent
+anything; that pattern points at shop/client setup or ownership, not at the
+journey. See also *An account you do not own* in **Open questions** — if the
+account is not yours, stop at the observation.
 
 ## Proven non-causes — spend no calls re-deriving these
+
+### An empty `filterExpression` on the trigger is not why a delay comm was skipped
+
+When a delay comm does not fire, the intuitive next look is the trigger's filter.
+On the accounts seen so far the filter is simply **empty** — so it cannot be
+what blocked anything, and looking there burns calls without narrowing.
+
+**Proven 2026-08-17**, account 1626102, trigger 54636: `filterExpression: {}`.
+This was the `windsor-20260817-0956` row's own stated hypothesis ("worth a
+follow-up on the trigger's filter config") and it was wrong; the cause was the
+event slot mismatch above. Check the trigger's **`events[]` slot mapping**
+before its filter.
+
+Not to be confused with *An empty `filterExpression` does not mean a journey
+will mail anyone* below. That entry says an empty filter is not **sufficient**
+for a send; this one says an empty filter is not the **blocker**. Both hold at
+once — an empty filter tells you nothing in either direction, so it is never
+the object to spend calls on first.
+
+### A trigger can embed an event record that no longer resolves
+
+Reading a trigger's inline `events[]` can show an account-specific event that
+looks like the custom mapping you are hunting for. It may be dead.
+
+**Proven 2026-08-17**, account 1626102: trigger 54641 (`Emails | Delay: Parcel
+delayed - other`) embeds event **17719** (`account: 1626102`, eventTypes
+`["Exception"]`, slotTypes `["onDelay"]`). That event is absent from
+`journey event list` and `parcellab journey event show 17719` returns all-null
+fields, while the control's live event 17372 both appears in its list and
+resolves. So `journey event list` is the trustworthy source; a trigger's
+embedded copy is not.
+
+Do **not** read an embedded account-specific event as proof the account has a
+custom mapping — resolve it with `journey event show` first.
 
 ### `releaseStatus: draft` does not block sending
 
@@ -171,6 +265,34 @@ split parcel.** Before treating a row's "comm missing" as real, check the gap
 between the final event and the verification, and re-look yourself — a comm that
 has since landed turns the finding into a timing artefact, not a defect.
 
+### `checkpoints: 0` from `track tracking show` is not evidence that events never attached
+
+`track tracking show` does not return a `checkpoints` (or `history`) array at
+all, so reading its length gives `0` on a perfectly healthy tracking. Treating
+that as "the run's events never landed" turns a comms question into a
+non-existent orders-lane bug.
+
+**Proven 2026-08-17.** Tracking `6a7f81247ce68cc93c30cbe7` (account 1622522) read
+`checkpoints: 0` — and so did the control tracking `6a82e4406d4f4d2f38c2e8cb` on
+1626102, whose events are known to have attached. The same call also returns
+`reporting_info: {}`, so `contacted_with_messages` reads `None` here regardless
+of truth.
+
+**Read these fields instead**, which do carry real state:
+
+```bash
+parcellab track tracking show <id> -o json
+# activityMonitorCurrentDeliveryStatus, reportingPickupDate,
+# reportingInTransitDate, reportingCourierDropoffDate, reportingDeliveryDate
+```
+
+On the tracking above those showed `Delivered` with all four dates set to
+2026-08-14 — the events had attached all along.
+
+This is the general lesson behind this file's control-comparison rule: **an
+absent or zero field is only evidence once the same call on a known-good account
+returns something different.**
+
 ### `contacted_with_messages` undercounts sends — never count comms from it
 
 `trackings[].reporting_info.contacted_with_messages` is **per tracking and
@@ -197,6 +319,28 @@ tracking.
 
 ## Open questions
 
+- (Opened and closed 2026-08-17, kept so the reasoning is visible.)
+  ~~Account 1622522 (Foot Locker) sends almost nothing and no known cause
+  explains it.~~ **Closed as out of scope, not as a defect.** From run
+  `footlocker-20260814-1256`: the account had sent exactly one email in its
+  lifetime (`package_delivered_f4dd`, 2026-08-17T09:48), while everything
+  checkable read healthy — journey 14173 `published`, all 15 messages
+  `hasReleasedVersion: true`, 15 triggers on sensible events, and the run's own
+  tracking at `Delivered`. **Cause since supplied by the account owner: the shop
+  was not correctly set up to process messages**, fixed by them on 2026-08-17
+  before this triage ran — that lone email was their test send. Written up as a
+  proven cause above (*A shop not set up to process messages…*); it is account
+  configuration owned by that account's user, not a demo-environment defect.
+
+  **The rule, and it is the reusable part:** an account you do not own can
+  produce zero comms for reasons triage can neither see nor fix. Before treating
+  a zero-send as a run defect, establish who owns the account. If it is not the
+  runner's, record the observation and stop — do not diagnose it, and do not
+  propose changing its live config. See also the note in *Adding an entry* about
+  reading a live account in its **present** state: config inspected today is not
+  evidence about a run three days ago, because someone may have changed it in
+  between — as happened here.
+
 - (Resolved 2026-08-12, closed rather than deleted so the history is visible.)
   ~~`Delivered` (messageType 30891) on account 1626102 has `hasReleasedVersion:
   true` but has never been exercised...~~ Moot: journey `13736` and messageType
@@ -213,6 +357,18 @@ re-deriving, which defeats the file.
 
 A hypothesis that turned out wrong belongs under *Proven non-causes*, not
 deleted. Knowing what has already been ruled out is most of the value here.
+
+**Date every claim about live config, because you are reading the account as it
+is now, not as it was during the run.** Accounts get changed between a run and
+its triage — sometimes by the run's own owner, sometimes by someone else. A
+healthy-looking config is therefore not evidence that the config was healthy
+when the comms failed, and an entry that omits the read date cannot be
+re-checked against that risk. **Proven 2026-08-17**: the
+`footlocker-20260814-1256` triage read account 1622522 as fully configured and
+briefly recorded its zero-send as unexplained — the owner had in fact repaired
+the account and test-sent that same morning, hours before the triage looked.
+Where it matters, say both dates: what the run did, and when you read the
+account.
 
 Findings about the sweep or ledger tooling itself — not about why a comm did or
 did not fire — do not belong in this file. See `scripts/triage_sweep.py`'s
