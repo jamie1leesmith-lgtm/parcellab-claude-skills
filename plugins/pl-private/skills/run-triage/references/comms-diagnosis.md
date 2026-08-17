@@ -160,6 +160,41 @@ anything; that pattern points at shop/client setup or ownership, not at the
 journey. See also *An account you do not own* in **Open questions** — if the
 account is not yours, stop at the observation.
 
+### An account with zero Journey Configurations sends nothing — check config count before anything else
+
+Not a wiring gap on an existing journey (see the trigger-event slot mismatch
+above) and not a shop/client setup fault (see *A shop not set up to process
+messages* above) — this is simpler and more fundamental: the account has **no
+Journey Configuration objects at all**. `journey configuration list --account
+<id>` returns `count: 0`, and the account's own message-type(s) show
+`messages: []` and `triggers: []` — there is nothing to wire because nothing
+was ever built.
+
+**Proven 2026-08-17**, account 1622524 ("Demo - Armand Castro", a demo shell
+under "Demo SolCon" parent 1621786), run `lightformshop-20260817-1155`.
+`journey configuration list --account 1622524` → `count: 0`. Compared against
+4 sibling demo shells under the same parent: 1622522 → 2 configs, 1622456 → 2,
+1626102 → 2, 1622356 → 4. Account 1622524 is the outlier, not the norm for
+this pool — sibling shells routinely carry pre-built journeys.
+
+**How to check:**
+
+```bash
+parcellab journey configuration list --account <id> -o json
+```
+
+A `count` of 0 explains a zero-send account on its own; no journey, trigger,
+message, or shop/client check downstream of it can add information once this
+is confirmed.
+
+**Ownership note:** this account was not the run's own persistent demo
+account — it belongs to a named colleague's demo shell ("Demo - Armand
+Castro"), reused for this LightForm build. Per *An account you do not own*
+below, the account's own config is not this triage's to fix; the durable fix
+is a demo-environment pre-flight check (tracked in [issue #9](https://github.com/jamie1leesmith-lgtm/parcellab-claude-skills/issues/9))
+so a run on an unprepared shell fails in under a minute instead of after
+~90 minutes of scrape/template/orders work.
+
 ## Proven non-causes — spend no calls re-deriving these
 
 ### An empty `filterExpression` on the trigger is not why a delay comm was skipped
