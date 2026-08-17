@@ -322,15 +322,17 @@ URL that stopped updating.
      `~/.claude/parcellab-demo-request.env`): own account →
      `CDC_ACCOUNT_CONFIG_DEFAULT` · parcelfashion →
      `CDC_ACCOUNT_CONFIG_PARCELFASHION` · retain-shopify →
-     `CDC_ACCOUNT_CONFIG_SHOPIFY`. **The value is a UUID** — the API rejects a
-     bare parcelLab account id with 400 "invalid input syntax for type uuid"
-     (live-verified 2026-08-11). **The practical default needs no key at all:**
+     `CDC_ACCOUNT_CONFIG_SHOPIFY`. **The value can be the config's UUID or its
+     (unique) name** — the earlier UUID-only restriction (400 "invalid input
+     syntax for type uuid" on a bare id) is gone (live-verified 2026-08-17); an
+     unrecognized value is now rejected with 403 "selected_account_config_id
+     is not available". **The practical default needs no key at all:**
      when the user's CDC default config targets their own demo account (set in
      the CDC UI), omitting the field links correctly — that combination worked
      on both live runs. **First-run capture:** if the needed key is missing,
-     ask once for the config UUID if the user has one (it is an id, not a
-     credential), offer to append it to `~/.claude/parcellab-demo-request.env`,
-     and proceed. If they don't:
+     ask once for the config's name or UUID if the user has one (it is an id,
+     not a credential), offer to append it to
+     `~/.claude/parcellab-demo-request.env`, and proceed. If they don't:
      `selected_account_config_id: null`, `config_source: "none"` (the CDC will
      use the caller's default — say so in the final report, and note linking
      then resolves in whatever account that default config targets).

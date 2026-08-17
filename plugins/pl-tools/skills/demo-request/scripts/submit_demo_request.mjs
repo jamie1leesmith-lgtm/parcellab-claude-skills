@@ -70,12 +70,13 @@ function validatePayload(payload) {
   }
 
   if (payload.selected_account_config_id != null) {
-    // The API's config id is a UUID column — a bare parcelLab account id is
-    // rejected server-side with 400 "invalid input syntax for type uuid"
-    // (live-verified 2026-08-11). Fail fast here with the same message.
+    // Accepts either the config's UUID or its (unique) name (live-verified
+    // 2026-08-17; the earlier UUID-only restriction is gone). An
+    // unrecognized value is rejected server-side with 403
+    // "selected_account_config_id is not available".
     const value = String(payload.selected_account_config_id);
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
-      throw new Error('selected_account_config_id must be a UUID when provided (a bare account id is rejected by the API); omit it to use the caller\'s default CDC config.');
+    if (!value.trim()) {
+      throw new Error('selected_account_config_id must be a non-empty string (UUID or config name) when provided; omit it to use the caller\'s default CDC config.');
     }
   }
 

@@ -19,15 +19,17 @@ Fields:
 - `products` (required): at least 1 item (no upper cap since the 2026-08-11
   order-model simplification) of `{ name (required), image_url?,
   category_override? }`.
-- `selected_account_config_id`: optional **UUID** — a bare parcelLab account
-  id is rejected with 400 "invalid input syntax for type uuid"
-  (live-verified 2026-08-11). Which parcelLab/Shopify account config orders
-  are generated/linked against; **omitted → the caller's default config**.
+- `selected_account_config_id`: optional **UUID or config name** — accepts
+  either form (live-verified 2026-08-17; the earlier UUID-only restriction,
+  and its 400 "invalid input syntax for type uuid" on a bare id, are gone).
+  An unrecognized value is rejected with 403 "selected_account_config_id is
+  not available". Which parcelLab/Shopify account config orders are
+  generated/linked against; **omitted → the caller's default config**.
   No API exists to list configs. **Linking looks orders up in this config's
   target account** (live-verified): the practical setup is to point your CDC
   default config at your own demo account in the CDC UI and omit this field —
-  that combination linked successfully on both live runs. Pass a UUID only
-  when a run must target a config other than your default.
+  that combination linked successfully on multiple live runs. Pass a UUID or
+  name only when a run must target a config other than your default.
 - `generate_orders`: optional boolean, default `true`. `false` creates the
   request in `queued` status with no synthetic orders.
 - `orders`: optional array describing synthetic order composition when

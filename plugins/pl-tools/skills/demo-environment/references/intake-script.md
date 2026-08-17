@@ -47,7 +47,7 @@ story automatically.
 | 10 | Using **\<name\>** (\<id\>) — correct? | Yes · Pick another | always | Auto-confirmed |
 | 11 | The edit-mode guard is not restricted to this account. Fix it? | Fix it · Leave it | `parcellab settings edit-mode show` is not `account-restricted` for the target | Fix it |
 | 12 | These write permissions are missing — add them to `~/.claude/settings.json`? | (the user edits the file themselves) | `permissions.allow` does not cover the run's writes | **Blocker** — never defaulted |
-| 13 | What is the CDC account config UUID for this target? | (a UUID, or skip) | the target's config key is missing from the env | Existing fallback: `config_source: "none"` |
+| 13 | What is the CDC account config name (or UUID) for this target? | (a name or UUID, or skip) | the target's config key is missing from the env | Existing fallback: `config_source: "none"` |
 | 14 | Which Shopify store should this seed into? | (the authed stores) | retain-shopify **and** 2+ stores authed | **Blocker** — never defaulted |
 
 ### Q5 — the default matrix
