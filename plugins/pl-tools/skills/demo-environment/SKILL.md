@@ -20,11 +20,10 @@ defining its contract).
 
 ## Paths
 
-Ask **"Are returns in scope for this demo?"** first.
-- No → **engage** path.
-- Yes → ask **"Is this a Shopify opp?"** → no → **retain** · yes →
-  **retain-shopify**. An Engage-only run never asks the Shopify question;
-  Retain covers the Engage story automatically.
+Ask **"Is this a Shopify opp?"** first — the only path question now, since
+returns are always in scope for this demo.
+- No → **retain** path.
+- Yes → **retain-shopify** path.
 
 ## Mode selection
 
@@ -42,37 +41,48 @@ from plain language, never a flag syntax. Record the choice as
 `run.mode: "auto"` in the manifest (absent means babysit, matching
 `run.pace`'s own convention).
 
-In auto mode: only Q1 and Q2 are asked live (see
-`references/intake-script.md`'s "Auto mode never changes Q1/Q2").
-Every other Round 1/2 question resolves unattended — including Q3
-(reuse the prior scrape pool), which auto-resolves to reuse whenever a
-candidate exists and falls through to a fresh scrape only when there is
-none, exactly as intake-script.md's Round 1 table already conditions
-the offer. Q4 onward resolve via
-`${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py`, called once
-the scrape lane's `product-pool.json` exists:
+In auto mode: only Q1 is asked live (see `references/intake-script.md`'s
+"Auto mode never changes Q1"). Every other Round 1/2 question resolves
+unattended — including Q2 (reuse the prior scrape pool), which
+auto-resolves to reuse whenever a candidate exists and falls through to a
+fresh scrape only when there is none, exactly as intake-script.md's Round 1
+table already conditions the offer.
+
+**Destination country, brand region, and pace are resolved the same way in
+every mode, not just auto** — call
+`${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py` once the scrape
+lane's `product-pool.json` exists, regardless of `run.mode`:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py \
   --prospect-url "<url>" \
   --product-pool-file "<run dir>/scrape/product-pool.json" \
-  --answers-doc-file "<path, if the operator supplied one>"
+  --answers-doc-file "<path, if the operator supplied one; auto mode only>"
 ```
 
-Write every resolved field into the manifest exactly where its
-question already writes it (Q4 → `destination_country`, Q6 →
-`run.pace`, Q7 → `gates.order_lifecycle.gate_c`, Q8 →
-`brand.region`/`brand.category`) — Phase 1–4 and `validate_manifest.py`
-do not distinguish an auto-resolved field from a human-answered one. If
-an answers doc was supplied, also record `run.answers_doc: "<path>"` in
-the manifest.
+Write `destination_country`, `brand.region` (the same value as
+`destination_country`), and `run.pace` from its output unconditionally.
+Q5 (category) is the one field this script also resolves that stays a live
+question in babysit mode — use its `brand.category` output only as auto
+mode's unattended value, exactly as before.
 
-Q11's resolved value (`resolve_auto_defaults.py`'s `edit_mode_fix`
+The rest of Round 2 resolves unattended in auto mode only: Q3
+(order matrix) keeps the existing default matrix, Q4 (Gate C) defaults
+to `send-as-is`, the target account is always the user's own default
+demo account (every mode, not just auto — see Phase 0 step 4), and the
+CDC config is always `selected_account_config_id: null`,
+`config_source: "none"` (every mode — see Phase 0 step 4). Write every
+resolved field into the manifest exactly where its question already
+writes it — Phase 1–4 and `validate_manifest.py` do not distinguish an
+auto-resolved field from a human-answered one. If an answers doc was
+supplied, also record `run.answers_doc: "<path>"` in the manifest.
+
+Q6's resolved value (`resolve_auto_defaults.py`'s `edit_mode_fix`
 output) is not itself a manifest field — there is no `edit_mode_fix`
 slot to write. It is an internal signal that drives the edit-mode-guard
 fix *action* directly: when true, run the same fix Phase 0 step 4
 offers in babysit mode. That action's outcome is what populates
-`account.edit_mode_verified`, exactly as babysit mode's own Q11 answer
+`account.edit_mode_verified`, exactly as babysit mode's own Q6 answer
 does — the auto-resolved value and a human "Fix it" answer both flow
 into the same existing field through the same action, not through two
 different write paths.
@@ -245,7 +255,7 @@ URL that stopped updating.
    hands it three unusable paths:
 
    > Execute the demo-environment scrape pass for the run directory
-   > `<run dir>`, prospect `<url>`, path `<engage|retain|retain-shopify>`.
+   > `<run dir>`, prospect `<url>`, path `<retain|retain-shopify>`.
    > Follow `${CLAUDE_PLUGIN_ROOT}/skills/branded-template/SKILL.md` Steps
    > 3–6 for brand tokens (write the full `__BRAND_X__` token map + logo +
    > hero to `<run dir>/scrape/brand-tokens.json`) and
@@ -298,51 +308,47 @@ URL that stopped updating.
      `~/.claude/parcellab-shopify-seed.env`, else `shopify store auth list`.
      Exactly one store → use it and state it at the ✋ gate. None → stop and
      point at `/pl-setup`. Two or more → this is the only case that asks
-     (intake-script Q14). Then resolve the location GID immediately — follow
+     (intake-script Q8). Then resolve the location GID immediately — follow
      shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
      preference rules. Record both in the manifest.
-   - **Target account + confirmation (every run):** the demo's target is a
-     run-level choice — the user's own demo account
-     (`${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`, the default) or the
-     shared **parcelfashion** account (offer it only when
-     `CDC_ACCOUNT_CONFIG_PARCELFASHION` is stored; on retain-shopify never
-     offer it — the Shopify integration lives in the user's own account). The
-     choice drives every pL write in the run AND the CDC config key (the CDC
-     looks up linked orders in the config's target account, so they must
-     agree). Then: `parcellab account account show <id>` for the human name;
-     ask "Using **<name>** (<id>) — correct?"; verify
+   - **Destination country, brand region, and pace (every run, resolved
+     silently):** call `resolve_auto_defaults.py` once
+     `scrape/product-pool.json` exists (see "Mode selection" above for the
+     exact invocation) and write its `destination_country`, `brand.region`
+     (the same value as `destination_country`), and `run.pace` output
+     straight into the manifest — no question, in babysit mode or auto mode.
+     Category (Q5) is the only field from that script's output that still
+     goes through a live question in babysit mode.
+   - **Target account (every run, resolved silently):** always the user's
+     own default demo account (`${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`)
+     — there is no other account choice to offer here any more; a run that
+     needs the shared **parcelfashion** account or another target has to be
+     built outside this skill. Resolve the human name with
+     `parcellab account account show <id>` and stamp
+     `account.confirmed_at` immediately — there is no confirmation question
+     left to gate it on, but the resolved name is still stated in Beat 1 so
+     it stays visible after the fact. Verify
      `parcellab settings edit-mode show` says `account-restricted` for that
-     same account, offering the fix if not. **If the guard was repointed for
-     this run** (e.g. at parcelfashion), note it — it is restored automatically
-     after Beat 2, once the drivers have stopped pushing events against it. In
-     the same round, check write permissions per
-     *Write permissions* above — a missing rule is cheap to fix here and stalls
-     the run mid-build if it surfaces after the gate.
-   - **CDC config:** read the key matching the target (process env, then
-     `~/.claude/parcellab-demo-request.env`): own account →
-     `CDC_ACCOUNT_CONFIG_DEFAULT` · parcelfashion →
-     `CDC_ACCOUNT_CONFIG_PARCELFASHION` · retain-shopify →
-     `CDC_ACCOUNT_CONFIG_SHOPIFY`. **The value can be the config's UUID or its
-     (unique) name** — the earlier UUID-only restriction (400 "invalid input
-     syntax for type uuid" on a bare id) is gone (live-verified 2026-08-17); an
-     unrecognized value is now rejected with 403 "selected_account_config_id
-     is not available". **The practical default needs no key at all:**
-     when the user's CDC default config targets their own demo account (set in
-     the CDC UI), omitting the field links correctly — that combination worked
-     on both live runs. **First-run capture:** if the needed key is missing,
-     ask once for the config's name or UUID if the user has one (it is an id,
-     not a credential), offer to append it to
-     `~/.claude/parcellab-demo-request.env`, and proceed. If they don't:
-     `selected_account_config_id: null`, `config_source: "none"` (the CDC will
-     use the caller's default — say so in the final report, and note linking
-     then resolves in whatever account that default config targets).
-     `config_source` values: `default | parcelfashion | shopify | none`.
+     same account, offering the fix if not (Q6). In the same round, check
+     write permissions per *Write permissions* above (Q7 if something is
+     missing) — a missing rule is cheap to fix here and stalls the run
+     mid-build if it surfaces after the gate.
+   - **CDC config (every run):** always write
+     `selected_account_config_id: null`, `config_source: "none"` — the CDC
+     uses the caller's default config. Say so in the final report ("caller's
+     default config"). This is safe now that the target account is always
+     the fixed default account above and the practical default already
+     targets that same account — the earlier per-target key lookup
+     (`CDC_ACCOUNT_CONFIG_DEFAULT` / `_PARCELFASHION` / `_SHOPIFY`) no
+     longer applies, since there is only one target left.
      `generate_orders` is always `false` and `cdc.orders` always `[]` — the run
      never asks the CDC to generate synthetic orders alongside its real ones,
-     and the ✋ gate states this as a fixed line so it stays visible. The
-     config still matters for linking: the CDC resolves linked order numbers in
-     the config's target account, so a mismatched config fails linking with
-     "No parcelLab order found" (live-verified 2026-08-11).
+     and the ✋ gate states this as a fixed line so it stays visible. Linking
+     still depends on the caller's default config actually targeting the
+     right account: the CDC resolves linked order numbers in the config's
+     target account, so a default config pointed elsewhere fails linking with
+     "No parcelLab order found" (live-verified 2026-08-11) — worth a one-time
+     check outside this run if linking ever fails on the very first run.
 5. **Repeat-brand template shortcut:** look for an existing layout for this
    brand on the target account and, if one verifies live, offer to skip the
    template lane.
@@ -385,7 +391,8 @@ URL that stopped updating.
      the hero visible on the run page at all.
    - **The fraud fragment** for every order, on every path — it depends on
      nothing the engines produce.
-   - **Direct engine only** (engage and retain paths): every order's
+   - **Direct engine only** (the retain path — retain-shopify uses the
+     Shopify engine below): every order's
      `create.json` + `track.json` + `NN-<status>.json` event files
      (order-lifecycle's payload rules verbatim, no POSTs and no PUTs).
      **Never pre-build these on retain-shopify.** That path's tracking number
@@ -481,7 +488,7 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    the order/scenario/fraud matrix with expected comm per event (mark
    unproven items) · CDC region/category/config source ·
    `CDC synthetic generation: off` (a fixed line, never a question) ·
-   **every extra agreed at Q7, field by field with its actual value** —
+   **every extra agreed at Q4, field by field with its actual value** —
    including each auto-derived article weight listed per article, because an
    auto-derived value the user never saw is worse than one they rejected ·
    the account by name. One explicit yes
@@ -634,7 +641,7 @@ items reference seeded variants). A failed seed lane stops only the order
 stage of the Shopify path: report it, offer to re-run the seed inline from
 the same manifest (the fallback), and leave every other lane alone.
 
-## Phase 2 — Orders (direct engine: engage and retain paths)
+## Phase 2 — Orders (direct engine: retain path)
 
 For each manifest order, in its `orders/<nn>-<label>/` directory, follow
 order-lifecycle's "Orchestrated runs (demo-environment)" contract. Steps 1–3
@@ -770,9 +777,7 @@ courier(s) + tracking number(s), scenario, and the expected comm per event
 with confidence labels · (retain-shopify) the seed table + demos +
 adjustments from `results/shopify-seed.json` · CDC request id/URL, which
 orders were submitted for linking, and the config source (say "caller's
-default config" when `config_source` is `none`). No currency symbols. **If the edit-mode guard was
-repointed for this run** (per Phase 0 step 4's note), say so here as a line of fact and state that it is restored after Beat 2
-— not now. The drivers are still pushing events against that account.
+default config" when `config_source` is `none`). No currency symbols.
 **In auto mode, Beat 1 also lists every auto-resolved field** — one
 line per field from `resolve_auto_defaults.py`'s output, showing its
 value and source (`default` | `inferred` | `doc`), in the same
@@ -886,11 +891,13 @@ Re-deriving either one costs a run about twenty minutes. The fuller ledger, with
 the command for each check, is the run-triage skill's
 `references/comms-diagnosis.md` if you have that skill installed.
 
-**Restore the edit-mode guard.** Once every driver has exited and the
-verification above is done, if the guard was repointed for this run, restore it
-to the user's own account — no question, and report it in one line. If the
-restore fails, say so explicitly with the error; a guard left pointing at
-another account is exactly the state the next run's Phase 0 check will trip on.
+**Verify the edit-mode guard.** Once every driver has exited and the
+verification above is done, confirm the guard is still `account-restricted`
+for the user's own account (the only account a run ever targets now, so
+nothing should have repointed it — this is a sanity check, not a restore).
+Report it in one line. If it is not, say so explicitly with the error; a guard
+pointing at another account is exactly the state the next run's Phase 0 check
+will trip on.
 
 For every unproven event or chain that fired correctly, record it in
 `${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/status-codes.md` —
@@ -956,8 +963,8 @@ else first.
 
 | Blocker | Same as babysit's... |
 |---|---|
-| Q12 — missing write permissions | the existing write-permissions prompt |
-| Q14 — 2+ Shopify stores, no env pin | intake-script Q14 |
+| Q7 — missing write permissions | the existing write-permissions prompt |
+| Q8 — 2+ Shopify stores, no env pin | intake-script Q8 |
 | Missing Shopify CLI | the existing `/pl-setup` pointer |
 | Template publish failure after retry | the publish gate's three-way offer |
 | A lane failure the "Failure handling" table below already reports | that table's own response — reported, run continues past it, never new blocking behavior |

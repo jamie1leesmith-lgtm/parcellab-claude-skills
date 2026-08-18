@@ -31,7 +31,7 @@ Columns, exactly:
 | Ran by | Person | |
 | Brand | Text | |
 | Prospect URL | URL | |
-| Path | Select | engage · retain · retain-shopify |
+| Path | Select | retain · retain-shopify (`engage` retired 2026-08-18 — the Notion column may still list it as a legacy option; new runs never write it) |
 | Account | Number | |
 | Skill version | Text | |
 | Run page | URL | |

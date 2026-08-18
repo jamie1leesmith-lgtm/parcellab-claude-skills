@@ -13,7 +13,7 @@ PROVEN_EVENTS = {"InTransit", "OutForDelivery", "Delivered", "WarehouseDelay"}
 CDC_SLOTS = {"fraud_high", "fraud_medium", "fraud_low",
              "manual_return", "return_tracking"}
 FRAUD_LEVELS = {"low", "medium", "high"}
-PATHS = {"engage", "retain", "retain-shopify"}
+PATHS = {"retain", "retain-shopify"}
 BRAND_REGIONS = {"US", "UK", "DE"}
 BRAND_CATEGORIES = {"Home", "Electronics", "Fashion"}
 PACES = {"standard", "fast"}

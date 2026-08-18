@@ -136,7 +136,6 @@ class ResolveAutoFieldsTests(unittest.TestCase):
 
     def test_never_ask_fields_absent(self):
         result = resolve_auto_fields(self.url, self.pool)
-        self.assertNotIn("returns_in_scope", result)
         self.assertNotIn("shopify_opp", result)
 
 

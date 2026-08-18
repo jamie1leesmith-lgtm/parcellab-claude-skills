@@ -101,16 +101,17 @@ def infer_category(product_pool):
 
 
 # Every field auto-mode can resolve without asking, and its non-doc default.
-# Q1 (returns_in_scope) and Q2 (shopify_opp) are deliberately absent: the
-# spec requires those always be asked live, in both modes, never defaulted
-# or doc-supplied.
+# Q1 (shopify_opp) is deliberately absent: the spec requires it always be
+# asked live, in both modes, never defaulted or doc-supplied. Returns are
+# always in scope now (the old Q1/"engage" path was retired), so there is
+# no separate returns-in-scope field for this function to guard at all.
 _STATIC_DEFAULTS = {
     "run.pace": "standard",
     "gates.order_lifecycle.gate_c": "send-as-is",
     "edit_mode_fix": True,
 }
 
-_NEVER_ASK_FIELDS = frozenset({"returns_in_scope", "shopify_opp"})
+_NEVER_ASK_FIELDS = frozenset({"shopify_opp"})
 
 
 def resolve_auto_fields(prospect_url, product_pool, answers_doc=None):
