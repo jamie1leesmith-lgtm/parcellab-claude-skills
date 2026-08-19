@@ -106,6 +106,32 @@ class TestStatePayload(unittest.TestCase):
         self.assertEqual(orders[0]["shipments"][0]["confirmed"][0]["status"],
                          "InTransit")
 
+    def test_cdc_detail_surfaces_demo_request_on_success(self):
+        (self.dir / "results" / "demo-request.json").write_text(json.dumps({
+            "id": "cdc-req-1",
+            "request_status": "ok",
+            "request_url": "https://app.parcellab.com/demo-requests/cdc-req-1",
+            "linked_submitted": ["pl-1041", "pl-1042"],
+        }))
+        cdc = state_payload.build(self.dir)["detail"]["cdc"]
+        self.assertEqual(cdc["id"], "cdc-req-1")
+        self.assertEqual(cdc["url"],
+                         "https://app.parcellab.com/demo-requests/cdc-req-1")
+        self.assertEqual(cdc["request_status"], "ok")
+        self.assertEqual(cdc["linked_count"], 2)
+
+    def test_cdc_detail_surfaces_demo_request_on_failure(self):
+        (self.dir / "results" / "demo-request.json").write_text(json.dumps({
+            "id": "cdc-req-2",
+            "request_status": "failed",
+            "request_url": "https://app.parcellab.com/demo-requests/cdc-req-2",
+            "linked_submitted": [],
+        }))
+        cdc = state_payload.build(self.dir)["detail"]["cdc"]
+        self.assertEqual(cdc["id"], "cdc-req-2")
+        self.assertEqual(cdc["request_status"], "failed")
+        self.assertEqual(cdc["linked_count"], 0)
+
     def test_malformed_side_file_does_not_break_the_payload(self):
         (self.dir / "scrape" / "assets.json").write_text("{ broken")
         payload = state_payload.build(self.dir)

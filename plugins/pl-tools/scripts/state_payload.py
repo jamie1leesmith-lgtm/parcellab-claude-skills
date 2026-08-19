@@ -100,8 +100,14 @@ def _cdc_detail(run_dir, state, manifest):
         # what produced the synthetic-order incident this UI now shows plainly.
         "generate_orders": bool(cdc.get("generate_orders")),
         "synthetic_orders": len(cdc.get("orders") or []),
-        "url": (result or {}).get("url"),
-        "error": (result or {}).get("error"),
+        # results/demo-request.json's documented shape (SKILL.md:300-302) is
+        # {"id", "request_status", "request_url", "linked_submitted"} — there
+        # is no "url" or "error" key. A failed request (HTTP 500) still gets
+        # written with request_status "failed" rather than an error field.
+        "id": (result or {}).get("id"),
+        "url": (result or {}).get("request_url"),
+        "request_status": (result or {}).get("request_status"),
+        "linked_count": len((result or {}).get("linked_submitted") or []),
     }
 
 
