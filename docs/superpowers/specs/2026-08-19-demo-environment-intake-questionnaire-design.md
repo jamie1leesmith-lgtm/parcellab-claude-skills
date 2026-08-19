@@ -3,6 +3,13 @@
 Date: 2026-08-19
 Status: approved for planning
 
+> **Superseded** by `2026-08-19-demo-environment-unified-intake-progress-design.md`.
+> Its Artifact-based transport (publish the questionnaire, poll the DOM for a
+> submitted banner, extract JSON) cannot work: the Browser pane has no
+> claude.ai session, so the published page shows a sign-in screen. Kept for
+> the reasoning behind front-loading intake and the parcelLab branding, both
+> of which the superseding spec carries forward.
+
 ## Problem
 
 Today's `pl-tools:demo-environment` intake is a sequential chat interview

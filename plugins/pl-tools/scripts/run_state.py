@@ -195,9 +195,13 @@ def _page(state):
 
 
 def record_render(run_dir):
-    """Stamp a completed render. Called by render_run_page.py itself, so a
-    render cannot happen unrecorded — this is the trustworthy half of the
-    page telemetry, against which self-reported publishes are compared.
+    """Stamp a completed render.
+
+    Nothing calls this any more: the run page now self-updates by polling
+    `GET /state` instead of being rendered and published as a fresh
+    Artifact each time, so there is no render step left to record. Retained,
+    alongside `record_publish`, only so the `page.renders` / `page.publishes`
+    lists it maintains keep existing (empty) for `build_telemetry_row.py`.
     """
     def apply(state):
         _page(state).setdefault("renders", []).append({"at": _now()})
