@@ -423,14 +423,14 @@ for the valid `event_status` enum and the proven happy/unhappy sequences.
 Then launch the driver, one per order, exactly as the direct engine does:
 
 ```bash
-PARCELLAB_ACCOUNT_ID="<manifest account.id>" EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<240 standard | 60 fast, from the manifest's run.pace>" \
+PARCELLAB_ACCOUNT_ID="<manifest account.id>" EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<300 standard | 60 fast, from the manifest's run.pace>" \
   bash ${CLAUDE_PLUGIN_ROOT}/skills/order-lifecycle/references/run-lifecycle.sh
 ```
 
 `PARCELLAB_ACCOUNT_ID` is set inline from the manifest's `account.id` — the
 confirmed target account, not whatever the ambient env var happens to hold.
 `GAP_SECONDS` likewise comes from the manifest's `run.pace`: `standard` (or an
-absent `run.pace`) → 240, `fast` → 60. At `fast`, Beat 2's report must note
+absent `run.pace`) → 300, `fast` → 60. At `fast`, Beat 2's report must note
 that comm ordering was not guaranteed.
 
 **Watching the drivers:** match on `bash .*run-lifecycle.sh`, not on
