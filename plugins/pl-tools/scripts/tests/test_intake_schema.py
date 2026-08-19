@@ -47,6 +47,14 @@ class TestVocabularies(unittest.TestCase):
             {"happy", "stuck-delay", "recovered", "locker",
              "manual_return", "return_tracking", "custom"})
 
+    def test_fraud_levels_ordered_matches_the_set(self):
+        # The tuple is the display order (low-to-high severity); the
+        # frozenset is the validity check. A level added to only one of
+        # them would otherwise silently disappear from either the UI or
+        # from validation rather than failing loudly.
+        self.assertEqual(set(intake_schema.FRAUD_LEVELS_ORDERED),
+                         intake_schema.FRAUD_LEVELS)
+
 
 class TestVocabularyParityWithValidateManifest(unittest.TestCase):
     """intake_schema and validate_manifest deliberately duplicate their

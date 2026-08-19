@@ -19,6 +19,17 @@ REGION_COURIERS = {"US": "usps", "UK": "royal-mail", "DE": "dhl-germany"}
 
 FRAUD_LEVELS = frozenset({"low", "medium", "high"})
 
+# FRAUD_LEVELS answers "is this a valid fraud level?" — membership only, so
+# a frozenset is the right shape and its iteration order carries no meaning.
+# FRAUD_LEVELS_ORDERED answers a different question, "in what order do we
+# show these to a human?" — fraud severity has an inherent low-to-high
+# order, and `sorted(FRAUD_LEVELS)` alphabetises it into "high, low, medium",
+# which reads as meaningless (or worse, backwards) to someone picking a risk
+# level. Keep both in sync (see test_fraud_levels_ordered_matches_the_set) —
+# a level added to one and not the other silently disappears from either
+# validation or the UI.
+FRAUD_LEVELS_ORDERED = ("low", "medium", "high")
+
 # `split` is deliberately absent: a split is a per-order boolean that forks
 # the order into two parcels, each with its own scenario from this set.
 SCENARIOS = frozenset({

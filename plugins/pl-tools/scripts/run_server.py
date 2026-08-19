@@ -73,7 +73,11 @@ def build_context(run_dir, prospect_name, region, reuse_candidate):
         "reuse_candidate": reuse_candidate,
         "regions": list(intake_schema.REGIONS),
         "region_couriers": dict(intake_schema.REGION_COURIERS),
-        "fraud_levels": sorted(intake_schema.FRAUD_LEVELS),
+        # Not sorted() — fraud severity has a real low-to-high order that
+        # alphabetising destroys (it reads "high, low, medium"). scenarios,
+        # modes and weight_units below have no equivalent severity/ranking
+        # to preserve, so they stay alphabetical.
+        "fraud_levels": list(intake_schema.FRAUD_LEVELS_ORDERED),
         "scenarios": sorted(intake_schema.SCENARIOS),
         "modes": sorted(intake_schema.MODES),
         "weight_units": sorted(intake_schema.WEIGHT_UNITS),
