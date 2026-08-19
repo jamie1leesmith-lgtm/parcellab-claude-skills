@@ -1,6 +1,9 @@
 """Stdlib unittest — no pytest."""
+import json
 import pathlib
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -56,6 +59,92 @@ class RenderTests(unittest.TestCase):
         html = riq.render("Acme")
         self.assertIn('id="answers-json"', html)
         self.assertIn('id="submitted-banner"', html)
+
+
+def _valid_answers(**overrides):
+    base = {
+        "shopify_opp": False,
+        "reuse_pool": None,
+        "order_matrix": [{"label": "#1", "fraud": "low", "scenario": "happy"}],
+        "gate_c": "send-as-is",
+        "mode": "babysit",
+    }
+    base.update(overrides)
+    return json.dumps(base)
+
+
+class ParseAnswersTests(unittest.TestCase):
+    def test_valid_answers_round_trip(self):
+        answers = riq.parse_answers(_valid_answers())
+        self.assertEqual(answers["mode"], "babysit")
+        self.assertEqual(answers["order_matrix"][0]["label"], "#1")
+
+    def test_rejects_malformed_json(self):
+        with self.assertRaises(ValueError):
+            riq.parse_answers("not json")
+
+    def test_rejects_missing_field(self):
+        raw = json.loads(_valid_answers())
+        del raw["mode"]
+        with self.assertRaises(ValueError):
+            riq.parse_answers(json.dumps(raw))
+
+    def test_rejects_unknown_mode(self):
+        with self.assertRaises(ValueError):
+            riq.parse_answers(_valid_answers(mode="turbo"))
+
+    def test_rejects_unknown_gate_c(self):
+        with self.assertRaises(ValueError):
+            riq.parse_answers(_valid_answers(gate_c="something-else"))
+
+    def test_rejects_empty_order_matrix(self):
+        with self.assertRaises(ValueError):
+            riq.parse_answers(_valid_answers(order_matrix=[]))
+
+    def test_rejects_unknown_fraud_level(self):
+        with self.assertRaises(ValueError):
+            riq.parse_answers(_valid_answers(
+                order_matrix=[{"label": "#1", "fraud": "extreme", "scenario": "happy"}]))
+
+    def test_rejects_unknown_scenario(self):
+        with self.assertRaises(ValueError):
+            riq.parse_answers(_valid_answers(
+                order_matrix=[{"label": "#1", "fraud": "low", "scenario": "nonsense"}]))
+
+
+class CliTests(unittest.TestCase):
+    def _script_path(self):
+        return str(pathlib.Path(__file__).resolve().parents[1] / "render_intake_questionnaire.py")
+
+    def test_render_subcommand_writes_a_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = str(pathlib.Path(tmp) / "questionnaire.html")
+            result = subprocess.run(
+                [sys.executable, self._script_path(), "render",
+                 "--prospect-name", "Acme", "-o", out],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("shopify_opp", pathlib.Path(out).read_text())
+
+    def test_parse_subcommand_prints_normalized_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            answers_file = pathlib.Path(tmp) / "answers.json"
+            answers_file.write_text(_valid_answers())
+            result = subprocess.run(
+                [sys.executable, self._script_path(), "parse", str(answers_file)],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["mode"], "babysit")
+
+    def test_parse_subcommand_fails_loud_on_invalid_answers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            answers_file = pathlib.Path(tmp) / "answers.json"
+            answers_file.write_text(_valid_answers(mode="turbo"))
+            result = subprocess.run(
+                [sys.executable, self._script_path(), "parse", str(answers_file)],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("ANSWERS INVALID", result.stderr)
 
 
 if __name__ == "__main__":

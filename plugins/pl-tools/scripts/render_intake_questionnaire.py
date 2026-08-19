@@ -156,5 +156,84 @@ document.getElementById('intake-form').addEventListener('submit', function (ev) 
 </script>"""
 
 
+def parse_answers(raw_json):
+    """Validate and normalize the questionnaire's submitted JSON.
+
+    Raises ValueError with a specific reason on any problem — this is the
+    function that decides whether the conductor writes the manifest fields
+    or re-prompts on the same page.
+    """
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"not valid JSON: {exc}") from exc
+
+    required = {"shopify_opp", "reuse_pool", "order_matrix", "gate_c", "mode"}
+    missing = required - set(data)
+    if missing:
+        raise ValueError(f"missing field(s): {sorted(missing)}")
+
+    if not isinstance(data["shopify_opp"], bool):
+        raise ValueError("shopify_opp must be true or false")
+
+    if data["reuse_pool"] is not None and not isinstance(data["reuse_pool"], bool):
+        raise ValueError("reuse_pool must be true, false, or null")
+
+    if data["mode"] not in MODES:
+        raise ValueError(f"mode must be one of {sorted(MODES)}")
+
+    if data["gate_c"] not in GATE_C_VALUES:
+        raise ValueError(f"gate_c must be one of {sorted(GATE_C_VALUES)}")
+
+    matrix = data["order_matrix"]
+    if not isinstance(matrix, list) or not matrix:
+        raise ValueError("order_matrix must be a non-empty list")
+    for row in matrix:
+        if row.get("fraud") not in FRAUD_LEVELS:
+            raise ValueError(f"order_matrix row {row!r} has an invalid fraud level")
+        if row.get("scenario") not in SCENARIOS:
+            raise ValueError(f"order_matrix row {row!r} has an invalid scenario")
+        if not row.get("label"):
+            raise ValueError(f"order_matrix row {row!r} is missing a label")
+
+    return {
+        "shopify_opp": data["shopify_opp"],
+        "reuse_pool": data["reuse_pool"],
+        "order_matrix": matrix,
+        "gate_c": data["gate_c"],
+        "mode": data["mode"],
+    }
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    render_p = sub.add_parser("render", help="write the questionnaire HTML")
+    render_p.add_argument("--prospect-name", required=True)
+    render_p.add_argument("--reuse-candidate-date", default=None)
+    render_p.add_argument("-o", "--output", required=True)
+
+    parse_p = sub.add_parser("parse", help="validate a submitted answers JSON file")
+    parse_p.add_argument("answers_file")
+
+    args = ap.parse_args(argv)
+
+    if args.command == "render":
+        html = render(args.prospect_name, reuse_candidate=args.reuse_candidate_date)
+        pathlib.Path(args.output).write_text(html)
+        print(f"wrote {args.output}")
+        return 0
+
+    try:
+        raw = pathlib.Path(args.answers_file).read_text()
+        answers = parse_answers(raw)
+    except (ValueError, OSError) as exc:
+        print(f"ANSWERS INVALID: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(answers, indent=2))
+    return 0
+
+
 if __name__ == "__main__":
-    pass  # main() is added in Task 3, once parsing exists too.
+    sys.exit(main())
