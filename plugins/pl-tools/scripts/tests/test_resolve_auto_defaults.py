@@ -106,7 +106,7 @@ class ResolveAutoFieldsTests(unittest.TestCase):
         self.url = "https://brand.de"
         self.pool = [{"name": "Vase", "product_type": "Home Decor", "price": "€10"}]
 
-    def test_defaults_with_no_answers_doc(self):
+    def test_defaults(self):
         result = resolve_auto_fields(self.url, self.pool)
         self.assertEqual(result["destination_country"], {"value": "DE", "source": "inferred"})
         self.assertEqual(result["brand.region"], {"value": "DE", "source": "inferred"})
@@ -115,28 +115,81 @@ class ResolveAutoFieldsTests(unittest.TestCase):
         self.assertEqual(
             result["gates.order_lifecycle.gate_c"], {"value": "send-as-is", "source": "default"}
         )
-        self.assertEqual(result["_ignored_doc_keys"], [])
 
-    def test_answers_doc_overrides_known_field(self):
-        result = resolve_auto_fields(self.url, self.pool, answers_doc={"run.pace": "fast"})
-        self.assertEqual(result["run.pace"], {"value": "fast", "source": "doc"})
-        # untouched fields keep their own default/inferred value
-        self.assertEqual(result["destination_country"], {"value": "DE", "source": "inferred"})
-
-    def test_answers_doc_can_override_inferred_field(self):
-        result = resolve_auto_fields(
-            self.url, self.pool, answers_doc={"destination_country": "US"}
-        )
-        self.assertEqual(result["destination_country"], {"value": "US", "source": "doc"})
-
-    def test_unknown_doc_key_is_ignored_and_reported(self):
-        result = resolve_auto_fields(self.url, self.pool, answers_doc={"not_a_field": "x"})
-        self.assertEqual(result["_ignored_doc_keys"], ["not_a_field"])
-        self.assertEqual(result["run.pace"], {"value": "standard", "source": "default"})
-
-    def test_never_ask_fields_absent(self):
+    def test_shopify_opp_is_never_in_resolved_fields(self):
         result = resolve_auto_fields(self.url, self.pool)
         self.assertNotIn("shopify_opp", result)
+
+
+class ResolveAutoFieldsNoPoolTests(unittest.TestCase):
+    """The intake-time call demo-environment makes before the scrape lane has
+    produced a pool — resolve_auto_fields(url, None). Country/region still
+    resolve from the URL alone; category must be genuinely absent, not
+    defaulted, since infer_category([]) would silently return "Fashion" for
+    every brand with no signal to back it."""
+
+    def test_succeeds_with_no_pool(self):
+        result = resolve_auto_fields("https://brand.de", None)
+        self.assertIsInstance(result, dict)
+
+    def test_destination_country_and_region_present_for_de_url(self):
+        result = resolve_auto_fields("https://brand.de", None)
+        self.assertEqual(
+            result["destination_country"], {"value": "DE", "source": "inferred"}
+        )
+        self.assertEqual(
+            result["brand.region"], {"value": "DE", "source": "inferred"}
+        )
+
+    def test_brand_category_absent_when_no_pool(self):
+        result = resolve_auto_fields("https://brand.de", None)
+        self.assertNotIn("brand.category", result)
+
+    def test_static_defaults_still_present_when_no_pool(self):
+        result = resolve_auto_fields("https://brand.de", None)
+        self.assertEqual(result["run.pace"], {"value": "standard", "source": "default"})
+        self.assertEqual(
+            result["gates.order_lifecycle.gate_c"],
+            {"value": "send-as-is", "source": "default"},
+        )
+
+    def test_empty_pool_list_is_not_the_same_as_no_pool(self):
+        # A pool that exists and is genuinely empty still returns
+        # brand.category (falling back to DEFAULT_CATEGORY) — only a
+        # missing pool (None) omits the key.
+        result = resolve_auto_fields("https://brand.de", [])
+        self.assertIn("brand.category", result)
+        self.assertEqual(
+            result["brand.category"], {"value": "Fashion", "source": "inferred"}
+        )
+
+
+class CliNoPoolFileTests(unittest.TestCase):
+    """--product-pool-file is optional now — the CLI must not exit 2 when
+    it's omitted, and must not print a brand.category key in that case."""
+
+    def _run_cli(self, extra_args=()):
+        import subprocess
+
+        script = Path(__file__).resolve().parents[1] / "resolve_auto_defaults.py"
+        return subprocess.run(
+            [sys.executable, str(script), "--prospect-url",
+             "https://example.de", *extra_args],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_no_product_pool_file_succeeds(self):
+        result = self._run_cli()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_no_product_pool_file_output_has_no_category(self):
+        import json
+
+        result = self._run_cli()
+        payload = json.loads(result.stdout)
+        self.assertNotIn("brand.category", payload)
+        self.assertEqual(payload["destination_country"]["value"], "DE")
 
 
 class CliProductPoolShapeTests(unittest.TestCase):

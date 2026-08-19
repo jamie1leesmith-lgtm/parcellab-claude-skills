@@ -53,11 +53,11 @@ Columns, exactly:
 | Event window | Number | minutes, first driver start → last driver end; null while any driver is unfinished |
 | Slowest lane | Text | |
 | Timeline | Text | the run's timeline as JSON, capped at 1900 chars (Notion rejects a rich-text value over 2000, and a rejected property rejects the whole row); oldest entries drop first behind a `{"truncated": N}` marker |
-| Page publishes | Number | Artifact calls, recorded by the conductor. Healthy run ≈ 8–12 |
-| Page renders | Number | renders, recorded by `render_run_page.py` itself. **publishes < renders means a skipped Artifact call** |
-| Max page gap | Number | minutes; longest gap between consecutive publishes inside the driver window. Null while any driver is unfinished |
-| Page URL changes | Number | distinct published URLs − 1. `0` = stable; ≥1 means readers were left on a URL that stopped updating |
-| Page cadence | Text | publish offsets in seconds from the first render, e.g. `0,45,320,610` |
+| Page publishes | Number | stays `0` by design — see "Reading the page columns" below |
+| Page renders | Number | stays `0` by design — see "Reading the page columns" below |
+| Max page gap | Number | stays null by design — no publish events exist to measure a gap between |
+| Page URL changes | Number | stays `0` by design — see "Reading the page columns" below |
+| Page cadence | Text | stays empty by design — no publish events exist to record an offset for |
 | Largest gap | Number | minutes; the longest stretch covered by no instrumented span. Null when fewer than two stamps |
 | Largest gap after | Text | the mark that gap follows, e.g. `orders:end` |
 | Deviations | Multi-select | validator_rejected · api_error · retry_needed · gate_reasked · comm_missing · lane_fallback_inline · manual_intervention · instruction_unfollowable · workaround_invented — derived from `run_state.add_deviation()` calls logged live through the run (see SKILL.md's *Deviation logging*), unioned with a few mechanical signals (failed lanes, inline fallbacks) |
@@ -100,29 +100,23 @@ longest single order, never the sum of every event. The live run's window was
 
 Added 2026-08-12 because teammates reported the run page "isn't updating" and
 the claim could not be checked: before this, a run that never republished and
-one that republished twelve times left identical rows.
+one that republished twelve times left identical rows. That was a real gap
+when the run page was a conductor-rendered, conductor-published Artifact —
+`Page publishes`, `Page renders`, `Page URL changes`, `Max page gap`, and
+`Page cadence` all existed to catch a conductor that recorded a fact in
+`run-state.json` and then skipped the separate render-and-publish step that
+used to be required to show it.
 
-| Row reads | Diagnosis |
-|---|---|
-| publishes ≈ renders ≈ 10, max gap ~3.5 min | Working as designed |
-| renders 10, publishes 2 | Conductor renders but skips the Artifact call |
-| renders 2, publishes 2 | Conductor skips the whole hook |
-| publishes 10, max gap 9 min | Publishing too slowly — the watcher loop is not re-triggering |
-| URL changes ≥ 1 | Readers were watching a URL that stopped receiving updates |
-| publishes ~10, max gap fine, still reported frozen | Viewer-side: an open tab not picking up redeploys |
-
-**`Page publishes` reads one short.** The run's last publish lands either side
-of the `beat2` telemetry write, so the final Artifact call is never counted. A
-consistent off-by-one is readable; a special case would not be.
-
-**`Page renders` is the trustworthy half.** `render_run_page.py` records its own
-render, so it cannot be skipped-but-reported. Publishes are self-reported and
-carry the same caveat this file gives for `manual_intervention` below.
-
-**`Max page gap` is scoped to the driver window** — the only stretch with an
-expected cadence (one event wave per `GAP_SECONDS`). Across the whole run it
-would be dominated by legitimate waiting at the plan gate, which can be ten
-minutes and is not a defect.
+**The run page is now served live by `run_server.py`** (see SKILL.md's "The
+run page"): it polls `GET /state` itself every two seconds and there is no
+render call, no publish call, and no second URL to drift to — `run.page_url`
+is written once and never changes. Nothing in SKILL.md calls
+`run_state.record_publish()` or `record_render()` any more, so these five
+columns stay at their empty defaults (`0` or null) on every run from here
+forward. A nonzero value in one of them would mean some code path is still
+calling one of those two functions, which is a fact worth checking in the
+code that produced the row, not a sign of a more current page — the run
+page's freshness is no longer something these columns measure at all.
 
 ## The write contract
 

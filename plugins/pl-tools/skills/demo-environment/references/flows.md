@@ -18,13 +18,26 @@ point that matters before "is this a Shopify opp?".
 
 ## Phase 0 — Intake, front-loaded (main session + one agent)
 
-Two lanes run concurrently after the path questions:
+`run_server.py` serves one local page in the Browser pane, and its intake
+phase is answered in full before anything else happens: Shopify opp?, reuse
+the scraped pool or scrape fresh, region and default courier, the order
+matrix, the send-as-is/extras toggle, and mode. The handoff is a file:
+a submission that passes `intake_schema.parse_answers` writes
+`<run dir>/intake.json`, and that file appearing on disk is what the
+conductor waits for — a rejected submission writes nothing and shows the
+reason inline on the same form. The same page then switches itself to live
+progress, polling `GET /state` every two seconds; there is nothing to
+publish, poll or extract, and no concurrent chat interview. The scrape
+agent is only dispatched once `intake.json` exists and has been read.
 
-- **scrape agent** (background, owns the Browser pane): brand tokens +
-  product pool + image validation → `scrape/` + `results/scrape.json`
-- **interview** (chat): country, order plan, pace, CDC region/category,
-  Shopify dev-store + location resolution on retain-shopify,
-  target-account confirmation + edit-mode guard
+- **scrape agent** (background, owns the Browser pane, dispatched once the
+  intake form is submitted and `intake.json` exists): brand tokens + product pool + image
+  validation → `scrape/` + `results/scrape.json`
+
+While it runs, the main session resolves everything else silently —
+country, pace, CDC region/category, Shopify dev-store + location
+resolution on retain-shopify, target-account confirmation + edit-mode
+guard — none of it asked as a chat question any more.
 
 They join at **pre-build** — template HTML, the fraud fragments, the direct
 engine's create/track/event files (never on retain-shopify: its tracking and
