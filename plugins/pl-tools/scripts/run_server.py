@@ -13,8 +13,10 @@ client.
 """
 import argparse
 import json
+import os
 import pathlib
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import intake_schema
@@ -95,15 +97,6 @@ def make_handler(run_dir, context):
         def log_message(self, *args):
             pass
 
-        def handle_one_request(self):
-            try:
-                super().handle_one_request()
-            except TimeoutError:
-                # rfile.read() timed out waiting on a stalled body. Close
-                # cleanly rather than let BaseHTTPRequestHandler's default
-                # handling raise past us as an uncaught exception.
-                self.close_connection = True
-
         def _send(self, status, body, content_type):
             payload = body.encode() if isinstance(body, str) else body
             self.send_response(status)
@@ -163,13 +156,21 @@ def make_handler(run_dir, context):
             # tells the conductor intake is done, so it must never appear for
             # a payload that failed validation. Written via a temp file plus
             # atomic replace (matching run_state._write) so a poller can
-            # never observe a half-written file — threading makes concurrent
-            # submissions possible, and even without that, a reader polling
-            # for existence could otherwise catch a partial write mid-flight.
+            # never observe a half-written file. The temp name is unique per
+            # request (pid + thread id), not a fixed ".json.tmp": the server
+            # is threaded, so two concurrent submissions writing the same
+            # fixed temp path could interleave and publish a torn document —
+            # the rename is atomic, but only over whichever bytes happen to
+            # be in the file at replace() time.
             target = run_dir / "intake.json"
-            tmp = target.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(answers, indent=2))
-            tmp.replace(target)
+            tmp = target.with_name(
+                f"intake.json.{os.getpid()}.{threading.get_ident()}.tmp")
+            try:
+                tmp.write_text(json.dumps(answers, indent=2))
+                tmp.replace(target)
+            except OSError:
+                tmp.unlink(missing_ok=True)
+                raise
             self._send_json(200, {"ok": True})
 
     return Handler

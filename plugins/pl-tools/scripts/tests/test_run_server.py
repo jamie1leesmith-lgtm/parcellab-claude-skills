@@ -217,6 +217,34 @@ class TestSubmit(ServerTestCase):
 
         stalled.close()
 
+    def test_concurrent_submissions_never_produce_a_torn_file(self):
+        # Two distinct valid payloads, so whichever one wins is checkable.
+        payload_a = intake_schema.default_answers(region="US")
+        payload_b = intake_schema.default_answers(region="UK")
+
+        results = {}
+
+        def submit(name, payload):
+            results[name] = self.post("/submit", payload)
+
+        t1 = threading.Thread(target=submit, args=("a", payload_a))
+        t2 = threading.Thread(target=submit, args=("b", payload_b))
+        t1.start()
+        t2.start()
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+
+        self.assertTrue(results["a"][0] == 200 and results["b"][0] == 200)
+
+        written = json.loads((self.dir / "intake.json").read_text())
+        self.assertIn(written["region"], ("US", "UK"))
+        self.assertTrue(written == payload_a or written == payload_b,
+                        "intake.json is neither submission whole — torn write")
+
+        # No stray per-request temp files left behind either.
+        leftover = list(self.dir.glob("intake.json.*.tmp"))
+        self.assertEqual(leftover, [], f"stray temp files: {leftover}")
+
 
 if __name__ == "__main__":
     unittest.main()
