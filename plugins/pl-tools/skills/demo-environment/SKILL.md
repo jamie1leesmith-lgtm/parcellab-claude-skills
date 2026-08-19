@@ -28,12 +28,14 @@ path question, since returns are always in scope for this demo.
 ## Intake questionnaire
 
 **Every question is answered by one up-front form, in both modes.** Phase
-0 step 2 publishes a single questionnaire (built by
-`render_intake_questionnaire.py`) as an Artifact, opens it in the Browser
-pane, and waits for the operator to submit it before anything else
-happens — no chat round-trip per question, no trigger-phrase mode
-detection. Mode (**babysit** or **auto**) is one of the form's own
-fields, not inferred from the invoking message's wording.
+0 step 2 starts a local server (`run_server.py`) that serves the intake
+form, and waits for `<run dir>/intake.json` to appear on disk before
+anything else happens — no chat round-trip per question, no trigger-phrase
+mode detection. That file is written only on a submission that passed
+validation, so its existence on disk is proof intake is complete; there is
+no separate parse/extract step and no polling of the page's DOM. Mode
+(**babysit** or **auto**) is one of the form's own fields, not inferred
+from the invoking message's wording.
 
 **Mode's only effect is at the two hard gates.** Babysit (the default,
 when the field reads that way) pauses at ★ and ✋ for a human yes exactly
@@ -43,14 +45,23 @@ auto-approved in auto mode" below — and nothing else in the run reads
 used to auto-resolve differently by mode is now simply asked (or silently
 resolved) the same way regardless of mode.
 
-When `run.mode` is `"auto"`, `render_run_page.py` flashes a large banner at
-the top of the run page — the run is unattended, and the page should say so
-before anyone reads a single lane pill.
+When `run.mode` is `"auto"`, the run page itself flashes a large banner at
+the top — the run is unattended, and the page should say so before anyone
+reads a single lane pill. This is rendered by the page's own poll of
+`GET /state`, not by anything the conductor triggers.
 
-**Destination country, brand region, category, and pace are all resolved
-silently, in every mode** — call
-`${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py` once the scrape
-lane's `product-pool.json` exists:
+**The form asks region and courier, so `infer_country`'s output is a
+pre-fill, not the final value.** Phase 0 step 2 calls
+`resolve_auto_defaults.py --prospect-url "<url>"` before the server starts
+and passes its inferred country to `run_server.py --region` purely as the
+form's default selection — the operator can change it. Whatever `region`
+the operator actually submits is what gets written, to **both**
+`brand.region` and `destination_country`. The form offers only `US`, `UK`,
+`DE`, because `validate_manifest.py` accepts no other `brand.region` — a
+fourth option would produce a manifest that fails validation after the
+operator has already answered everything. `brand.category` and `run.pace`
+still come from `resolve_auto_defaults.py` exactly as before, once the
+scrape lane's `product-pool.json` exists:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py \
@@ -58,13 +69,24 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py \
   --product-pool-file "<run dir>/scrape/product-pool.json"
 ```
 
-Write `destination_country`, `brand.region` (the same value as
-`destination_country`), `brand.category`, and `run.pace` from its output
-unconditionally — category is no longer a live question in any mode; it
-joins the fields this script has always resolved without asking.
+Write `brand.category` and `run.pace` from this second call's output
+unconditionally — category is not a form field in any mode; it joins the
+fields this script has always resolved without asking.
 
-The order matrix and the send-as-is/extras toggle come from the
-questionnaire directly (every run, every mode — see "Intake
+**`intake.json` carries per-order `split` plus per-parcel `scenario` and
+`courier`.** Map each order's parcels onto the manifest's `shipments` for
+that order — a non-split order has exactly one shipment, a split order has
+exactly two, one per parcel. Each parcel's `courier` (or, when that field
+is `null`, the run's default courier from the form) becomes that
+shipment's `courier`. `scenario` maps straight across per shipment; nothing
+here is inferred.
+
+There is no Artifact anywhere in intake. Do not publish one, and do not
+poll a DOM — the handoff is the `intake.json` file appearing on disk, full
+stop.
+
+The order matrix, region, courier, and the send-as-is/extras toggle all
+come from the form directly (every run, every mode — see "Intake
 questionnaire" above). The target account is always the user's own
 default demo account (every mode — see Phase 0 step 4), and the CDC
 config is always `selected_account_config_id: null`, `config_source:
@@ -185,21 +207,30 @@ it:
 
 ## The run page
 
-Every run keeps one progress artifact — see
-`${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/run-page.md` for
-the states and skeleton. Publish state 1 right after creating the run dir;
-republish at each numbered state; keep the URL the first publish returns and
-carry it into `run.page_url` when step 7 writes the manifest. Values the run
-dir does not yet carry (path, account name) render as `—` and fill in at the
-next republish. Publishing is never load-bearing.
+The run keeps one live page, served by `run_server.py` from Phase 0 step 2
+for the whole run. It re-renders itself in the browser from `GET /state`
+every two seconds, reading `run-state.json` and the same side files the
+old renderer read — so there is nothing for the conductor to send to the
+page and no URL to carry between phases. `run.page_url` is simply the
+local URL the server prints (`http://127.0.0.1:8097/`), written into the
+manifest once at Phase 0 step 7 and never updated again, because it never
+changes.
 
-**Republishing includes recording it.** After each Artifact call, record it with
-`run_state.record_publish(<run dir>, <the URL the call returned>)`. Renders
-record themselves; publishes cannot, so an unrecorded publish is
-indistinguishable from one that never happened — and telling those apart is
-what the `Page publishes` / `Page renders` telemetry columns exist for. Passing
-the returned URL is what lets `Page URL changes` show a reader stranded on a
-URL that stopped updating.
+Every fact the page shows still has to be recorded through `run_state.py`
+exactly as before — `mark`, `set_lane`, `confirm_event`, `add_deviation`,
+and so on — the page only stopped being something the conductor renders
+and pushes out; it did not stop reading `run-state.json`. Wherever this
+file used to call for a separate render-and-publish step after a
+`run_state.py` call, that call is now the whole instruction: the page
+picks up the change on its own next poll, within two seconds.
+
+**The `Page renders` / `Page publishes` / `Page URL changes` telemetry
+columns now stay at zero by design.** They existed to catch a conductor
+that recorded a fact but skipped sending the page a fresh copy — a
+failure mode a self-updating page cannot have, since there is no separate
+send step left to skip. `build_telemetry_row.py` already tolerates empty
+lists for these, so nothing there needs to change; the columns simply go
+quiet rather than needing to be removed.
 
 ## Phase 0 — Intake (front-loaded)
 
@@ -213,54 +244,69 @@ URL that stopped updating.
    import run_state; run_state.init('<run dir>', '<run id>', '<path>', '<account name>')"
    ```
 
-   then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and
-   republish the artifact — non-fatal. Path and account are still unanswered
-   here and render as `—`; they fill in at the next render.
+   **There is no render step here.** The run page is a live server (Phase 0
+   step 2), not a file this conductor renders — it reads `run-state.json`
+   itself on every poll. Path and account are still unanswered here and show
+   as `—` on the page until step 2 writes them.
 
-   **Never hand-edit `run-page.html`.** It is derived from `run-state.json`, so
-   an edit is overwritten by the next render. Record facts through
-   `run_state.py` and re-render — that is what makes republishing cheap enough
-   to do a dozen times per run.
-2. **Publish the intake questionnaire and wait for it.** Detect a reuse
-   candidate first — scan `$HOME/parcellab-demo-runs/` for a directory
-   whose `<handle>-<ts>` handle equals this run's handle and which
-   contains both `scrape/brand-tokens.json` and `scrape/product-pool.json`;
-   the most recent such run is the candidate.
+   **Never hand-edit `run-state.json`.** Record facts through `run_state.py`
+   only — the page picks up any change on its next poll, within two seconds.
+   There is no separate render step and nothing to send to the page by hand.
+2. **Start the run server and wait for intake.** Follow this procedure
+   exactly:
 
-   Render the page:
+   1. **Detect a reuse candidate** — scan `$HOME/parcellab-demo-runs/` for a
+      directory whose `<handle>-<ts>` handle equals this run's handle and
+      which contains both `scrape/brand-tokens.json` and
+      `scrape/product-pool.json`; the most recent such run is the candidate.
+   2. **Pre-resolve the region** for the form's default:
+      `resolve_auto_defaults.py --prospect-url "<url>"`. When no product
+      pool exists yet (the normal case, this early), pass the prospect URL
+      alone and take the TLD/path inference — the product-pool-driven
+      category/pace fields are resolved later, at step 4, once the scrape
+      lane has produced one.
+   3. **Stop any server left running from a previous run before starting
+      this one.** Call `preview_list`; if a `demo-run-server` entry is
+      running, `preview_stop` it first. Its `runtimeArgs` carry the
+      *previous* run's directory, and `preview_start` reuses an
+      already-running server rather than starting a fresh one — skipping
+      this step serves the last run's state to this run's operator, with no
+      error anywhere to catch it. Do this every time, even when this looks
+      like the first run of the session.
+   4. **Upsert the launch entry:**
 
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_intake_questionnaire.py render \
-     --prospect-name "<brand name>" \
-     --reuse-candidate-date "<date, only if a candidate was found>" \
-     -o "<run dir>/intake-questionnaire.html"
-   ```
+      ```bash
+      python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ensure_launch_config.py \
+        "$PWD/.claude/launch.json" \
+        '{"name": "demo-run-server", "runtimeExecutable": "python3",
+          "runtimeArgs": ["${CLAUDE_PLUGIN_ROOT}/scripts/run_server.py",
+                          "<run dir>", "--prospect-name", "<brand name>",
+                          "--region", "<pre-resolved region>",
+                          "--reuse-candidate", "<date, only if found>"],
+          "port": 8097}'
+      ```
 
-   Publish it via the Artifact tool, open it in the Browser pane
-   (`preview_start` → `navigate`), and tell the operator to fill it in.
-   Poll with `read_page` until `#submitted-banner` is visible, then pull
-   the JSON out of `#answers-json` with `javascript_tool`
-   (`document.getElementById('answers-json').textContent`) and write it
-   to `<run dir>/results/questionnaire-answers.json`. Validate it:
-
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_intake_questionnaire.py parse \
-     "<run dir>/results/questionnaire-answers.json"
-   ```
-
-   On `ANSWERS INVALID`, tell the operator what was wrong and have them
-   resubmit the same page — never fall through to chat for a fixable
-   validation error. Once it parses, write `path` (`shopify_opp` →
-   `retain-shopify`, else `retain`), `run.mode`, and
-   `gates.order_lifecycle.gate_c` into the manifest immediately — nothing
-   past this point is asked again.
-
-   **Fallback, if the Artifact fails to publish or the Browser pane can't
-   open it:** fall back to a plain chat interview — ask "Is this a Shopify
-   opp?", the reuse question (if a candidate exists), the order matrix, the
-   send-as-is/extras toggle, and "babysit or auto?" as ordinary chat
-   questions, in that order. Publishing is never load-bearing, the same
-   posture as the run page itself.
+   5. **`preview_start`** → `{name: "demo-run-server"}`, note the returned
+      `tabId`, and tell the operator to fill in the form.
+   6. **Poll for `<run dir>/intake.json`.** It is written only on a
+      submission that passed validation, so its presence means intake is
+      complete and there is nothing to parse or extract separately — read
+      it directly. A rejected submission never writes the file; the
+      operator sees the reason inline on the page and resubmits the same
+      form, so there is no chat fallback to reach for on a validation
+      error. From the parsed file, write into the manifest: `path`
+      (`shopify_opp` → `retain-shopify`, else `retain`), `run.mode`,
+      `gates.order_lifecycle.gate_c` and `gates.order_lifecycle.extras`,
+      `brand.region` and `destination_country` (both set to the submitted
+      `region`), and the per-order matrix and courier defaults (see
+      "Intake questionnaire" above for the shipment-mapping rules) — nothing
+      past this point is asked again.
+   7. **Fallback, if the server cannot start** (`run_server: cannot bind
+      port …` on stderr, or `preview_start` itself fails): fall back to a
+      plain chat interview, asking in this order — Shopify opp, the reuse
+      question (if a candidate exists), region, courier, the order matrix,
+      customisation, mode. The UI is never load-bearing; this is the same
+      posture the run page has always had.
 3. **Dispatch the scrape agent immediately** — `mark(d, "agent", "scrape", "start")` and `mark(d, "lane", "scrape", "start")` as you dispatch. Use the Agent tool
    (general-purpose subagent, background) with exactly this brief, filling
    the placeholders. **Resolve `${CLAUDE_PLUGIN_ROOT}` to its absolute path
@@ -294,8 +340,10 @@ URL that stopped updating.
    the ★ template preview naturally starts after it, since it needs the
    scraped tokens. **This binds more than deliberate navigation:** a
    `PostToolUse` hook can open a file in the pane as a side effect of a plain
-   Write (observed 2026-08-11 — writing `run-page.html` took the pane while the
-   scrape agent held it). Writing run files is unavoidable, so treat pane
+   Write (observed 2026-08-11, when writing the old run-page file took the
+   pane while the scrape agent held it — the run page is now served live and
+   the conductor no longer writes it, but any other Write into the run dir
+   can trigger the same hook). Writing run files is unavoidable, so treat pane
    contention as expected rather than forbidden: if the pane is taken from the
    agent, do not also drive it, and re-check `results/scrape.json` rather than
    assuming the agent died. **Reused pool:** when the questionnaire's
@@ -305,7 +353,10 @@ URL that stopped updating.
    `{"status": "ok", "error": null}`. Without that file the pre-build at
    step 6 waits on a precondition nothing else will ever satisfy. Once
    `results/scrape.json` shows
-   `ok`: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py` — `mark(d, "agent", "scrape", "end")` the moment the file lands, plus `mark(d, "lane", "scrape", "end")` — then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and republish the artifact — non-fatal. **Never hand-edit `run-page.html`;** it is derived, and the next render overwrites it.
+   `ok`: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py` —
+   `mark(d, "agent", "scrape", "end")` the moment the file lands, plus
+   `mark(d, "lane", "scrape", "end")`. The page picks this up on its own
+   next poll — there is no separate render or send step.
 4. **Resolve the remaining Phase 0 checks**, once the questionnaire has
    answered `path`, `reuse_pool`, the order matrix, and `gate_c`:
    - **Shopify resolution (retain-shopify only):** First `command -v shopify` —
@@ -320,12 +371,13 @@ URL that stopped updating.
      Then resolve the location GID immediately — follow
      shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
      preference rules. Record both in the manifest.
-   - **Destination country, brand region, category, and pace (every run,
-     resolved silently):** call `resolve_auto_defaults.py` once
-     `scrape/product-pool.json` exists (see "Intake questionnaire" above for the
-     exact invocation) and write its `destination_country`, `brand.region`
-     (the same value as `destination_country`), `brand.category`, and
-     `run.pace` output straight into the manifest — no question, in any mode.
+   - **Category and pace (every run, resolved silently):** call
+     `resolve_auto_defaults.py` once `scrape/product-pool.json` exists (see
+     "Intake questionnaire" above for the exact invocation) and write its
+     `brand.category` and `run.pace` output straight into the manifest — no
+     question, in any mode. `destination_country` and `brand.region` are
+     already in the manifest from step 2's form submission — this call does
+     not touch them.
    - **Target account (every run, resolved silently):** always the user's
      own default demo account (`${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`)
      — there is no other account choice to offer here any more; a run that
@@ -394,9 +446,11 @@ URL that stopped updating.
      taken.
    - **The run's images, inlined** so the page can actually show them:
      `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/inline_assets.py <run dir>`. The
-     artifact CSP blocks external requests, so a remote `<img src>` renders as
-     a broken-image icon — this is what makes product shots, the brand logo and
-     the hero visible on the run page at all.
+     run page's `GET /state` payload reads `data_uri` / `logo_data_uri`
+     straight out of `scrape/assets.json` — it never fetches a remote URL
+     itself — so without this step there is no image data for the page to
+     show at all, not just a broken-image icon. This is what makes product
+     shots, the brand logo and the hero visible on the run page.
    - **The fraud fragment** for every order, on every path — it depends on
      nothing the engines produce.
    - **Direct engine only** (the retain path — retain-shopify uses the
@@ -419,12 +473,13 @@ URL that stopped updating.
    on. The agent is an accelerator, never load-bearing.
 
    **Verify the page is not blank before you show it to anyone.** After
-   `inline_assets.py`, `scrape/assets.json` must exist. `render_run_page.py`
-   warns on stderr when `results/scrape.json` says ok and that file is missing;
-   treat the warning as a stop. Both `_brand_header` and `_products` open with
-   `if not assets: return ""`, so skipping the inline step renders an empty
-   showcase that still publishes successfully — live 2026-08-12 the user
-   approved a template against a page showing nothing at all.
+   `inline_assets.py`, `scrape/assets.json` must exist — check for it
+   directly; with the run page now serving itself from `GET /state`, there
+   is no separate render step left to warn on stderr if it is missing. The
+   page's scrape panel renders nothing when assets are absent, so skipping
+   the inline step still serves a page that looks fine and shows an empty
+   showcase — live 2026-08-12 the user approved a template against a page
+   showing nothing at all.
 7. **Write and validate the manifest — before either gate.** The manifest is
    the plan, so it has to exist before the page can render the plan. Write it
    per the schema in step 9 below, then validate it **with `--pre-gate`**:
@@ -461,17 +516,19 @@ URL that stopped updating.
 logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`. This
    is the run's first deliverable and it gates every comm the environment will
    send, so it is approved on its own, ahead of the plan.
-   - **Re-render and republish the page before asking.** The template preview
-     is rendered from
-     `$HOME/parcellab-previews/{brand}-parcellab-layout.html`, which the
-     renderer resolves from the manifest's brand or the run id's handle. Asking
-     for approval against a page that does not show the thing being approved is
-     the defect this ordering exists to prevent.
-   - **Hold the run page here.** Publish a template-only state — the preview,
-     the brand-token swatches, and nothing downstream. Do not show the plan,
-     the order matrix or the seed set yet: putting detail on screen that the
-     user cannot act on, before the first deliverable is even visible, is what
-     made the 2026-08-11 smoke run confusing.
+   - **Serve the actual file before asking.** The preview shown in the Browser
+     pane is the file at
+     `$HOME/parcellab-previews/{brand}-parcellab-layout.html`, resolved from
+     the manifest's brand or the run id's handle — make sure that file is
+     current before `preview_start`/`navigate`. Asking for approval against a
+     stale file is the defect this ordering exists to prevent.
+   - **Hold the run page here.** It shows a template-only state — the preview
+     swatches, and nothing downstream — because the plan card only appears
+     once `mark(d, "gate", "plan", "asked")` is in the timeline (below), and
+     that has not happened yet at this step. Do not front-run it by writing
+     the plan into the manifest early: putting detail on screen that the user
+     cannot act on, before the first deliverable is even visible, is what made
+     the 2026-08-11 smoke run confusing.
    - **Skip this step entirely when the repeat-brand shortcut was taken** at
      step 5 — the layout is already live and verified, so there is nothing to
      preview and `results/branded-template.json` already exists.
@@ -482,13 +539,14 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    anything to* parcelLab, Shopify or the CDC — the only prior calls are
    read-only lookups plus the edit-mode guard).
 
-   **The plan is shown on the run page, not typed into the question.** Mark the
-   gate asked, re-render, republish — that publishes the plan card, which
-   renders every item below from the manifest written at step 7. Then ask in
-   chat for a short approve-or-change, and link the page. A plan pasted into an
-   AskUserQuestion option label is unreadable, and it was pasted there on
-   2026-08-12 *because* the page could not render it — fixing the page is what
-   makes the short question honest.
+   **The plan is shown on the run page, not typed into the question.** Mark
+   the gate asked (below) — the page's own next poll of `GET /state` then
+   shows the plan card, rendering every item below from the manifest written
+   at step 7, with nothing further for the conductor to do. Then ask in chat
+   for a short approve-or-change, and link the page (`run.page_url`). A plan
+   pasted into an AskUserQuestion option label is unreadable, and it was
+   pasted there on 2026-08-12 *because* the page of the time could not show
+   it — a page that renders itself is what makes the short question honest.
 
    The page's plan card covers:
    core 4 (four distinct product types) · per-order product distribution ·
@@ -503,12 +561,13 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    covers all of it; any tweak loops back here. When the gate opens: record it
    via `run_state.py` — `mark(d, "gate", "plan", "asked")` as you pose it, and
    again on every re-ask (also `add_deviation(d, "gate_reasked", ...)` each
-   time, per *Deviation logging* above) — re-render with
-   `render_run_page.py <run dir>` and republish — non-fatal.
+   time, per *Deviation logging* above). That call is the whole instruction —
+   the page picks it up on its own within two seconds.
 
-   **If the page failed to publish, the plan still has to be readable** — post
-   it in chat as a markdown table then, and say the page is unavailable. The
-   page being non-fatal never means the user approves something unseen.
+   **If the server is not running, the plan still has to be readable** — post
+   it in chat as a markdown table then, and say the page is unavailable (the
+   same fallback posture as Phase 0 step 2). The page being non-fatal never
+   means the user approves something unseen.
 
    **Once approved**, do these four things before any build work starts:
 
@@ -516,7 +575,8 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
       this is where `Duration to build` starts.
    2. Re-validate **without** `--pre-gate` (the approval stamp exists now):
       `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py <run>/demo-manifest.json`.
-   3. Re-render and republish — non-fatal.
+   3. No render step — the page already shows the updated state on its next
+      poll.
    4. **Open the telemetry row.** Skip only when `PL_RUN_TELEMETRY_DB` is
       unset — check it, do not assume:
 
@@ -542,8 +602,8 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    **The manifest schema** (written at step 7, above — kept here because this
    is where its fields were settled). `demo-manifest.json`:
    `run{…, pace: "standard"|"fast" — absent means standard,
-   mode: "babysit"|"auto" — absent means babysit, page_url —
-   recorded after the first run-page publish}`, `path`,
+   mode: "babysit"|"auto" — absent means babysit, page_url — the local
+   `run_server.py` URL, written once at step 7 and never updated}`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
    edit_mode_verified}`, `cdc{selected_account_config_id,config_source,
    generate_orders,orders}`, `shopify{enabled,store?,location_id?}`,
@@ -705,19 +765,20 @@ files.)
    `$PARCELLAB_ACCOUNT_ID`, which may point at a different account than the
    one confirmed at intake. Once drivers are launched: record it via
    `run_state.py` — `mark(d, "lane", "orders", "start")`, and
-   `set_schedule`, which the page's clock needs —
-   re-render with `render_run_page.py <run dir>` and republish — non-fatal.
-5. **Watch and republish.** After launching every driver, run
+   `set_schedule`, which the page's clock needs. No render step follows —
+   the page's own poll picks this up.
+5. **Watch and record.** After launching every driver, run
    `${CLAUDE_PLUGIN_ROOT}/scripts/wait_for_event.sh <run dir>` as a tracked
    background task. When it returns, ingest each order's new `events.jsonl`
-   lines with `run_state.confirm_event(...)`, re-render, republish, and start
-   the watcher again. Repeat until every driver's task has reported completion,
-   then `mark(d, "lane", "orders", "end")`.
+   lines with `run_state.confirm_event(...)` and start the watcher again —
+   no render step in between. Repeat until every driver's task has reported
+   completion, then `mark(d, "lane", "orders", "end")`.
 
-   This is what makes the page live rather than frozen for the fifteen minutes
-   that matter most. Expect roughly 8–12 republishes per run; that cost was
-   chosen deliberately over a cheaper animation-only page. If it proves too
-   expensive, widen the watcher's settle window rather than abandoning the loop.
+   This is what makes the page live rather than frozen for the fifteen
+   minutes that matter most: the page polls `GET /state` every two seconds on
+   its own, so recording each confirmed event is the only thing this loop
+   needs to do — there is no separate cost per update to budget for the way
+   there was when the conductor had to push each state itself.
 6. Write `order.json` per the contract.
 
 When every order's `order.json` exists, build
@@ -747,11 +808,11 @@ and `tracking_number` knowable at all. This includes that `GAP_SECONDS` comes fr
 Beat 2's report must note that comm ordering was not guaranteed at this
 pace. It also includes the launch mechanics in full: a **tracked background task
 per order (`run_in_background: true`, never `nohup`)** with `STATE_FILE` set,
-followed by the same `wait_for_event.sh` watch-and-republish loop as the direct
-engine's step 5. Once drivers are launched: record it via `run_state.py`
-(`mark(d, "lane", "orders", "start")` and `set_schedule`, with the matching
-`"end"` when the watch loop finishes), re-render with `render_run_page.py <run dir>` and
-republish — non-fatal. Then write `order.json` (order_number = the Shopify
+followed by the same `wait_for_event.sh` watch-and-record loop as the direct
+engine's step 5 — no render step, the page polls itself. Once drivers are
+launched: record it via `run_state.py` (`mark(d, "lane", "orders", "start")`
+and `set_schedule`, with the matching `"end"` when the watch loop finishes).
+Then write `order.json` (order_number = the Shopify
 order name, e.g. "#1001") and, once all orders are processed, build
 `results/linked-orders.json` the same way as the direct engine.
 
@@ -789,7 +850,7 @@ default config" when `config_source` is `none`). No currency symbols.
 line per field from `resolve_auto_defaults.py`'s output, showing its
 value and source (`default` | `inferred`), in the same plan-card list
 style as the rest of Beat 1.
-Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends — re-render with `render_run_page.py <run dir>` and republish — non-fatal.
+Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends. No render step follows.
 Update the telemetry row (stage `beat1`) with the build results, if
 `results/telemetry.json` exists.
 
@@ -910,7 +971,7 @@ order number and the account, so a later reader can check it. A run edits a
 skill reference file here on purpose: the alternative is proven status codes
 staying labelled unproven because nobody answered a prompt at the end of a
 fifteen-minute run.
-Once Beat 2 is posted: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal.
+Once Beat 2 is posted: record it via `run_state.py`. No render step follows.
 
 Update the telemetry row (stage `beat2`), filling `Comms expected` and
 `Comms fired` from the verification just performed. `Duration to build` is
@@ -924,9 +985,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/build_run_digest.py <run dir>
 ```
 
 Append the output to the Notion **row page** — the page the `beat2` update just
-wrote to — not to the database and not to a new page. The run page artifact is
-private to whoever ran it and cannot be shared from here, so this is the only
-copy a teammate can open. A failed append is recorded and mentioned once in the
+wrote to — not to the database and not to a new page. The run page is served
+from `127.0.0.1` on whoever ran the run's own machine and cannot be reached or
+shared from anywhere else, so this digest is the only copy a teammate can
+open. A failed append is recorded and mentioned once in the
 final report, exactly like a failed row write: telemetry is an observer, never
 a dependency.
 
@@ -984,7 +1046,8 @@ else first.
 | one order (any engine) | nothing else | mark partial in its order.json; report the exact step |
 | CDC call | nothing | report; 500 = request exists, retry manually in-app |
 
-On any failure above: record it via `run_state.py`, re-render with `render_run_page.py <run dir>` and republish — non-fatal. Also log it via
+On any failure above: record it via `run_state.py` — no render step follows,
+the page picks it up on its own. Also log it via
 `add_deviation()` — `lane_fallback_inline` for the scrape/seed rows,
 `api_error` for template publish, one order, or the CDC call — even though
 none of these stop the run; that is precisely what this log exists to catch
