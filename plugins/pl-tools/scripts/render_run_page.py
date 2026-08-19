@@ -262,7 +262,7 @@ def _plan_facts(manifest):
         ("Path", manifest.get("path")),
         ("Account", f'{account.get("name", "—")} ({account.get("id", "—")})'),
         ("Destination", manifest.get("destination_country")),
-        ("Pace", f'{pace} ({200 if pace == "standard" else 60}s between events)'),
+        ("Pace", f'{pace} ({240 if pace == "standard" else 60}s between events)'),
         ("Brand", f'{brand.get("name", "—")} · {brand.get("region", "—")} · '
                   f'{brand.get("category", "—")}'),
     ]

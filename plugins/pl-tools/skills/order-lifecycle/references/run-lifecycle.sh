@@ -17,7 +17,7 @@
 # NEVER add --base-url: the default host serves /v4/track/events/, and
 # overriding the host silently breaks the CLI's own edit-mode account lookup
 # (every write then fails with a misleading 404 about child accounts).
-# Env: EVENTS_DIR (required), GAP_SECONDS (default 200), LOG_FILE
+# Env: EVENTS_DIR (required), GAP_SECONDS (default 240), LOG_FILE
 #      (default $EVENTS_DIR/run.log), DRYRUN (default 0).
 #      STATE_FILE (optional; unset = off). When set, one JSON object per line
 #      is appended after each event: {"status","tracking_number","at","http"}.
@@ -29,7 +29,7 @@
 set -euo pipefail
 
 EVENTS_DIR="${EVENTS_DIR:?EVENTS_DIR required}"
-GAP_SECONDS="${GAP_SECONDS:-200}"
+GAP_SECONDS="${GAP_SECONDS:-240}"
 LOG_FILE="${LOG_FILE:-$EVENTS_DIR/run.log}"
 DRYRUN="${DRYRUN:-0}"
 STATE_FILE="${STATE_FILE:-}"

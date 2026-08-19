@@ -127,7 +127,7 @@ unattended after the ✋ gate.
 | Are returns in scope for this demo? | Always yes. The old "engage" (no-returns) path is retired; every run is `retain` or `retain-shopify`. |
 | Which country are these orders delivering to? | Always inferred via `resolve_auto_defaults.infer_country` (TLD, else path locale segment, else scraped currency symbol, else `US`) — in every mode, not just auto. Written to `destination_country`. |
 | Which region should the CDC request use? | Always set equal to the resolved `destination_country` above, written to `brand.region`. |
-| What pace should the journeys run at? | Always `"standard"` (200 s gaps). `GAP_SECONDS=60` ("fast") is no longer offered as a live choice in any mode. |
+| What pace should the journeys run at? | Always `"standard"` (240 s gaps). `GAP_SECONDS=60` ("fast") is no longer offered as a live choice in any mode. |
 | Which account should this demo build in? | Always the user's own default demo account (`${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`) — the shared **parcelfashion** account is no longer offered as a choice here. |
 | Using **\<name\>** (\<id\>) — correct? | No longer asked — the account above is resolved and used silently. Its name is still looked up (`parcellab account account show <id>`) and stated in Beat 1, so it stays visible after the fact even though nothing gates on it beforehand. |
 | What is the CDC account config name (or UUID) for this target? | Always `selected_account_config_id: null`, `config_source: "none"` — the CDC uses the caller's default config. This is safe now that the target account is always the fixed default account above and the practical default already targets it. |

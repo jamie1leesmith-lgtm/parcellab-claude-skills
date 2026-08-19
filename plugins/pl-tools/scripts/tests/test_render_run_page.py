@@ -301,12 +301,12 @@ class TestPlan(unittest.TestCase):
         self.assertIn("GB", html)
         self.assertIn("standard", html)
 
-    def test_standard_pace_is_200_seconds(self):
+    def test_standard_pace_is_240_seconds(self):
         # The default gap the driver actually uses. Stated on the page so a
         # reader can predict when the next event lands; kept in a test so the
         # page and run-lifecycle.sh cannot drift apart silently.
         html = render_run_page.render(at_plan_gate(a_state()), manifest=MANIFEST)
-        self.assertIn("200s between events", html)
+        self.assertIn("240s between events", html)
 
     def test_fast_pace_is_60_seconds(self):
         manifest = dict(MANIFEST, run={"pace": "fast"})
