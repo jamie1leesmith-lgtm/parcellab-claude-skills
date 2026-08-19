@@ -278,6 +278,22 @@ directory containing `demo-manifest.json` whose
   `{name, image_url}`. From `cdc`: `selected_account_config_id` (omit the key
   when null), `generate_orders`, and `orders` (the synthetic-composition
   array; omit when empty — `order_types` no longer exists on the API).
+- **Copy `generate_orders` and `orders` from `manifest.cdc`, never type them
+  fresh.** The API defaults `generate_orders` to `true` when the key is
+  absent — live 2026-08-19, a payload built by hand simply left the key out,
+  and the CDC silently generated its own synthetic order on top of the real
+  ones, with its own backdated hourly-spaced checkpoints mixed into the same
+  account. That order was hard to tell apart from the real ones until
+  someone dug into individual timestamps. Read `manifest.cdc.generate_orders`
+  and `manifest.cdc.orders` as values, not as a description to reproduce.
+- **Before calling `submit_demo_request.mjs`, check the payload you built
+  against `manifest.cdc` one more time:** `payload.generate_orders` must
+  equal `manifest.cdc.generate_orders` exactly (always `false` on this
+  contract), and `payload.orders` must be absent or equal
+  `manifest.cdc.orders` (always `[]`). If either doesn't hold, don't submit —
+  fix the payload and check again. This catches the exact class of mistake
+  above before it reaches a live account, rather than relying on having
+  remembered to include the field the first time.
 - **Link the real orders:** if `results/linked-orders.json` exists in the run
   dir, pass its array verbatim as `linked_orders`.
 - **Submit** exactly as Step 7 (same script, same env), then write
