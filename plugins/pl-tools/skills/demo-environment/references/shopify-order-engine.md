@@ -123,10 +123,22 @@ for, or the first listed variant if the order didn't specify size/colour):
       "firstName": "<first>", "lastName": "<last>",
       "address1": "<region-appropriate street>", "city": "<city>",
       "zip": "<zip>", "countryCode": "<GB|US|DE from destination_country>"
-    }
+    },
+    "tags": ["<XXX>"]
   }
 }
 ```
+
+**`tags` carries the same brand code the direct engine puts in its `order_number`
+prefix** — derive `<XXX>` with `create-order/SKILL.md`'s existing rule (first three
+letters of `brand.name`, uppercased, stripping a leading "www."/article and any
+non-letters first; fall back to `ORD` if no brand name is available). Shopify's
+`DraftOrderInput`/`OrderInput` have no writable `name` field (confirmed via live
+schema introspection 2026-08-19), so the order's display number is entirely the
+store's own sequential counter and can't carry a per-brand prefix the way the
+direct engine's `order_number` does. Tagging is the equivalent for this path: it
+makes the order searchable/filterable by brand in the portal, the same reason the
+direct engine's prefix exists, even though it can't sit in the order number itself.
 
 **Call 2 — complete it into a real, paid order:**
 
