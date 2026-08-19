@@ -1,0 +1,134 @@
+"""Assemble the GET /state payload the run page renders itself from.
+
+Everything here is derived from files the run already writes — run-state.json
+is the source of truth for progress, and the per-lane drill-down detail comes
+from the same side files the old run-page renderer read. Nothing writes.
+
+Every side file is read defensively: a half-written or missing file leaves its
+detail section None rather than failing the whole poll, because the page
+polling every two seconds will inevitably catch a write mid-flight.
+"""
+import json
+import pathlib
+
+import run_state
+
+
+def _read_json(path):
+    """None on anything unreadable — a poll must never fail on a side file."""
+    try:
+        return json.loads(pathlib.Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def _scrape_detail(run_dir):
+    assets = _read_json(run_dir / "scrape" / "assets.json")
+    if not assets:
+        return None
+    tokens = assets.get("tokens") or {}
+    swatches = [v for v in tokens.values()
+                if isinstance(v, str) and v.startswith("#")]
+    products = [
+        {
+            "sku": sku,
+            "name": entry.get("name") or "",
+            "product_type": entry.get("product_type") or "",
+            "price": entry.get("price") or "",
+            "image": entry.get("data_uri"),
+        }
+        for sku, entry in (assets.get("products") or {}).items()
+    ]
+    return {
+        "swatches": swatches,
+        "font": tokens.get("font"),
+        "logo": assets.get("logo_data_uri"),
+        "logo_svg": assets.get("logo_svg"),
+        "products": products,
+    }
+
+
+def _template_detail(state, manifest):
+    lane = (state.get("lanes") or {}).get("template") or {}
+    if not lane:
+        return None
+    detail = {
+        "status": lane.get("status"),
+        "at": lane.get("at"),
+        "path": state.get("path"),
+    }
+    for key in ("layout_id", "store"):
+        if key in lane:
+            detail[key] = lane[key]
+    brand = (manifest or {}).get("brand") or {}
+    if brand.get("name"):
+        detail["brand"] = brand["name"]
+    return detail
+
+
+def _seed_detail(run_dir):
+    result = _read_json(run_dir / "results" / "shopify-seed.json")
+    if not result:
+        return None
+    products = [
+        {
+            "title": p.get("title") or "",
+            "seeded_price": p.get("seeded_price"),
+            "adjusted": bool(p.get("adjusted")),
+            "variant_count": len(p.get("variants") or []),
+            "admin_url": p.get("admin_url"),
+        }
+        for p in (result.get("products") or [])
+    ]
+    return {
+        "status": result.get("status"),
+        "products": products,
+        "demos": result.get("demos") or {},
+        "warnings": result.get("warnings") or [],
+        "error": result.get("error"),
+    }
+
+
+def _cdc_detail(run_dir, state, manifest):
+    lane = (state.get("lanes") or {}).get("cdc") or {}
+    cdc = (manifest or {}).get("cdc") or {}
+    result = _read_json(run_dir / "results" / "demo-request.json")
+    return {
+        "status": lane.get("status") or "pending",
+        "at": lane.get("at"),
+        # Surfaced deliberately: a run that silently flipped this to true is
+        # what produced the synthetic-order incident this UI now shows plainly.
+        "generate_orders": bool(cdc.get("generate_orders")),
+        "synthetic_orders": len(cdc.get("orders") or []),
+        "url": (result or {}).get("url"),
+        "error": (result or {}).get("error"),
+    }
+
+
+def build(run_dir):
+    """Return the page's whole data contract for one poll."""
+    run_dir = pathlib.Path(run_dir)
+    state = run_state.load(str(run_dir))
+    manifest = _read_json(run_dir / "demo-manifest.json")
+
+    return {
+        # The file is the flag: the conductor writes intake.json on a valid
+        # submission, so its existence is what moves the page to phase two.
+        "phase": "building" if (run_dir / "intake.json").exists() else "intake",
+        "run_id": state.get("run_id"),
+        "account_name": state.get("account_name"),
+        "path": state.get("path"),
+        "finished": bool(state.get("finished")),
+        "updated_at": state.get("updated_at"),
+        "mode": ((manifest or {}).get("run") or {}).get("mode"),
+        "lanes": state.get("lanes") or {},
+        "orders": state.get("orders") or [],
+        "schedule": state.get("schedule") or {},
+        "failures": state.get("failures") or [],
+        "detail": {
+            "scrape": _scrape_detail(run_dir),
+            "template": _template_detail(state, manifest),
+            "seed": _seed_detail(run_dir),
+            "cdc": _cdc_detail(run_dir, state, manifest),
+        },
+    }
