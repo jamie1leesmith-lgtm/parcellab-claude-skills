@@ -376,7 +376,14 @@ quiet rather than needing to be removed.
    > 3–6 for brand tokens (write the full `__BRAND_X__` token map + logo +
    > hero to `<run dir>/scrape/brand-tokens.json`) and
    > `${CLAUDE_PLUGIN_ROOT}/skills/shopify-seed/references/product-scrape.md`
-   > for the product pool (≥8 candidates in the superset shape
+   > for the product pool (**≥8 candidates on retain-shopify, ≥5 on
+   > retain** — the 8 exists so shopify-seed can still find four products
+   > of four different types, each with variant axes and prices that make
+   > both an even and an uneven exchange work, after image validation drops
+   > any candidate; the retain path seeds no store and has none of those
+   > constraints, needing only the four the CDC demo request submits plus a
+   > spare, so scraping eight there is wasted PDP navigation — in the
+   > superset shape
    > `{id, name, product_type, price, options, image_url, pdp_url, sku}`;
    > variant axes required only on retain-shopify — elsewhere capture what
    > the PDP shows without extra navigation; write to
