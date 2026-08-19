@@ -9,7 +9,6 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import render_run_page  # noqa: E402
 import run_state  # noqa: E402
-import pl_brand  # noqa: E402
 
 
 def at_plan_gate(state):
@@ -85,15 +84,11 @@ class TestRenderRunPage(unittest.TestCase):
         self.assertIn("Demo - JLS", html)
 
     def test_no_external_references_anywhere(self):
-        # The artifact CSP blocks these; a remote image renders as a broken
-        # icon. Google Fonts is the one documented CSP exception, and the
-        # brand header deliberately loads Poppins from fonts.googleapis.com —
-        # strip that known-safe link before checking for anything else.
+        # The artifact CSP blocks these; a remote image renders as a broken icon.
         html = render_run_page.render(a_state())
-        without_google_fonts = html.replace(pl_brand.GOOGLE_FONTS_LINK, "")
-        self.assertNotIn('<img src="http', without_google_fonts)
-        self.assertNotIn('<script src="http', without_google_fonts)
-        self.assertNotIn('<link rel="stylesheet" href="http', without_google_fonts)
+        self.assertNotIn('<img src="http', html)
+        self.assertNotIn('<script src="http', html)
+        self.assertNotIn('<link rel="stylesheet" href="http', html)
 
     def test_confirmed_event_renders_confirmed(self):
         html = render_run_page.render(a_state())
@@ -582,32 +577,6 @@ class TestAutoModeBanner(unittest.TestCase):
         # The template gate (state 2b) renders before a manifest exists.
         html = render_run_page.render(a_state())
         self.assertNotIn('<div class="auto-banner">', html)
-
-
-class BrandingTests(unittest.TestCase):
-    def test_page_uses_the_brand_primary_color(self):
-        html = render_run_page.render(a_state())
-        self.assertIn(pl_brand.PRIMARY, html)
-
-    def test_page_loads_poppins(self):
-        html = render_run_page.render(a_state())
-        self.assertIn("Poppins", html)
-        self.assertIn("fonts.googleapis.com", html)
-
-    def test_page_shows_the_parcellab_logo(self):
-        html = render_run_page.render(a_state())
-        self.assertIn(pl_brand.LOGO_SVG.strip()[:40], html)
-
-    def test_auto_banner_keeps_its_orange_on_purpose(self):
-        state = a_state()
-        manifest = {"run": {"mode": "auto"}}
-        html = render_run_page.render(state, manifest)
-        self.assertIn("#ff6b35", html)
-        self.assertIn(pl_brand.PRIMARY, html)  # brand color is used elsewhere on the page
-        banner_start = html.index('class="auto-banner"')
-        banner_end = html.index("</div>", banner_start)
-        banner_markup = html[banner_start:banner_end]
-        self.assertNotIn(pl_brand.PRIMARY, banner_markup)
 
 
 if __name__ == "__main__":

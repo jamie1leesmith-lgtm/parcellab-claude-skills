@@ -60,6 +60,13 @@ def validate(m, pre_gate=False):
     if mode is not None:
         need(mode in MODES, f"run.mode must be one of {sorted(MODES)}")
 
+    answers_doc = m.get("run", {}).get("answers_doc")
+    if answers_doc is not None:
+        need(
+            isinstance(answers_doc, str) and answers_doc.strip(),
+            "run.answers_doc must be a non-empty string when present",
+        )
+
     brand = m.get("brand", {})
     need(bool(brand.get("name")), "brand.name must be non-empty")
     need(brand.get("region") in BRAND_REGIONS,

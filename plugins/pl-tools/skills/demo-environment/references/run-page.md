@@ -71,7 +71,7 @@ human labels. A column of bare `A`s under four orders is unreadable, and the
 user had to ask what it meant on the 2026-08-11 run.
 
 **Not-yet-known values:** the page is published from step 1, before the
-questionnaire has answered everything it displays. Any header or card value the
+interview has answered everything it displays. Any header or card value the
 run dir does not yet carry renders as an em dash `—`; it fills in at the next
 republish. Never delay a publish waiting for a value, and never invent one.
 
@@ -79,7 +79,7 @@ republish. Never delay a publish waiting for a value, and never invent one.
 
 | # | When | The page shows |
 |---|---|---|
-| 1 | Run dir created | Header (brand, path, account by name, run id — path and account are still unanswered at this point, so render them `—`), "collecting products + brand styling", questionnaire underway |
+| 1 | Run dir created | Header (brand, path, account by name, run id — path and account are still unanswered at this point, so render them `—`), "collecting products + brand styling", interview underway |
 | 2 | `results/scrape.json` ok | Product pool grid (name, type, price, verified badge, PDP link), brand-token swatch strip |
 | 2b | ★ template preview (step 8) | The template preview and brand-token swatches ONLY — no plan, no order matrix, no seed set. The first deliverable is approved on its own; showing downstream detail the user cannot act on yet is what made the first smoke run confusing. Skipped when the repeat-brand shortcut was taken. |
 | 3 | ✋ plan gate opens | The proposed plan: core-4 grid · order matrix table (label, customer, fraud, scenario, products, expected comms with confidence labels) · CDC settings (config source, generate_orders) · pace · a banner: "⏳ Approval waiting in chat" |

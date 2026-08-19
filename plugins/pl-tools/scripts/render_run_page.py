@@ -12,51 +12,47 @@ import re
 import sys
 
 import run_state
-import pl_brand
 
-CSS = f"""
-:root {{ --fg:{pl_brand.TEXT}; --bg:#fff; --muted:#667; --card:{pl_brand.CARD}; --line:#e2e2e8;
-        --ok:#0a7d33; --live:{pl_brand.PRIMARY}; --warn:#b45309; --bad:#b91c1c;
-        --brand:{pl_brand.PRIMARY}; --tint:{pl_brand.TINT}; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --fg:#eee; --bg:#111; --muted:#99a;
-        --card:#1c1c22; --line:#2c2c34; }} }}
-:root[data-theme="dark"] {{ --fg:#eee; --bg:#111; --muted:#99a; --card:#1c1c22;
-        --line:#2c2c34; }}
-:root[data-theme="light"] {{ --fg:{pl_brand.TEXT}; --bg:#fff; --muted:#667; --card:{pl_brand.CARD};
-        --line:#e2e2e8; }}
-body {{ color:var(--fg); background:var(--bg); font:15px/1.55 {pl_brand.FONT_FAMILY};
-       margin:0 auto; padding:24px; max-width:1100px; }}
-.pl-header {{ display:flex; align-items:center; gap:10px; margin:0 0 18px; color:var(--brand); }}
-.pl-header svg {{ width:100px; height:auto; }}
-.layout {{ display:flex; gap:20px; align-items:flex-start; }}
-.rail {{ flex:0 0 300px; position:sticky; top:16px; background:var(--card);
-        border-radius:12px; padding:16px 18px; }}
-.show {{ flex:1; min-width:0; }}
-.card {{ background:var(--card); border-radius:12px; padding:16px 20px;
-        margin:0 0 14px; }}
-.fail {{ border-left:4px solid var(--bad); }}
-.pill {{ display:inline-block; border-radius:999px; padding:2px 10px; margin:2px;
-        font-size:12px; font-weight:600; }}
-.s-confirmed {{ background:var(--ok); color:#fff; }}
-.s-live {{ background:var(--live); color:#fff; }}
-.s-expected {{ background:transparent; color:var(--muted);
-              border:1px dashed var(--muted); }}
-.s-failed {{ background:var(--bad); color:#fff; }}
-.s-pending {{ background:transparent; color:var(--muted);
-             border:1px solid var(--line); }}
-.lbl {{ font-size:11px; text-transform:uppercase; letter-spacing:.08em;
-       color:var(--muted); margin:14px 0 6px; }}
-.overflow {{ overflow-x:auto; }}
-table {{ border-collapse:collapse; width:100%; }}
-td,th {{ text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); }}
-.stamp {{ font-size:12px; color:var(--muted); margin-top:12px; }}
-.auto-banner {{ background:linear-gradient(90deg,#ff6b35,#f7931e); color:#111;
+CSS = """
+:root { --fg:#111; --bg:#fff; --muted:#667; --card:#f5f5f7; --line:#e2e2e8;
+        --ok:#0a7d33; --live:#1d4ed8; --warn:#b45309; --bad:#b91c1c; }
+@media (prefers-color-scheme: dark) { :root { --fg:#eee; --bg:#111; --muted:#99a;
+        --card:#1c1c22; --line:#2c2c34; } }
+:root[data-theme="dark"] { --fg:#eee; --bg:#111; --muted:#99a; --card:#1c1c22;
+        --line:#2c2c34; }
+:root[data-theme="light"] { --fg:#111; --bg:#fff; --muted:#667; --card:#f5f5f7;
+        --line:#e2e2e8; }
+body { color:var(--fg); background:var(--bg); font:15px/1.55 system-ui,sans-serif;
+       margin:0 auto; padding:24px; max-width:1100px; }
+.layout { display:flex; gap:20px; align-items:flex-start; }
+.rail { flex:0 0 300px; position:sticky; top:16px; background:var(--card);
+        border-radius:12px; padding:16px 18px; }
+.show { flex:1; min-width:0; }
+.card { background:var(--card); border-radius:12px; padding:16px 20px;
+        margin:0 0 14px; }
+.fail { border-left:4px solid var(--bad); }
+.pill { display:inline-block; border-radius:999px; padding:2px 10px; margin:2px;
+        font-size:12px; font-weight:600; }
+.s-confirmed { background:var(--ok); color:#fff; }
+.s-live { background:var(--live); color:#fff; }
+.s-expected { background:transparent; color:var(--muted);
+              border:1px dashed var(--muted); }
+.s-failed { background:var(--bad); color:#fff; }
+.s-pending { background:transparent; color:var(--muted);
+             border:1px solid var(--line); }
+.lbl { font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+       color:var(--muted); margin:14px 0 6px; }
+.overflow { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; }
+td,th { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); }
+.stamp { font-size:12px; color:var(--muted); margin-top:12px; }
+.auto-banner { background:linear-gradient(90deg,#ff6b35,#f7931e); color:#111;
         font-size:20px; font-weight:800; text-align:center; padding:14px 20px;
-        border-radius:12px; margin:0 0 16px; letter-spacing:.02em; }}
-.auto-banner .sub {{ display:block; font-size:13px; font-weight:600;
-        margin-top:4px; letter-spacing:normal; }}
-@media (max-width: 768px) {{ .layout {{ display:block; }}
-  .rail {{ position:static; margin-bottom:16px; }} }}
+        border-radius:12px; margin:0 0 16px; letter-spacing:.02em; }
+.auto-banner .sub { display:block; font-size:13px; font-weight:600;
+        margin-top:4px; letter-spacing:normal; }
+@media (max-width: 768px) { .layout { display:block; }
+  .rail { position:static; margin-bottom:16px; } }
 """
 
 AUTO_BANNER = (
@@ -471,17 +467,12 @@ def _showcase(state, manifest, assets, template_html):
             + _products(assets, manifest))
 
 
-def _pl_header():
-    return f'<div class="pl-header">{pl_brand.LOGO_SVG}</div>'
-
-
 def render(state, manifest=None, assets=None, template_html=None):
     """Return the complete run page as a self-contained HTML string."""
     title = f'{state.get("run_id", "run")}'
     # `or` rather than a .get default: these keys are present-but-None until
     # intake resolves them, which a default never catches.
     body = [
-        _pl_header(),
         _auto_banner(manifest),
         f'<h1>{e(state.get("account_name") or "—")} '
         f'<span style="color:var(--muted);font-size:16px">— {e(title)}</span>'
@@ -496,7 +487,6 @@ def render(state, manifest=None, assets=None, template_html=None):
         _clock(state),
     ]
     return (f'<meta charset="utf-8">'
-            f"{pl_brand.GOOGLE_FONTS_LINK}"
             f"<title>{e(title)}</title><style>{CSS}</style>" + "".join(body))
 
 

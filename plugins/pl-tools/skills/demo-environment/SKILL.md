@@ -20,58 +20,72 @@ defining its contract).
 
 ## Paths
 
-The questionnaire's first field is **"Is this a Shopify opp?"** — the only
-path question, since returns are always in scope for this demo.
+Ask **"Is this a Shopify opp?"** first — the only path question now, since
+returns are always in scope for this demo.
 - No → **retain** path.
 - Yes → **retain-shopify** path.
 
-## Intake questionnaire
+## Mode selection
 
-**Every question is answered by one up-front form, in both modes.** Phase
-0 step 2 publishes a single questionnaire (built by
-`render_intake_questionnaire.py`) as an Artifact, opens it in the Browser
-pane, and waits for the operator to submit it before anything else
-happens — no chat round-trip per question, no trigger-phrase mode
-detection. Mode (**babysit** or **auto**) is one of the form's own
-fields, not inferred from the invoking message's wording.
-
-**Mode's only effect is at the two hard gates.** Babysit (the default,
-when the field reads that way) pauses at ★ and ✋ for a human yes exactly
-as before. Auto auto-approves both — see "Both hard gates are
-auto-approved in auto mode" below — and nothing else in the run reads
-`run.mode`. There is no other auto-mode behavior left: every question that
-used to auto-resolve differently by mode is now simply asked (or silently
-resolved) the same way regardless of mode.
+**Babysit** (default): today's behavior, unchanged — every Round 1/2
+question is asked, both hard gates pause for a human yes.
 
 When `run.mode` is `"auto"`, `render_run_page.py` flashes a large banner at
 the top of the run page — the run is unattended, and the page should say so
 before anyone reads a single lane pill.
 
-**Destination country, brand region, category, and pace are all resolved
-silently, in every mode** — call
+**Auto**: triggered only by an explicit phrase in the invoking message
+(e.g. "run this in auto mode for Acme", "auto-build the demo for
+Acme") — detect it the same way the prospect URL itself is detected,
+from plain language, never a flag syntax. Record the choice as
+`run.mode: "auto"` in the manifest (absent means babysit, matching
+`run.pace`'s own convention).
+
+In auto mode: only Q1 is asked live (see `references/intake-script.md`'s
+"Auto mode never changes Q1"). Every other Round 1/2 question resolves
+unattended — including Q2 (reuse the prior scrape pool), which
+auto-resolves to reuse whenever a candidate exists and falls through to a
+fresh scrape only when there is none, exactly as intake-script.md's Round 1
+table already conditions the offer.
+
+**Destination country, brand region, and pace are resolved the same way in
+every mode, not just auto** — call
 `${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py` once the scrape
-lane's `product-pool.json` exists:
+lane's `product-pool.json` exists, regardless of `run.mode`:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py \
   --prospect-url "<url>" \
-  --product-pool-file "<run dir>/scrape/product-pool.json"
+  --product-pool-file "<run dir>/scrape/product-pool.json" \
+  --answers-doc-file "<path, if the operator supplied one; auto mode only>"
 ```
 
 Write `destination_country`, `brand.region` (the same value as
-`destination_country`), `brand.category`, and `run.pace` from its output
-unconditionally — category is no longer a live question in any mode; it
-joins the fields this script has always resolved without asking.
+`destination_country`), and `run.pace` from its output unconditionally.
+Q5 (category) is the one field this script also resolves that stays a live
+question in babysit mode — use its `brand.category` output only as auto
+mode's unattended value, exactly as before.
 
-The order matrix and the send-as-is/extras toggle come from the
-questionnaire directly (every run, every mode — see "Intake
-questionnaire" above). The target account is always the user's own
-default demo account (every mode — see Phase 0 step 4), and the CDC
-config is always `selected_account_config_id: null`, `config_source:
-"none"` (every mode — see Phase 0 step 4). Write every resolved field
-into the manifest exactly where its question already writes it — Phase
-1–4 and `validate_manifest.py` do not distinguish an auto-resolved field
-from a human-answered one.
+The rest of Round 2 resolves unattended in auto mode only: Q3
+(order matrix) keeps the existing default matrix, Q4 (Gate C) defaults
+to `send-as-is`, the target account is always the user's own default
+demo account (every mode, not just auto — see Phase 0 step 4), and the
+CDC config is always `selected_account_config_id: null`,
+`config_source: "none"` (every mode — see Phase 0 step 4). Write every
+resolved field into the manifest exactly where its question already
+writes it — Phase 1–4 and `validate_manifest.py` do not distinguish an
+auto-resolved field from a human-answered one. If an answers doc was
+supplied, also record `run.answers_doc: "<path>"` in the manifest.
+
+Q6's resolved value (`resolve_auto_defaults.py`'s `edit_mode_fix`
+output) is not itself a manifest field — there is no `edit_mode_fix`
+slot to write. It is an internal signal that drives the edit-mode-guard
+fix *action* directly: when true, run the same fix Phase 0 step 4
+offers in babysit mode. That action's outcome is what populates
+`account.edit_mode_verified`, exactly as babysit mode's own Q6 answer
+does — the auto-resolved value and a human "Fix it" answer both flow
+into the same existing field through the same action, not through two
+different write paths.
 
 **Both hard gates are auto-approved in auto mode**: at ★ (Phase 0 step
 8), accept the pre-built template HTML as-is — no screenshot
@@ -221,46 +235,18 @@ URL that stopped updating.
    an edit is overwritten by the next render. Record facts through
    `run_state.py` and re-render — that is what makes republishing cheap enough
    to do a dozen times per run.
-2. **Publish the intake questionnaire and wait for it.** Detect a reuse
-   candidate first — scan `$HOME/parcellab-demo-runs/` for a directory
-   whose `<handle>-<ts>` handle equals this run's handle and which
+2. **Path + brand round:** take the prospect URL and ask **Round 1** of
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/intake-script.md`
+   — the path questions plus, when one applies, the reuse offer. Ask them in
+   that file's order, with that file's wording. That is the minimum needed to
+   know what to collect, and everything that has to be settled before the
+   scrape agent is dispatched.
+   **Prior-pool detection:** scan `$HOME/parcellab-demo-runs/` for a
+   directory whose `<handle>-<ts>` handle equals this run's handle and which
    contains both `scrape/brand-tokens.json` and `scrape/product-pool.json`;
-   the most recent such run is the candidate.
-
-   Render the page:
-
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_intake_questionnaire.py render \
-     --prospect-name "<brand name>" \
-     --reuse-candidate-date "<date, only if a candidate was found>" \
-     -o "<run dir>/intake-questionnaire.html"
-   ```
-
-   Publish it via the Artifact tool, open it in the Browser pane
-   (`preview_start` → `navigate`), and tell the operator to fill it in.
-   Poll with `read_page` until `#submitted-banner` is visible, then pull
-   the JSON out of `#answers-json` with `javascript_tool`
-   (`document.getElementById('answers-json').textContent`) and write it
-   to `<run dir>/results/questionnaire-answers.json`. Validate it:
-
-   ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_intake_questionnaire.py parse \
-     "<run dir>/results/questionnaire-answers.json"
-   ```
-
-   On `ANSWERS INVALID`, tell the operator what was wrong and have them
-   resubmit the same page — never fall through to chat for a fixable
-   validation error. Once it parses, write `path` (`shopify_opp` →
-   `retain-shopify`, else `retain`), `run.mode`, and
-   `gates.order_lifecycle.gate_c` into the manifest immediately — nothing
-   past this point is asked again.
-
-   **Fallback, if the Artifact fails to publish or the Browser pane can't
-   open it:** fall back to a plain chat interview — ask "Is this a Shopify
-   opp?", the reuse question (if a candidate exists), the order matrix, the
-   send-as-is/extras toggle, and "babysit or auto?" as ordinary chat
-   questions, in that order. Publishing is never load-bearing, the same
-   posture as the run page itself.
+   the most recent such run is the candidate. If one exists, offer it in this
+   same round ("reuse the pool scraped for <brand> on <date>, or scrape
+   fresh?"). No candidate → no offer, and step 3 dispatches as normal.
 3. **Dispatch the scrape agent immediately** — `mark(d, "agent", "scrape", "start")` and `mark(d, "lane", "scrape", "start")` as you dispatch. Use the Agent tool
    (general-purpose subagent, background) with exactly this brief, filling
    the placeholders. **Resolve `${CLAUDE_PLUGIN_ROOT}` to its absolute path
@@ -298,16 +284,21 @@ URL that stopped updating.
    scrape agent held it). Writing run files is unavoidable, so treat pane
    contention as expected rather than forbidden: if the pane is taken from the
    agent, do not also drive it, and re-check `results/scrape.json` rather than
-   assuming the agent died. **Reused pool:** when the questionnaire's
-   `reuse_pool` answer is true, skip the dispatch entirely — copy the prior
-   run's `scrape/brand-tokens.json` and `scrape/product-pool.json` into this
-   run's `scrape/`, then write `results/scrape.json` yourself as
+   assuming the agent died. **Reused pool:** when the user accepted the reuse offer
+   made in step 2, skip the dispatch entirely — copy the prior run's
+   `scrape/brand-tokens.json` and `scrape/product-pool.json` into this run's
+   `scrape/`, then write `results/scrape.json` yourself as
    `{"status": "ok", "error": null}`. Without that file the pre-build at
    step 6 waits on a precondition nothing else will ever satisfy. Once
    `results/scrape.json` shows
    `ok`: record the fact via `${CLAUDE_PLUGIN_ROOT}/scripts/run_state.py` — `mark(d, "agent", "scrape", "end")` the moment the file lands, plus `mark(d, "lane", "scrape", "end")` — then `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_run_page.py <run dir>` and republish the artifact — non-fatal. **Never hand-edit `run-page.html`;** it is derived, and the next render overwrites it.
-4. **Resolve the remaining Phase 0 checks**, once the questionnaire has
-   answered `path`, `reuse_pool`, the order matrix, and `gate_c`:
+4. **Interview concurrently, in chat** — ask **Round 2** of
+   `${CLAUDE_PLUGIN_ROOT}/skills/demo-environment/references/intake-script.md`
+   while the scrape agent runs, batching with AskUserQuestion where the
+   questions are independent. Ask them in that file's order, with that file's
+   wording; it also carries the default order matrix, the Gate C menu rules and
+   the article-weight derivation table. The mechanics below are not questions —
+   they are the lookups and verifications those answers depend on.
    - **Shopify resolution (retain-shopify only):** First `command -v shopify` —
      if the CLI is missing, stop and point the user at `/pl-setup`'s optional
      Shopify CLI section (install + full-scope store auth) rather than
@@ -316,16 +307,18 @@ URL that stopped updating.
      Then resolve the store **without asking**: read
      `~/.claude/parcellab-shopify-seed.env`, else `shopify store auth list`.
      Exactly one store → use it and state it at the ✋ gate. None → stop and
-     point at `/pl-setup`. Two or more → this is the only case that asks.
-     Then resolve the location GID immediately — follow
+     point at `/pl-setup`. Two or more → this is the only case that asks
+     (intake-script Q8). Then resolve the location GID immediately — follow
      shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
      preference rules. Record both in the manifest.
-   - **Destination country, brand region, category, and pace (every run,
-     resolved silently):** call `resolve_auto_defaults.py` once
-     `scrape/product-pool.json` exists (see "Intake questionnaire" above for the
+   - **Destination country, brand region, and pace (every run, resolved
+     silently):** call `resolve_auto_defaults.py` once
+     `scrape/product-pool.json` exists (see "Mode selection" above for the
      exact invocation) and write its `destination_country`, `brand.region`
-     (the same value as `destination_country`), `brand.category`, and
-     `run.pace` output straight into the manifest — no question, in any mode.
+     (the same value as `destination_country`), and `run.pace` output
+     straight into the manifest — no question, in babysit mode or auto mode.
+     Category (Q5) is the only field from that script's output that still
+     goes through a live question in babysit mode.
    - **Target account (every run, resolved silently):** always the user's
      own default demo account (`${PARCELLAB_ACCOUNT_ID:-$PARCELLAB_USER_ID}`)
      — there is no other account choice to offer here any more; a run that
@@ -336,9 +329,8 @@ URL that stopped updating.
      left to gate it on, but the resolved name is still stated in Beat 1 so
      it stays visible after the fact. Verify
      `parcellab settings edit-mode show` says `account-restricted` for that
-     same account, offering the fix if not (the edit-mode guard check
-     above). In the same round, check write permissions per *Write
-     permissions* above (the write-permissions check above, if something is
+     same account, offering the fix if not (Q6). In the same round, check
+     write permissions per *Write permissions* above (Q7 if something is
      missing) — a missing rule is cheap to fix here and stalls the run
      mid-build if it surfaces after the gate.
    - **CDC config (every run):** always write
@@ -496,7 +488,7 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    the order/scenario/fraud matrix with expected comm per event (mark
    unproven items) · CDC region/category/config source ·
    `CDC synthetic generation: off` (a fixed line, never a question) ·
-   **every extra agreed on the questionnaire, field by field with its actual value** —
+   **every extra agreed at Q4, field by field with its actual value** —
    including each auto-derived article weight listed per article, because an
    auto-derived value the user never saw is worse than one they rejected ·
    the account by name. One explicit yes
@@ -542,7 +534,8 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    **The manifest schema** (written at step 7, above — kept here because this
    is where its fields were settled). `demo-manifest.json`:
    `run{…, pace: "standard"|"fast" — absent means standard,
-   mode: "babysit"|"auto" — absent means babysit, page_url —
+   mode: "babysit"|"auto" — absent means babysit, answers_doc — present
+   only when auto mode used one, page_url —
    recorded after the first run-page publish}`, `path`,
    `brand{name,url,handle,region,category}`, `account{id,name,confirmed_at,
    edit_mode_verified}`, `cdc{selected_account_config_id,config_source,
@@ -787,8 +780,11 @@ orders were submitted for linking, and the config source (say "caller's
 default config" when `config_source` is `none`). No currency symbols.
 **In auto mode, Beat 1 also lists every auto-resolved field** — one
 line per field from `resolve_auto_defaults.py`'s output, showing its
-value and source (`default` | `inferred`), in the same plan-card list
-style as the rest of Beat 1.
+value and source (`default` | `inferred` | `doc`), in the same
+plan-card list style as the rest of Beat 1. Any answers-doc key that
+did not match a known field (`resolve_auto_fields`'s
+`_ignored_doc_keys`) is listed once here as ignored — not an error,
+not a blocker.
 Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends — re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 Update the telemetry row (stage `beat1`) with the build results, if
 `results/telemetry.json` exists.
@@ -968,7 +964,7 @@ else first.
 | Blocker | Same as babysit's... |
 |---|---|
 | Q7 — missing write permissions | the existing write-permissions prompt |
-| Q8 — 2+ Shopify stores, no env pin | the existing Shopify-store prompt |
+| Q8 — 2+ Shopify stores, no env pin | intake-script Q8 |
 | Missing Shopify CLI | the existing `/pl-setup` pointer |
 | Template publish failure after retry | the publish gate's three-way offer |
 | A lane failure the "Failure handling" table below already reports | that table's own response — reported, run continues past it, never new blocking behavior |

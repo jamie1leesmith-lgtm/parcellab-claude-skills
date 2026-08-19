@@ -18,21 +18,13 @@ point that matters before "is this a Shopify opp?".
 
 ## Phase 0 — Intake, front-loaded (main session + one agent)
 
-The intake questionnaire — a single Artifact, opened in the Browser pane —
-is answered in full before anything else happens: Shopify opp?, reuse the
-scraped pool or scrape fresh, the order matrix, the send-as-is/extras
-toggle, and mode. There is no concurrent chat interview any more; the
-scrape agent is only dispatched once the questionnaire is submitted and
-parsed.
+Two lanes run concurrently after the path questions:
 
-- **scrape agent** (background, owns the Browser pane, dispatched once the
-  questionnaire is answered): brand tokens + product pool + image
-  validation → `scrape/` + `results/scrape.json`
-
-While it runs, the main session resolves everything else silently —
-country, pace, CDC region/category, Shopify dev-store + location
-resolution on retain-shopify, target-account confirmation + edit-mode
-guard — none of it asked as a chat question any more.
+- **scrape agent** (background, owns the Browser pane): brand tokens +
+  product pool + image validation → `scrape/` + `results/scrape.json`
+- **interview** (chat): country, order plan, pace, CDC region/category,
+  Shopify dev-store + location resolution on retain-shopify,
+  target-account confirmation + edit-mode guard
 
 They join at **pre-build** — template HTML, the fraud fragments, the direct
 engine's create/track/event files (never on retain-shopify: its tracking and
