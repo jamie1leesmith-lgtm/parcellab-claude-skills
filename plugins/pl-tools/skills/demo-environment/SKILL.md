@@ -326,8 +326,8 @@ URL that stopped updating.
      Then resolve the store **without asking**: read
      `~/.claude/parcellab-shopify-seed.env`, else `shopify store auth list`.
      Exactly one store → use it and state it at the ✋ gate. None → stop and
-     point at `/pl-setup`. Two or more → this is the only case that asks
-     (intake-script Q8). Then resolve the location GID immediately — follow
+     point at `/pl-setup`. Two or more → this is the only case that asks.
+     Then resolve the location GID immediately — follow
      shopify-seed Steps 1–2 exactly, including the fulfils-online-orders
      preference rules. Record both in the manifest.
    - **Destination country, brand region, category, and pace (every run,
@@ -980,7 +980,7 @@ else first.
 | Blocker | Same as babysit's... |
 |---|---|
 | Q7 — missing write permissions | the existing write-permissions prompt |
-| Q8 — 2+ Shopify stores, no env pin | intake-script Q8 |
+| Q8 — 2+ Shopify stores, no env pin | the existing Shopify-store prompt |
 | Missing Shopify CLI | the existing `/pl-setup` pointer |
 | Template publish failure after retry | the publish gate's three-way offer |
 | A lane failure the "Failure handling" table below already reports | that table's own response — reported, run continues past it, never new blocking behavior |
