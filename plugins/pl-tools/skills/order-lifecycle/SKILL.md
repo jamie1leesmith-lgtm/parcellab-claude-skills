@@ -477,7 +477,7 @@ strength of an eligibility check.**
 Launch the driver detached so it survives the session moving on:
 
 ```bash
-EVENTS_DIR="<run dir>" GAP_SECONDS="<gap, default 200>" \
+EVENTS_DIR="<run dir>" GAP_SECONDS="<gap, default 240>" \
   bash <skill dir>/references/run-lifecycle.sh
 ```
 
@@ -690,11 +690,11 @@ given at the conductor's intake (this is not inference):
   come from the manifest's `account.id` — never from `$PARCELLAB_ACCOUNT_ID`,
   which may point at a different account than the one confirmed at intake.
   Launch every driver with the account inline: `PARCELLAB_ACCOUNT_ID=<manifest
-  account.id> EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<200 standard |
+  account.id> EVENTS_DIR="orders/<nn>-<label>" GAP_SECONDS="<240 standard |
   60 fast, from the manifest's run.pace>" bash <skill
   dir>/references/run-lifecycle.sh`.
 - **Pace:** `GAP_SECONDS` is never hard-coded on an orchestrated run — it
-  comes from the manifest's `run.pace` (`standard` → 200, `fast` → 60; an
+  comes from the manifest's `run.pace` (`standard` → 240, `fast` → 60; an
   absent `run.pace` means standard). At `fast`, comms may arrive out of
   order; say so when reporting.
 
