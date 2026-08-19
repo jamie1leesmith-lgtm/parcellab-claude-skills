@@ -18,7 +18,7 @@ class RenderTests(unittest.TestCase):
 
     def test_omits_reuse_question_without_a_candidate(self):
         html = riq.render("Acme")
-        self.assertNotIn('name="reuse_pool"', html)
+        self.assertNotIn("<legend>Reuse the pool", html)
 
     def test_includes_reuse_question_with_a_candidate(self):
         html = riq.render("Acme", reuse_candidate="2026-08-10")
