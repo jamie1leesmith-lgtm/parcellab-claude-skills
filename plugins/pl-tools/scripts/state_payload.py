@@ -111,6 +111,35 @@ def _cdc_detail(run_dir, state, manifest):
     }
 
 
+def _orders_with_fraud_level(state, manifest):
+    """Merge each order's authoritative `fraud_level` in from the manifest.
+
+    `validate_manifest.py` requires `fraud_level` on every manifest order but
+    nothing about the run-state label's format, so a page that instead
+    guessed the level from the label (e.g. a `NN-fraud-LEVEL` convention)
+    would silently show no fraud pill the moment a real run used a
+    differently-shaped label. The manifest is the source of truth; this
+    just carries it across to the orders the page renders.
+
+    Matched by `label` first — the field both sides actually share — falling
+    back to `order_number` only in case a future manifest shape adds that
+    key too. An order with no match at all degrades to `fraud_level: None`
+    rather than raising, same as every other side-file lookup here.
+    """
+    manifest_orders = (manifest or {}).get("orders") or []
+    by_label = {mo.get("label"): mo for mo in manifest_orders if mo.get("label")}
+    by_order_number = {mo.get("order_number"): mo
+                       for mo in manifest_orders if mo.get("order_number")}
+
+    result = []
+    for order in state.get("orders") or []:
+        match = by_label.get(order.get("label"))
+        if match is None:
+            match = by_order_number.get(order.get("order_number"))
+        result.append(dict(order, fraud_level=(match or {}).get("fraud_level")))
+    return result
+
+
 def build(run_dir):
     """Return the page's whole data contract for one poll."""
     run_dir = pathlib.Path(run_dir)
@@ -128,7 +157,7 @@ def build(run_dir):
         "updated_at": state.get("updated_at"),
         "mode": ((manifest or {}).get("run") or {}).get("mode"),
         "lanes": state.get("lanes") or {},
-        "orders": state.get("orders") or [],
+        "orders": _orders_with_fraud_level(state, manifest),
         "schedule": state.get("schedule") or {},
         "failures": state.get("failures") or [],
         "detail": {

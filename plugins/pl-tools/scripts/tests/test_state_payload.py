@@ -138,6 +138,43 @@ class TestStatePayload(unittest.TestCase):
         self.assertIsNone(payload["detail"]["scrape"])
         self.assertEqual(payload["run_id"], "pccomponentes-20260819-1546")
 
+    def test_order_fraud_level_comes_from_the_manifest_when_labels_match(self):
+        run_state.add_order(str(self.dir), "01-fraud-low", "pl-1041", [
+            {"label": "A", "tracking_number": "TN1", "courier": "dhl-germany",
+             "planned": ["InTransit", "Delivered"]}])
+        (self.dir / "demo-manifest.json").write_text(json.dumps({
+            "orders": [{"label": "01-fraud-low", "fraud_level": "low"}],
+        }))
+        orders = state_payload.build(self.dir)["orders"]
+        self.assertEqual(orders[0]["fraud_level"], "low")
+
+    def test_order_with_no_manifest_match_degrades_to_fraud_level_none(self):
+        run_state.add_order(str(self.dir), "01-fraud-low", "pl-1041", [
+            {"label": "A", "tracking_number": "TN1", "courier": "dhl-germany",
+             "planned": ["InTransit", "Delivered"]}])
+        (self.dir / "demo-manifest.json").write_text(json.dumps({
+            "orders": [{"label": "some-other-order", "fraud_level": "high"}],
+        }))
+        orders = state_payload.build(self.dir)["orders"]
+        self.assertIsNone(orders[0]["fraud_level"])
+
+    def test_missing_manifest_still_produces_orders_with_fraud_level_none(self):
+        run_state.add_order(str(self.dir), "01-fraud-low", "pl-1041", [
+            {"label": "A", "tracking_number": "TN1", "courier": "dhl-germany",
+             "planned": ["InTransit", "Delivered"]}])
+        # No demo-manifest.json written at all.
+        orders = state_payload.build(self.dir)["orders"]
+        self.assertIsNone(orders[0]["fraud_level"])
+
+    def test_malformed_manifest_still_produces_a_usable_payload(self):
+        run_state.add_order(str(self.dir), "01-fraud-low", "pl-1041", [
+            {"label": "A", "tracking_number": "TN1", "courier": "dhl-germany",
+             "planned": ["InTransit", "Delivered"]}])
+        (self.dir / "demo-manifest.json").write_text("{ broken")
+        payload = state_payload.build(self.dir)
+        self.assertIsNone(payload["orders"][0]["fraud_level"])
+        self.assertEqual(payload["run_id"], "pccomponentes-20260819-1546")
+
 
 if __name__ == "__main__":
     unittest.main()
