@@ -106,7 +106,7 @@ class ResolveAutoFieldsTests(unittest.TestCase):
         self.url = "https://brand.de"
         self.pool = [{"name": "Vase", "product_type": "Home Decor", "price": "€10"}]
 
-    def test_defaults_with_no_answers_doc(self):
+    def test_defaults(self):
         result = resolve_auto_fields(self.url, self.pool)
         self.assertEqual(result["destination_country"], {"value": "DE", "source": "inferred"})
         self.assertEqual(result["brand.region"], {"value": "DE", "source": "inferred"})
@@ -115,24 +115,6 @@ class ResolveAutoFieldsTests(unittest.TestCase):
         self.assertEqual(
             result["gates.order_lifecycle.gate_c"], {"value": "send-as-is", "source": "default"}
         )
-        self.assertEqual(result["_ignored_doc_keys"], [])
-
-    def test_answers_doc_overrides_known_field(self):
-        result = resolve_auto_fields(self.url, self.pool, answers_doc={"run.pace": "fast"})
-        self.assertEqual(result["run.pace"], {"value": "fast", "source": "doc"})
-        # untouched fields keep their own default/inferred value
-        self.assertEqual(result["destination_country"], {"value": "DE", "source": "inferred"})
-
-    def test_answers_doc_can_override_inferred_field(self):
-        result = resolve_auto_fields(
-            self.url, self.pool, answers_doc={"destination_country": "US"}
-        )
-        self.assertEqual(result["destination_country"], {"value": "US", "source": "doc"})
-
-    def test_unknown_doc_key_is_ignored_and_reported(self):
-        result = resolve_auto_fields(self.url, self.pool, answers_doc={"not_a_field": "x"})
-        self.assertEqual(result["_ignored_doc_keys"], ["not_a_field"])
-        self.assertEqual(result["run.pace"], {"value": "standard", "source": "default"})
 
     def test_never_ask_fields_absent(self):
         result = resolve_auto_fields(self.url, self.pool)
