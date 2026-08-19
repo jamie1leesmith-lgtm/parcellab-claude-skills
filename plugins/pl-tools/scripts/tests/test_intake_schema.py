@@ -6,6 +6,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import intake_schema  # noqa: E402
+import validate_manifest  # noqa: E402
 
 
 def _valid():
@@ -45,6 +46,36 @@ class TestVocabularies(unittest.TestCase):
             set(intake_schema.SCENARIOS),
             {"happy", "stuck-delay", "recovered", "locker",
              "manual_return", "return_tracking", "custom"})
+
+
+class TestVocabularyParityWithValidateManifest(unittest.TestCase):
+    """intake_schema and validate_manifest deliberately duplicate their
+    extras-checking logic (see task-1 fix round 1) — these tests are the
+    agreed mitigation against the two vocabularies drifting apart."""
+
+    def test_regions_matches_brand_regions(self):
+        self.assertEqual(set(intake_schema.REGIONS),
+                         set(validate_manifest.BRAND_REGIONS))
+
+    def test_fraud_levels_match(self):
+        self.assertEqual(set(intake_schema.FRAUD_LEVELS),
+                         set(validate_manifest.FRAUD_LEVELS))
+
+    def test_modes_match(self):
+        self.assertEqual(set(intake_schema.MODES),
+                         set(validate_manifest.MODES))
+
+    def test_gate_c_values_match(self):
+        self.assertEqual(set(intake_schema.GATE_C_VALUES),
+                         set(validate_manifest.GATE_C_VALUES))
+
+    def test_weight_units_match(self):
+        self.assertEqual(set(intake_schema.WEIGHT_UNITS),
+                         set(validate_manifest.WEIGHT_UNITS))
+
+    def test_promise_date_fields_match(self):
+        self.assertEqual(set(intake_schema.PROMISE_DATE_FIELDS),
+                         set(validate_manifest.PROMISE_DATE_FIELDS))
 
 
 class TestDefaultAnswers(unittest.TestCase):

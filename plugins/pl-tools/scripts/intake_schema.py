@@ -34,12 +34,17 @@ PROMISE_DATE_FIELDS = ("announced_delivery_date",
                        "announced_delivery_date_min",
                        "announced_delivery_date_max")
 
-# The Gate C menu order-lifecycle documents, plus article_weights, which is
-# a synthetic container rather than an Order API field name.
+# The Gate C menu order-lifecycle documents. Every key here except
+# `extra_articles` and `article_weights` IS the literal Order API field
+# name that gets written onto the payload (see demo-environment/SKILL.md:675)
+# — validate_manifest.py does not check these names, so a wrong one is
+# silently dropped by the API and still returns HTTP 201. `extra_articles`
+# and `article_weights` are synthetic containers, not literal API fields.
 EXTRA_KEYS = frozenset(set(PROMISE_DATE_FIELDS) | {
-    "additional_recipients", "tax_amount", "net_amount", "discount_amount",
+    "additional_recipients", "order_tax_amount", "order_net_amount",
+    "order_discount_amount",
     "extra_articles", "tags", "additional_attributes",
-    "delivery_method", "courier_service_level", "signature_required",
+    "delivery_method", "courier_service_level", "requires_signature",
     "article_weights",
 })
 
@@ -199,10 +204,13 @@ def parse_answers(raw_json):
         raise ValueError("courier must be a non-empty string")
 
     if data["mode"] not in MODES:
-        raise ValueError(f"mode must be one of {sorted(MODES)}")
+        raise ValueError(
+            f"mode must be one of {sorted(MODES)} (got {data['mode']!r})")
 
     if data["gate_c"] not in GATE_C_VALUES:
-        raise ValueError(f"gate_c must be one of {sorted(GATE_C_VALUES)}")
+        raise ValueError(
+            f"gate_c must be one of {sorted(GATE_C_VALUES)} "
+            f"(got {data['gate_c']!r})")
 
     orders = data["orders"]
     if not isinstance(orders, list) or not 1 <= len(orders) <= MAX_ORDERS:
