@@ -121,6 +121,77 @@ class ResolveAutoFieldsTests(unittest.TestCase):
         self.assertNotIn("shopify_opp", result)
 
 
+class ResolveAutoFieldsNoPoolTests(unittest.TestCase):
+    """The intake-time call demo-environment makes before the scrape lane has
+    produced a pool — resolve_auto_fields(url, None). Country/region still
+    resolve from the URL alone; category must be genuinely absent, not
+    defaulted, since infer_category([]) would silently return "Fashion" for
+    every brand with no signal to back it."""
+
+    def test_succeeds_with_no_pool(self):
+        result = resolve_auto_fields("https://brand.de", None)
+        self.assertIsInstance(result, dict)
+
+    def test_destination_country_and_region_present_for_de_url(self):
+        result = resolve_auto_fields("https://brand.de", None)
+        self.assertEqual(
+            result["destination_country"], {"value": "DE", "source": "inferred"}
+        )
+        self.assertEqual(
+            result["brand.region"], {"value": "DE", "source": "inferred"}
+        )
+
+    def test_brand_category_absent_when_no_pool(self):
+        result = resolve_auto_fields("https://brand.de", None)
+        self.assertNotIn("brand.category", result)
+
+    def test_static_defaults_still_present_when_no_pool(self):
+        result = resolve_auto_fields("https://brand.de", None)
+        self.assertEqual(result["run.pace"], {"value": "standard", "source": "default"})
+        self.assertEqual(
+            result["gates.order_lifecycle.gate_c"],
+            {"value": "send-as-is", "source": "default"},
+        )
+
+    def test_empty_pool_list_is_not_the_same_as_no_pool(self):
+        # A pool that exists and is genuinely empty still returns
+        # brand.category (falling back to DEFAULT_CATEGORY) — only a
+        # missing pool (None) omits the key.
+        result = resolve_auto_fields("https://brand.de", [])
+        self.assertIn("brand.category", result)
+        self.assertEqual(
+            result["brand.category"], {"value": "Fashion", "source": "inferred"}
+        )
+
+
+class CliNoPoolFileTests(unittest.TestCase):
+    """--product-pool-file is optional now — the CLI must not exit 2 when
+    it's omitted, and must not print a brand.category key in that case."""
+
+    def _run_cli(self, extra_args=()):
+        import subprocess
+
+        script = Path(__file__).resolve().parents[1] / "resolve_auto_defaults.py"
+        return subprocess.run(
+            [sys.executable, str(script), "--prospect-url",
+             "https://example.de", *extra_args],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_no_product_pool_file_succeeds(self):
+        result = self._run_cli()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_no_product_pool_file_output_has_no_category(self):
+        import json
+
+        result = self._run_cli()
+        payload = json.loads(result.stdout)
+        self.assertNotIn("brand.category", payload)
+        self.assertEqual(payload["destination_country"]["value"], "DE")
+
+
 class CliProductPoolShapeTests(unittest.TestCase):
     """scrape/product-pool.json may be a bare list or {"products": [...]} —
     inline_assets.py already accepts both; the CLI must too (live-verified

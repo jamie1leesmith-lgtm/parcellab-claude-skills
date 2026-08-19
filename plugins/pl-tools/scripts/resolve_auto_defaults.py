@@ -113,18 +113,33 @@ _STATIC_DEFAULTS = {
 
 
 def resolve_auto_fields(prospect_url, product_pool):
-    """Values every run resolves without asking, once the scrape's product
-    pool exists — category joins country/region/pace here now that it is
-    never a live question either, in any mode.
+    """Values every run resolves without asking.
+
+    `product_pool` may be `None` — the call demo-environment's intake makes
+    before the scrape lane has produced a pool, purely to pre-fill the
+    form's region field. `infer_country` degrades gracefully with no pool
+    (it just loses the currency-symbol fallback, per its own docstring), so
+    `destination_country` and `brand.region` are always returned. `brand.
+    category` is different: `infer_category` has no signal at all with no
+    pool and falls back to `DEFAULT_CATEGORY` unconditionally, which would
+    read as "inferred from the products" when nothing was actually
+    inspected. So when `product_pool` is `None`, `brand.category` is left
+    out of the result entirely rather than emitted as a fabricated value —
+    an absent key is honest, "Fashion" for every brand is not. Passing an
+    empty list (a pool that exists and is genuinely empty) is different
+    from passing `None` and still returns `brand.category` — that case is a
+    real, if uninformative, pool.
     """
     country = infer_country(prospect_url, product_pool)
-    category = infer_category(product_pool)
 
     fields = {
         "destination_country": {"value": country, "source": "inferred"},
         "brand.region": {"value": country, "source": "inferred"},
-        "brand.category": {"value": category, "source": "inferred"},
     }
+    if product_pool is not None:
+        fields["brand.category"] = {
+            "value": infer_category(product_pool), "source": "inferred"
+        }
     for key, value in _STATIC_DEFAULTS.items():
         fields[key] = {"value": value, "source": "default"}
 
@@ -136,15 +151,23 @@ def main():
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--prospect-url", required=True)
-    ap.add_argument("--product-pool-file", required=True,
-                     help="path to scrape/product-pool.json")
+    ap.add_argument("--product-pool-file", required=False, default=None,
+                     help="path to scrape/product-pool.json; omit before "
+                          "the scrape lane has produced one — country/region "
+                          "still resolve (TLD/path inference), but "
+                          "brand.category is left out of the output rather "
+                          "than guessed")
     args = ap.parse_args()
 
     try:
-        pool = json.loads(Path(args.product_pool_file).read_text())
-        # scrape/product-pool.json may be a bare list or {"products": [...]}
-        # — inline_assets.py already accepts both shapes; match that here.
-        pool = pool if isinstance(pool, list) else pool["products"]
+        if args.product_pool_file is not None:
+            pool = json.loads(Path(args.product_pool_file).read_text())
+            # scrape/product-pool.json may be a bare list or
+            # {"products": [...]} — inline_assets.py already accepts both
+            # shapes; match that here.
+            pool = pool if isinstance(pool, list) else pool["products"]
+        else:
+            pool = None
         print(json.dumps(resolve_auto_fields(args.prospect_url, pool), indent=2))
     except (ValueError, OSError) as exc:
         print(f"resolve_auto_defaults: {exc}", file=sys.stderr)

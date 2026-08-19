@@ -52,16 +52,29 @@ reads a single lane pill. This is rendered by the page's own poll of
 
 **The form asks region and courier, so `infer_country`'s output is a
 pre-fill, not the final value.** Phase 0 step 2 calls
-`resolve_auto_defaults.py --prospect-url "<url>"` before the server starts
-and passes its inferred country to `run_server.py --region` purely as the
-form's default selection — the operator can change it. Whatever `region`
-the operator actually submits is what gets written, to **both**
-`brand.region` and `destination_country`. The form offers only `US`, `UK`,
-`DE`, because `validate_manifest.py` accepts no other `brand.region` — a
-fourth option would produce a manifest that fails validation after the
-operator has already answered everything. `brand.category` and `run.pace`
-still come from `resolve_auto_defaults.py` exactly as before, once the
-scrape lane's `product-pool.json` exists:
+`resolve_auto_defaults.py --prospect-url "<url>"` before the server starts,
+with `--product-pool-file` omitted since no pool exists yet at this point
+— that flag is optional precisely for this call. This pool-less inference
+is a weaker signal than the later call below: with no scraped prices it
+loses the currency-symbol fallback, falling back to TLD, then URL path
+locale, then `US`. That weakness is acceptable only because the result is
+a **pre-fill**, not the final value — it passes to `run_server.py --region`
+purely as the form's default selection, and the operator can change it
+before submitting. Whatever `region` the operator actually submits is what
+gets written, to **both** `brand.region` and `destination_country`. The
+form offers only `US`, `UK`, `DE`, because `validate_manifest.py` accepts
+no other `brand.region` — a fourth option would produce a manifest that
+fails validation after the operator has already answered everything.
+
+**This pool-less call never returns `brand.category`.** With no pool,
+`infer_category` has nothing to count and would return `DEFAULT_CATEGORY`
+("Fashion") for every brand unconditionally — `resolve_auto_defaults.py`
+therefore omits the `brand.category` key from its output entirely when
+`--product-pool-file` is omitted, rather than emit a fabricated value.
+`brand.category` and `run.pace` come from a **second**, later call to
+`resolve_auto_defaults.py` — with `--product-pool-file` supplied this
+time — exactly as before, once the scrape lane's `product-pool.json`
+exists:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/resolve_auto_defaults.py \
@@ -260,11 +273,19 @@ quiet rather than needing to be removed.
       which contains both `scrape/brand-tokens.json` and
       `scrape/product-pool.json`; the most recent such run is the candidate.
    2. **Pre-resolve the region** for the form's default:
-      `resolve_auto_defaults.py --prospect-url "<url>"`. When no product
-      pool exists yet (the normal case, this early), pass the prospect URL
-      alone and take the TLD/path inference — the product-pool-driven
-      category/pace fields are resolved later, at step 4, once the scrape
-      lane has produced one.
+      `resolve_auto_defaults.py --prospect-url "<url>"`, with
+      `--product-pool-file` omitted — that flag is optional, and no product
+      pool exists yet this early (the normal case). Omitting it takes the
+      TLD/path-locale/`US` inference, weaker than the later call at step 4
+      only in that it has no scraped prices to fall back to. This is only a
+      **pre-fill** for the form's region field — the operator can change it
+      before submitting — which is exactly why the weaker signal is
+      acceptable here. The output also carries no `brand.category` at all
+      in this pool-less shape (a category guessed with no pool would always
+      read "Fashion", so the script omits the key rather than fabricate
+      it); category and pace are resolved later, at step 4, once the scrape
+      lane has produced a pool and a second call supplies
+      `--product-pool-file`.
    3. **Stop any server left running from a previous run before starting
       this one.** Call `preview_list`; if a `demo-run-server` entry is
       running, `preview_stop` it first. Its `runtimeArgs` carry the

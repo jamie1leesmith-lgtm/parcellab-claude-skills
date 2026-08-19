@@ -162,12 +162,19 @@ def timeline_text(timeline, limit=TIMELINE_LIMIT):
 def page_columns(page, drivers):
     """Derive the five run-page columns.
 
-    `Page renders` is trustworthy (the renderer records itself); `Page
-    publishes` is self-reported, so publishes < renders means the Artifact
-    call was skipped. `Max page gap` is scoped to the driver window because
-    that is the only stretch with an expected cadence — one wave per
-    GAP_SECONDS. Measured across the whole run it would be dominated by
-    legitimate waiting at the plan gate.
+    These five all stay at their empty defaults now, by design: the run page
+    is served live by run_server.py and polls GET /state itself every two
+    seconds, so there is no render call, no publish call, and no second URL
+    for a run to drift to. Nothing in demo-environment's SKILL.md calls
+    run_state.record_publish() or record_render() any more (see SKILL.md's
+    "The run page" and references/telemetry.md), so `page.get("renders")`
+    and `page.get("publishes")` read empty on every current run — this
+    function still tolerates a populated `page` (an old run's state, or a
+    future reintroduction of publish recording) without changing shape, but
+    no live run feeds it one. `Max page gap` is scoped to the driver window
+    for the same reason it always was — that is the only stretch with an
+    expected cadence, one wave per GAP_SECONDS — it is simply never
+    reached with no publishes to measure a gap between.
     """
     page = page or {}
     renders = page.get("renders") or []
