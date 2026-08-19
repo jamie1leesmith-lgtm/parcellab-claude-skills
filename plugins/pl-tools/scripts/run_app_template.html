@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>parcelLab demo build</title>
+{{BRAND_FONTS_LINK}}
+<style>
+  :root {
+    --brand: {{BRAND_PRIMARY}};
+    --fg: {{BRAND_TEXT}};
+    --tint: {{BRAND_TINT}};
+    --card: {{BRAND_CARD}};
+  }
+  body { font-family: {{BRAND_FONT}}; color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="pl-logo">{{BRAND_LOGO}}</div>
+<div id="app"></div>
+<script>window.__CONTEXT__ = {{CONTEXT_JSON}};</script>
+</body>
+</html>
