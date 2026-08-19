@@ -2,7 +2,9 @@
 
 Date: 2026-08-19
 Status: approved for planning
-Supersedes: `2026-08-19-demo-environment-intake-questionnaire-design.md`
+Supersedes: the Artifact-based intake-questionnaire design of the same date,
+whose spec and plan were removed from `main` when that feature was reverted.
+Recoverable from git history if the reasoning is ever needed.
 
 ## Why this replaces the prior spec
 
