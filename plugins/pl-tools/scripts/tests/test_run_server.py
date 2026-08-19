@@ -6,13 +6,13 @@ directly would not prove either.
 """
 import json
 import pathlib
+import socket
 import sys
 import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
-from http.server import HTTPServer
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import intake_schema  # noqa: E402
@@ -69,8 +69,9 @@ class ServerTestCase(unittest.TestCase):
         context = run_server.build_context(
             self.dir, prospect_name="Brand", region="US",
             reuse_candidate=None)
-        handler = run_server.make_handler(self.dir, context)
-        self.httpd = HTTPServer(("127.0.0.1", 0), handler)
+        # Goes through the same make_server() that serve() uses, so the
+        # threading server class the tests exercise is the one that ships.
+        self.httpd = run_server.make_server(self.dir, context, port=0)
         self.port = self.httpd.server_address[1]
         self.thread = threading.Thread(target=self.httpd.serve_forever,
                                        daemon=True)
@@ -97,6 +98,17 @@ class ServerTestCase(unittest.TestCase):
                 return response.status, json.loads(response.read())
         except urllib.error.HTTPError as exc:
             return exc.code, json.loads(exc.read())
+
+    def raw_socket(self, timeout=5):
+        """A bare socket to the server, for requests urllib cannot produce.
+
+        urllib.request always computes a correct numeric Content-Length, so
+        it cannot exercise a malformed or dishonest one — exactly the gap
+        that let finding 1 through review undetected.
+        """
+        sock = socket.create_connection(("127.0.0.1", self.port),
+                                        timeout=timeout)
+        return sock
 
 
 class TestRoutes(ServerTestCase):
@@ -163,6 +175,47 @@ class TestSubmit(ServerTestCase):
         with self.assertRaises(urllib.error.HTTPError) as caught:
             urllib.request.urlopen(request, timeout=5)
         self.assertEqual(caught.exception.code, 400)
+
+    def test_non_numeric_content_length_is_400_not_a_crash(self):
+        sock = self.raw_socket()
+        sock.sendall(
+            b"POST /submit HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: notanumber\r\n"
+            b"Connection: close\r\n"
+            b"\r\n"
+            b"{}")
+        response = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+        sock.close()
+        status_line = response.split(b"\r\n", 1)[0]
+        self.assertIn(b"400", status_line,
+                     f"expected a 400 status line, got: {response!r}")
+
+    def test_truncated_body_does_not_wedge_the_server(self):
+        # Declare far more bytes than we actually send, and never send them.
+        stalled = self.raw_socket(timeout=5)
+        stalled.sendall(
+            b"POST /submit HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\n"
+            b"Content-Length: 1000000\r\n"
+            b"\r\n")
+
+        # A short client-side timeout: with ThreadingHTTPServer this must
+        # return fast. A regression (single-threaded server, no read
+        # timeout) would otherwise hang the whole suite instead of failing
+        # it, which is exactly why this timeout is short rather than absent.
+        status, body = self.get("/state")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["phase"], "intake")
+
+        stalled.close()
 
 
 if __name__ == "__main__":

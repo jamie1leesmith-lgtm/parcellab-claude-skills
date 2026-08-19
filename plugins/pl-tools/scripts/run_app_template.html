@@ -17,6 +17,12 @@
 <body>
 <div class="pl-logo">{{BRAND_LOGO}}</div>
 <div id="app"></div>
+<!-- Keep the script tag below on exactly one line with no wrapping or
+     reformatting. tests/test_run_server.py's
+     test_context_is_valid_json_in_the_page finds the embedded context by
+     splitting the rendered page on two fixed markers that straddle the
+     assignment and the closing tag; reflowing this line would break that
+     extraction. -->
 <script>window.__CONTEXT__ = {{CONTEXT_JSON}};</script>
 </body>
 </html>

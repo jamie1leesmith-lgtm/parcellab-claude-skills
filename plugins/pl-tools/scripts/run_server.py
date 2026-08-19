@@ -15,7 +15,7 @@ import argparse
 import json
 import pathlib
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import intake_schema
 import pl_brand
@@ -24,6 +24,7 @@ import state_payload
 DEFAULT_PORT = 8097          # 8098 belongs to branded-template's layout-preview
 TEMPLATE = pathlib.Path(__file__).resolve().parent / "run_app_template.html"
 MAX_BODY_BYTES = 1 << 20     # an intake payload is a few KB; refuse anything wild
+REQUEST_TIMEOUT = 30         # seconds a connection may sit idle before we drop it
 
 
 def _context_json(context):
@@ -83,10 +84,25 @@ def make_handler(run_dir, context):
     run_dir = pathlib.Path(run_dir)
 
     class Handler(BaseHTTPRequestHandler):
+        # A read timeout so a connection that stops sending mid-body cannot
+        # hold its thread open forever. ThreadingHTTPServer means a stalled
+        # connection no longer blocks other requests either, but a thread
+        # leaking on every stalled client would still add up over a run.
+        timeout = REQUEST_TIMEOUT
+
         # Quiet by default: this runs in the background for the whole run and
         # a line per poll would bury anything that matters.
         def log_message(self, *args):
             pass
+
+        def handle_one_request(self):
+            try:
+                super().handle_one_request()
+            except TimeoutError:
+                # rfile.read() timed out waiting on a stalled body. Close
+                # cleanly rather than let BaseHTTPRequestHandler's default
+                # handling raise past us as an uncaught exception.
+                self.close_connection = True
 
         def _send(self, status, body, content_type):
             payload = body.encode() if isinstance(body, str) else body
@@ -115,12 +131,25 @@ def make_handler(run_dir, context):
                 self._send_json(404, {"ok": False, "error": "not found"})
                 return
 
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except (TypeError, ValueError):
+                self._send_json(400, {"ok": False,
+                                      "error": "invalid Content-Length"})
+                return
             if length > MAX_BODY_BYTES:
                 self._send_json(400, {"ok": False,
                                       "error": "payload too large"})
                 return
-            raw = self.rfile.read(length).decode("utf-8", "replace")
+            try:
+                raw = self.rfile.read(length).decode("utf-8", "replace")
+            except TimeoutError:
+                # The client declared more bytes than it ever sent. Close
+                # rather than hang this thread on a body that will never
+                # arrive; ThreadingHTTPServer means other requests are
+                # unaffected either way, but this thread should not leak.
+                self.close_connection = True
+                return
 
             try:
                 answers = intake_schema.parse_answers(raw)
@@ -132,17 +161,33 @@ def make_handler(run_dir, context):
 
             # Written last and only on success: the file's existence is what
             # tells the conductor intake is done, so it must never appear for
-            # a payload that failed validation.
-            (run_dir / "intake.json").write_text(
-                json.dumps(answers, indent=2))
+            # a payload that failed validation. Written via a temp file plus
+            # atomic replace (matching run_state._write) so a poller can
+            # never observe a half-written file — threading makes concurrent
+            # submissions possible, and even without that, a reader polling
+            # for existence could otherwise catch a partial write mid-flight.
+            target = run_dir / "intake.json"
+            tmp = target.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(answers, indent=2))
+            tmp.replace(target)
             self._send_json(200, {"ok": True})
 
     return Handler
 
 
-def serve(run_dir, context, port=DEFAULT_PORT):
+def make_server(run_dir, context, port=0):
+    """The single place that decides the server class.
+
+    Both `serve()` and the tests must go through this: constructing
+    `HTTPServer` directly in one place and something else in the other would
+    leave the threading behaviour untested.
+    """
     handler = make_handler(run_dir, context)
-    httpd = HTTPServer(("127.0.0.1", port), handler)
+    return ThreadingHTTPServer(("127.0.0.1", port), handler)
+
+
+def serve(run_dir, context, port=DEFAULT_PORT):
+    httpd = make_server(run_dir, context, port)
     print(f"serving {run_dir} on http://127.0.0.1:{port}", flush=True)
     httpd.serve_forever()
 
