@@ -32,7 +32,27 @@
   .parcel-split > div { overflow: hidden; min-height: 0; }
   .parcel-split.open { grid-template-rows: 1fr; opacity: 1; margin-top: .5rem; }
 
-  .dropdown-panel { transform-origin: top;
+  /* A collapsed row must give up its PADDING too. `min-height: 0` lets the
+     content box shrink to zero, but padding is not content — a child with
+     Tailwind's `p-3` still contributed 24px while "closed", and seven closed
+     field rows left ~250px of dead space above the Mode section. Overriding
+     the block padding here beats `.p-3` on specificity (0,1,1 vs 0,1,0), and
+     transitioning it keeps the open/close motion smooth. Horizontal padding
+     is deliberately untouched. */
+  .field-row > div, .parcel-split > div {
+    padding-block: 0; transition: padding-block .2s ease; }
+  .field-row.open > div, .parcel-split.open > div { padding-block: .75rem; }
+
+  /* An absolutely-positioned dropdown inside a collapsing container is
+     clipped by that container's `overflow: hidden` — 226px of this 474px
+     list was unreachable, with no way to scroll to it. Clipping is only
+     needed while the row is animating, so an open panel stops clipping.
+     The dropdown also caps its own height so a short window scrolls the
+     list instead of running it off-screen. */
+  .panel.open > div { overflow: visible; }
+
+  .dropdown-panel { transform-origin: top; max-height: min(60vh, 30rem);
+                     overflow-y: auto;
                      transition: transform .15s cubic-bezier(.2,.8,.2,1), opacity .15s ease; }
 
   .pill-btn { transition: background-color .15s ease, color .15s ease,
