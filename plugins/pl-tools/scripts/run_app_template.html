@@ -40,6 +40,69 @@
   .card-in { animation: card-in .2s cubic-bezier(.2,.8,.2,1) both; }
   @keyframes card-in { from { opacity: 0; transform: translateY(4px); }
                        to { opacity: 1; transform: translateY(0); } }
+
+  /* ---- Building phase (ported from progress-mockup-v3.html) ---- */
+  @keyframes indeterminate {
+    0%   { transform: translateX(-40%) scaleX(.4); }
+    50%  { transform: translateX(20%) scaleX(.6); }
+    100% { transform: translateX(100%) scaleX(.4); }
+  }
+  .live-bar { position: relative; height: 3px; overflow: hidden;
+              background: #e5e7eb; border-radius: 999px; }
+  .live-bar .stripe {
+    position: absolute; inset: 0; width: 100%; transform-origin: left;
+    background: linear-gradient(90deg, transparent, var(--brand), transparent);
+    animation: indeterminate 1.6s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+    50%      { box-shadow: 0 0 0 4px var(--tint); }
+  }
+  .card-active { animation: breathe 2.2s ease-in-out infinite; }
+
+  @keyframes dot-pulse { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
+  .dot-pulse { animation: dot-pulse 1.2s ease-in-out infinite; }
+  .dot-pulse:nth-child(2) { animation-delay: .2s; }
+  .dot-pulse:nth-child(3) { animation-delay: .4s; }
+  .dot-brand { background-color: var(--brand); display: inline-block; }
+
+  @keyframes cascade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .cascade { animation: cascade-in .35s cubic-bezier(.2,.8,.2,1) both; }
+
+  /* Lane detail panel — same expand/collapse pattern as .panel above,
+     kept as a distinct class so this section reads against its source
+     mockup without renaming anything. */
+  .lane-panel { display: grid; grid-template-rows: 0fr; opacity: 0;
+                transition: grid-template-rows .22s ease, opacity .18s ease; }
+  .lane-panel > div { overflow: hidden; min-height: 0; }
+  .lane-panel.open { grid-template-rows: 1fr; opacity: 1; margin-top: .75rem; }
+
+  .lane-btn { transition: border-color .15s ease, background-color .15s ease,
+              transform .1s ease; cursor: pointer; }
+  .lane-btn:active { transform: scale(.98); }
+  .lane-btn.selected { box-shadow: 0 0 0 2px var(--tint) inset; }
+
+  .lane-btn.status-ok, .lane-btn.status-published { border-color: #a7f3d0; background: #ecfdf5; }
+  .lane-btn.status-ok .lane-label-text, .lane-btn.status-ok .lane-status-text,
+  .lane-btn.status-published .lane-label-text, .lane-btn.status-published .lane-status-text
+    { color: #047857; }
+
+  .lane-btn.status-running { border-color: var(--brand); background: var(--tint); }
+  .lane-btn.status-running .lane-label-text, .lane-btn.status-running .lane-status-text
+    { color: var(--brand); }
+
+  .lane-btn.status-failed { border-color: #fecaca; background: #fef2f2; }
+  .lane-btn.status-failed .lane-label-text, .lane-btn.status-failed .lane-status-text
+    { color: #b91c1c; }
+
+  .lane-btn.status-pending, .lane-btn.status-skipped { border-color: #e5e7eb; background: #f9fafb; }
+  .lane-btn.status-pending .lane-label-text, .lane-btn.status-pending .lane-status-text,
+  .lane-btn.status-skipped .lane-label-text, .lane-btn.status-skipped .lane-status-text
+    { color: #9ca3af; }
 </style>
 </head>
 <body class="min-h-screen bg-gray-50">
@@ -294,7 +357,71 @@
 
   </section>
 
-  <section id="phase-building" hidden></section>
+  <section id="phase-building" hidden>
+
+    <div class="live-bar mb-8" id="live-bar"><div class="stripe"></div></div>
+
+    <div id="failures-band" class="hidden mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+
+    <div id="auto-banner" class="hidden mb-6 rounded-lg px-4 py-3 text-sm font-medium text-white"
+         style="background: linear-gradient(90deg, #ff6b35, #f7931e);">
+      Auto mode — this run went unattended, no babysitting checkpoints were paused on.
+    </div>
+
+    <div class="mb-6 flex items-baseline justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900" id="build-title">Demo build</h1>
+        <p class="mt-1 text-sm text-gray-500 flex items-center gap-1.5">
+          <span id="build-subtitle">—</span>
+          <span class="inline-flex items-center gap-1 font-medium" id="live-indicator" style="color: var(--brand)">
+            ·
+            <span class="h-1.5 w-1.5 rounded-full dot-brand dot-pulse"></span>
+            <span class="h-1.5 w-1.5 rounded-full dot-brand dot-pulse"></span>
+            <span class="h-1.5 w-1.5 rounded-full dot-brand dot-pulse"></span>
+            live
+          </span>
+        </p>
+      </div>
+      <span class="text-xs text-gray-400" id="freshness">—</span>
+    </div>
+
+    <p id="reconnect-note" class="hidden mb-4 text-xs text-gray-400 italic">reconnecting…</p>
+
+    <!-- Lane status row — every pill is clickable -->
+    <div class="mb-2 grid grid-cols-5 gap-2">
+      <button type="button" class="lane-btn rounded-lg border px-3 py-2 text-center" id="lane-btn-scrape" onclick="toggleLane('scrape')">
+        <div class="text-xs font-medium lane-label-text" id="lane-label-scrape">Scrape</div>
+        <div class="text-[11px] lane-status-text" id="lane-status-scrape">pending</div>
+      </button>
+      <button type="button" class="lane-btn rounded-lg border px-3 py-2 text-center" id="lane-btn-template" onclick="toggleLane('template')">
+        <div class="text-xs font-medium lane-label-text" id="lane-label-template">Template</div>
+        <div class="text-[11px] lane-status-text" id="lane-status-template">pending</div>
+      </button>
+      <button type="button" class="lane-btn rounded-lg border px-3 py-2 text-center" id="lane-btn-seed" onclick="toggleLane('seed')">
+        <div class="text-xs font-medium lane-label-text" id="lane-label-seed">Seed</div>
+        <div class="text-[11px] lane-status-text" id="lane-status-seed">pending</div>
+      </button>
+      <button type="button" class="lane-btn rounded-lg border px-3 py-2 text-center" id="lane-btn-orders" onclick="toggleLane('orders')">
+        <div class="text-xs font-medium lane-label-text" id="lane-label-orders">Orders</div>
+        <div class="text-[11px] lane-status-text" id="lane-status-orders">pending</div>
+      </button>
+      <button type="button" class="lane-btn rounded-lg border px-3 py-2 text-center" id="lane-btn-cdc" onclick="toggleLane('cdc')">
+        <div class="text-xs font-medium lane-label-text" id="lane-label-cdc">CDC</div>
+        <div class="text-[11px] lane-status-text" id="lane-status-cdc">pending</div>
+      </button>
+    </div>
+
+    <!-- Lane detail panels -->
+    <div class="lane-panel" id="panel-scrape"><div id="panel-scrape-content"></div></div>
+    <div class="lane-panel" id="panel-template"><div id="panel-template-content"></div></div>
+    <div class="lane-panel" id="panel-seed"><div id="panel-seed-content"></div></div>
+    <div class="lane-panel" id="panel-orders"><div id="panel-orders-content"></div></div>
+    <div class="lane-panel" id="panel-cdc"><div id="panel-cdc-content"></div></div>
+
+    <!-- Order feed — changelog-card style -->
+    <div class="space-y-6 mt-2" id="order-feed"></div>
+
+  </section>
 
 </div>
 
@@ -706,6 +833,406 @@
       showError(String(err));
       button.disabled = false;
     });
+  }
+
+  // ---- Building phase: lane drill-downs and order feed ----
+  // Ported from progress-mockup-v3.html — same ids, classes and toggleLane
+  // accordion, but every value below comes from GET /state rather than
+  // being hardcoded.
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  const LANE_LABELS = { scrape: 'Scrape', template: 'Template', seed: 'Seed',
+                        orders: 'Orders', cdc: 'CDC' };
+  const LANE_ORDER = ['scrape', 'template', 'seed', 'orders', 'cdc'];
+
+  let openLane = null;
+  let lastRenderedPayload = null;
+  let pollTimer = null;
+
+  // ---- toggleLane() — accordion: opening one lane closes any other ----
+  function toggleLane(name) {
+    const panel = document.getElementById('panel-' + name);
+    const btn = document.getElementById('lane-btn-' + name);
+    if (!panel || !btn) return;
+    if (openLane === name) {
+      panel.classList.remove('open');
+      btn.classList.remove('selected');
+      openLane = null;
+      return;
+    }
+    if (openLane) {
+      const prevPanel = document.getElementById('panel-' + openLane);
+      const prevBtn = document.getElementById('lane-btn-' + openLane);
+      if (prevPanel) prevPanel.classList.remove('open');
+      if (prevBtn) prevBtn.classList.remove('selected');
+    }
+    panel.classList.add('open');
+    btn.classList.add('selected');
+    openLane = name;
+  }
+
+  function friendlyStatus(status) {
+    const spaced = String(status || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+    if (!spaced) return '';
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+  }
+
+  function fraudFromLabel(label) {
+    const match = /fraud[-_]?(low|medium|high)/i.exec(label || '');
+    return match ? match[1].toLowerCase() : null;
+  }
+
+  // A shipment is "delivered" once its most-advanced confirmed status is the
+  // last entry in its planned sequence and that entry is literally
+  // "Delivered" — anything else (including having reached the last planned
+  // step on a non-happy-path scenario, e.g. a warehouse delay) counts as
+  // still in progress, which is what "stuck" means for this shipment.
+  function shipmentProgress(shipment) {
+    const planned = shipment.planned || [];
+    const confirmed = shipment.confirmed || [];
+    let maxIdx = -1;
+    confirmed.forEach((c) => {
+      const idx = planned.indexOf(c.status);
+      if (idx > maxIdx) maxIdx = idx;
+    });
+    const nextPlanned = (maxIdx + 1 < planned.length) ? planned[maxIdx + 1] : null;
+    const lastConfirmed = confirmed.length
+      ? confirmed.slice().sort((a, b) => (a.at < b.at ? -1 : 1))[confirmed.length - 1]
+      : null;
+    const delivered = !nextPlanned && lastConfirmed
+      && planned[planned.length - 1] === 'Delivered'
+      && lastConfirmed.status === 'Delivered';
+    const stuck = !nextPlanned && lastConfirmed && !delivered;
+    return { maxIdx, nextPlanned, lastConfirmed, delivered, stuck };
+  }
+
+  function orderStatus(order) {
+    const shipments = order.shipments || [];
+    if (shipments.length === 0) return 'queued';
+    const progresses = shipments.map(shipmentProgress);
+    if (progresses.every((p) => p.delivered)) return 'delivered';
+    return 'in_progress';
+  }
+
+  function shipmentColumn(shipment, label) {
+    const planned = shipment.planned || [];
+    const confirmed = (shipment.confirmed || []).slice()
+      .sort((a, b) => (a.at < b.at ? -1 : 1));
+    const progress = shipmentProgress(shipment);
+
+    let rows = '';
+    if (progress.nextPlanned) {
+      rows += `<li><div class="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full dot-brand dot-pulse"></div>
+        <p class="text-sm font-medium" style="color: var(--brand)">${escapeHtml(friendlyStatus(progress.nextPlanned))}</p>
+        <p class="text-xs text-gray-400">expected next</p></li>`;
+    }
+    confirmed.slice().reverse().forEach((c, i) => {
+      const isMostRecent = i === 0;
+      const stuckHere = isMostRecent && progress.stuck;
+      const dotClass = stuckHere ? 'bg-amber-500 dot-pulse' : 'bg-emerald-500';
+      const textClass = stuckHere ? 'font-medium text-amber-700'
+        : (isMostRecent ? 'font-medium text-gray-900' : 'text-gray-700');
+      const text = friendlyStatus(c.status) + (stuckHere ? ' (stuck)' : '');
+      rows += `<li><div class="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full ${dotClass}"></div>
+        <p class="text-sm ${textClass}">${escapeHtml(text)}</p>
+        <p class="text-xs text-gray-400">${escapeHtml(c.at || '')}</p></li>`;
+    });
+    if (progress.nextPlanned) {
+      const idx = planned.indexOf(progress.nextPlanned);
+      planned.slice(idx + 1).forEach((p) => {
+        rows += `<li><div class="absolute -left-[5px] mt-1.5 h-2 w-2 rounded-full border border-dashed border-gray-300 bg-white"></div>
+          <p class="text-sm text-gray-400">${escapeHtml(friendlyStatus(p))}</p>
+          <p class="text-xs text-gray-300">expected</p></li>`;
+      });
+    }
+    const heading = label
+      ? `<p class="mb-2 text-xs font-semibold uppercase text-gray-400">Parcel ${escapeHtml(label)}</p>` : '';
+    return `<div>${heading}<ol class="relative border-l border-gray-200 pl-4 space-y-3">${rows}</ol></div>`;
+  }
+
+  function renderOrderFeed(orders, schedule) {
+    const wrap = document.getElementById('order-feed');
+    if (!wrap) return;
+    if (!orders || orders.length === 0) {
+      wrap.innerHTML = '<p class="text-sm text-gray-400">No orders started yet.</p>';
+      return;
+    }
+    wrap.innerHTML = orders.map((order, i) => {
+      const status = orderStatus(order);
+      const fraud = fraudFromLabel(order.label);
+      const isRunning = status === 'in_progress';
+      const statusPill = status === 'delivered'
+        ? '<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Delivered</span>'
+        : status === 'in_progress'
+        ? `<span class="rounded-full px-2.5 py-1 text-[11px] font-semibold flex items-center gap-1" style="background: var(--tint); color: var(--brand)">
+             <span class="h-1.5 w-1.5 rounded-full dot-brand dot-pulse"></span> In progress</span>`
+        : '<span class="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-[11px] font-medium text-gray-400">Queued</span>';
+      const fraudPill = fraud
+        ? `<span class="rounded-full ${fraud === 'high' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'} px-2 py-0.5 text-[11px] font-medium">fraud: ${escapeHtml(fraud)}</span>`
+        : '';
+      const shipments = order.shipments || [];
+      let body = '';
+      if (shipments.length === 1) {
+        body = `<div class="px-5 py-4">${shipmentColumn(shipments[0], null)}</div>`;
+      } else if (shipments.length > 1) {
+        body = `<div class="px-5 py-4 grid grid-cols-2 gap-6">
+          ${shipments.map((s) => shipmentColumn(s, s.label)).join('')}
+        </div>`;
+      }
+      return `<div class="cascade ${isRunning ? 'card-active border-2' : 'border'} rounded-lg border-gray-200 bg-white shadow-sm" style="animation-delay: ${i * 80}ms">
+        <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-semibold text-gray-900">${escapeHtml(order.label || '')}</span>
+            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500">${escapeHtml(order.order_number || '')}</span>
+            ${fraudPill}
+          </div>
+          ${statusPill}
+        </div>
+        ${body}
+      </div>`;
+    }).join('');
+  }
+
+  function renderLanes(payload) {
+    const lanes = payload.lanes || {};
+    LANE_ORDER.forEach((name) => {
+      const info = lanes[name] || {};
+      const status = info.status || 'pending';
+      const btn = document.getElementById('lane-btn-' + name);
+      const labelEl = document.getElementById('lane-label-' + name);
+      const statusEl = document.getElementById('lane-status-' + name);
+      if (!btn || !labelEl || !statusEl) return;
+      btn.className = 'lane-btn rounded-lg border px-3 py-2 text-center status-' + status
+        + (openLane === name ? ' selected' : '')
+        + (status === 'running' ? ' card-active' : '');
+      labelEl.textContent = LANE_LABELS[name];
+      statusEl.innerHTML = status === 'running'
+        ? '<span class="inline-flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full dot-brand dot-pulse"></span> running</span>'
+        : escapeHtml(status);
+    });
+  }
+
+  function renderLaneDetail(name, detail) {
+    const el = document.getElementById('panel-' + name + '-content');
+    if (!el) return;
+
+    if (name === 'orders') {
+      const orders = detail || [];
+      const delivered = orders.filter((o) => orderStatus(o) === 'delivered').length;
+      const inProgress = orders.filter((o) => orderStatus(o) === 'in_progress').length;
+      const queued = orders.filter((o) => orderStatus(o) === 'queued').length;
+      el.innerHTML = `<div class="rounded-lg border p-4 mb-8" style="border-color: var(--tint); background: var(--tint)">
+        <div class="mb-2 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-gray-900">Orders — ${delivered} delivered, ${inProgress} in progress, ${queued} queued</h3>
+          <button class="text-xs text-gray-500 hover:text-gray-700" onclick="toggleLane('orders')">close ✕</button>
+        </div>
+        <p class="text-xs text-gray-600">Full detail is the order feed below — this lane just summarises it.</p>
+      </div>`;
+      return;
+    }
+
+    if (!detail) {
+      el.innerHTML = `<div class="rounded-lg border border-gray-200 bg-white p-4 mb-8">
+        <div class="mb-1 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-gray-900">${LANE_LABELS[name]} — no data yet</h3>
+          <button class="text-xs text-gray-400 hover:text-gray-600" onclick="toggleLane('${name}')">close ✕</button>
+        </div>
+      </div>`;
+      return;
+    }
+
+    if (name === 'scrape') {
+      const swatches = (detail.swatches || []).map((c) =>
+        `<span class="h-5 w-5 rounded-full border border-gray-200" style="background: ${escapeHtml(c)}"></span>`).join('');
+      const products = (detail.products || []).map((p) => {
+        const img = p.image
+          ? `<img src="${escapeHtml(p.image)}" class="mb-2 h-16 w-full rounded object-cover">`
+          : `<div class="mb-2 h-16 rounded bg-gray-100 flex items-center justify-center text-[10px] text-gray-400">image unavailable</div>`;
+        return `<div class="rounded-md border border-gray-100 p-2">
+          ${img}
+          <p class="text-xs font-medium text-gray-800 truncate">${escapeHtml(p.name)}</p>
+          <p class="text-[11px] text-gray-400">${escapeHtml(p.price)} · ${escapeHtml(p.product_type)}</p>
+        </div>`;
+      }).join('');
+      const logo = detail.logo_svg ? detail.logo_svg
+        : (detail.logo ? `<img src="${escapeHtml(detail.logo)}" class="h-6">` : '<span class="text-gray-400">no logo yet</span>');
+      el.innerHTML = `<div class="rounded-lg border border-gray-200 bg-white p-4 mb-8">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-gray-900">Scrape — ${(detail.products || []).length} products</h3>
+          <button class="text-xs text-gray-400 hover:text-gray-600" onclick="toggleLane('scrape')">close ✕</button>
+        </div>
+        <div class="mb-4 flex items-center gap-3 flex-wrap">
+          <span class="text-xs font-medium text-gray-500">Brand palette</span>
+          ${swatches}
+          <span class="text-xs text-gray-400">${escapeHtml(detail.font || '')}</span>
+          <span class="flex items-center gap-1">${logo}</span>
+        </div>
+        <div class="grid grid-cols-3 gap-3">${products}</div>
+      </div>`;
+      return;
+    }
+
+    if (name === 'template') {
+      const brand = (detail.brand || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const runId = (lastRenderedPayload && lastRenderedPayload.run_id) || '';
+      const handle = runId.includes('-') ? runId.split('-').slice(0, -2).join('-') : runId;
+      const basename = brand || handle;
+      const previewHref = basename ? `parcellab-previews/${basename}-parcellab-layout.html` : '#';
+      el.innerHTML = `<div class="rounded-lg border border-gray-200 bg-white p-4 mb-8">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-gray-900">Template — ${escapeHtml(detail.status || 'pending')}</h3>
+          <button class="text-xs text-gray-400 hover:text-gray-600" onclick="toggleLane('template')">close ✕</button>
+        </div>
+        <div class="text-xs text-gray-500 space-y-1">
+          <p><span class="font-medium text-gray-700">Path:</span> ${escapeHtml(detail.path || '—')}</p>
+          ${detail.layout_id ? `<p><span class="font-medium text-gray-700">Layout ID:</span> ${escapeHtml(detail.layout_id)}</p>` : ''}
+          ${detail.store ? `<p><span class="font-medium text-gray-700">Store:</span> ${escapeHtml(detail.store)}</p>` : ''}
+          ${detail.brand ? `<p><span class="font-medium text-gray-700">Brand:</span> ${escapeHtml(detail.brand)}</p>` : ''}
+          <p><a href="${escapeHtml(previewHref)}" class="hover:underline" style="color: var(--brand)">Open local layout preview →</a></p>
+        </div>
+      </div>`;
+      return;
+    }
+
+    if (name === 'seed') {
+      const rows = (detail.products || []).map((p) => `<tr>
+        <td class="py-1.5 pr-2 font-medium">${escapeHtml(p.title)}</td>
+        <td class="py-1.5 pr-2">${escapeHtml(p.seeded_price != null ? p.seeded_price : '—')}${p.adjusted ? ' <span class="text-[10px] text-amber-600">adjusted</span>' : ''}</td>
+        <td class="py-1.5">${escapeHtml(p.variant_count)}</td>
+      </tr>`).join('');
+      const demos = detail.demos || {};
+      const lines = [];
+      if (demos.in_product_even) {
+        const d = demos.in_product_even;
+        lines.push(`<p><span class="font-medium text-gray-800">Even, in-product:</span> ${escapeHtml(d.product)} — ${escapeHtml(d.option)}: ${escapeHtml(d.swap)}</p>`);
+      }
+      if (demos.cross_product_even && demos.cross_product_even.length === 2) {
+        const [a, b] = demos.cross_product_even;
+        lines.push(`<p><span class="font-medium text-gray-800">Even, across products:</span> ${escapeHtml(a)} ↔ ${escapeHtml(b)}, nothing to pay.</p>`);
+      }
+      if (demos.uneven_upward) {
+        const d = demos.uneven_upward;
+        lines.push(`<p><span class="font-medium text-gray-800">Uneven upward:</span> ${escapeHtml(d.from)} → ${escapeHtml(d.to)}, customer pays ${escapeHtml(d.balance)}.</p>`);
+      }
+      if (demos.uneven_downward) {
+        const d = demos.uneven_downward;
+        lines.push(`<p><span class="font-medium text-gray-800">Uneven downward:</span> ${escapeHtml(d.from)} → ${escapeHtml(d.to)}, customer refunded ${escapeHtml(d.refund)}.</p>`);
+      } else {
+        lines.push('<p><span class="font-medium text-gray-800">Uneven downward:</span> not available.</p>');
+      }
+      const warnings = (detail.warnings || [])
+        .map((w) => `<p class="text-amber-600">⚠ ${escapeHtml(w)}</p>`).join('');
+      const errorLine = detail.error ? `<p class="text-red-600">Error: ${escapeHtml(detail.error)}</p>` : '';
+      el.innerHTML = `<div class="rounded-lg border border-gray-200 bg-white p-4 mb-8">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-gray-900">Seed — ${escapeHtml(detail.status || 'pending')}</h3>
+          <button class="text-xs text-gray-400 hover:text-gray-600" onclick="toggleLane('seed')">close ✕</button>
+        </div>
+        <table class="w-full text-xs mb-4">
+          <thead>
+            <tr class="text-left text-[11px] font-medium uppercase text-gray-400 border-b border-gray-100">
+              <th class="pb-1.5 pr-2">Product</th>
+              <th class="pb-1.5 pr-2">Seeded price</th>
+              <th class="pb-1.5">Variants</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50 text-gray-700">${rows}</tbody>
+        </table>
+        <div class="rounded-md bg-gray-50 p-3 space-y-1 text-xs text-gray-600">${lines.join('')}</div>
+        ${warnings}${errorLine}
+        <p class="mt-2 text-[11px] text-gray-400">Prices marked "adjusted" are seeded, not the prospect's real prices.</p>
+      </div>`;
+      return;
+    }
+
+    if (name === 'cdc') {
+      const generateOrders = !!detail.generate_orders;
+      const warnBlock = generateOrders
+        ? `<p class="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs font-medium text-red-700">⚠ generate_orders: true — ${escapeHtml(detail.synthetic_orders)} synthetic order(s) will be created alongside the real ones. This is the state that produced a contaminated run before.</p>`
+        : `<p class="mt-2 text-xs text-gray-500"><code class="rounded bg-gray-100 px-1">generate_orders: false</code> — no synthetic orders will be created.</p>`;
+      const linkOrStatus = detail.request_status === 'failed'
+        ? '<span class="text-red-600 font-medium">Request failed.</span>'
+        : (detail.url
+          ? `<a href="${escapeHtml(detail.url)}" class="hover:underline" style="color: var(--brand)">${escapeHtml(detail.url)}</a>`
+          : 'Not yet sent.');
+      el.innerHTML = `<div class="rounded-lg border border-gray-200 bg-white p-4 mb-8">
+        <div class="mb-3 flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-gray-900">CDC — ${escapeHtml(detail.status || 'pending')}</h3>
+          <button class="text-xs text-gray-400 hover:text-gray-600" onclick="toggleLane('cdc')">close ✕</button>
+        </div>
+        <p class="text-xs text-gray-500">${linkOrStatus}</p>
+        ${warnBlock}
+        ${detail.linked_count ? `<p class="mt-1 text-xs text-gray-400">${escapeHtml(detail.linked_count)} order(s) linked to the request.</p>` : ''}
+      </div>`;
+    }
+  }
+
+  function formatFreshness(updatedAt) {
+    if (!updatedAt) return '';
+    const then = new Date(updatedAt).getTime();
+    if (isNaN(then)) return '';
+    const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+    return `updated ${secs}s ago`;
+  }
+
+  function renderBuilding(payload) {
+    document.getElementById('build-title').textContent = (payload.account_name || 'Demo') + ' build';
+    document.getElementById('build-subtitle').textContent =
+      (payload.path || '—') + ' path · run ' + (payload.run_id || '—');
+    document.getElementById('freshness').textContent = formatFreshness(payload.updated_at);
+
+    document.getElementById('live-bar').classList.toggle('hidden', !!payload.finished);
+    document.getElementById('live-indicator').classList.toggle('hidden', !!payload.finished);
+
+    document.getElementById('auto-banner').classList.toggle('hidden', payload.mode !== 'auto');
+
+    const failuresBand = document.getElementById('failures-band');
+    const failures = payload.failures || [];
+    if (failures.length) {
+      failuresBand.classList.remove('hidden');
+      failuresBand.innerHTML = failures.map((f) =>
+        `<p><span class="font-medium">${escapeHtml(f.lane || '')}:</span> ${escapeHtml(f.detail || '')}</p>`).join('');
+    } else {
+      failuresBand.classList.add('hidden');
+      failuresBand.innerHTML = '';
+    }
+
+    renderLanes(payload);
+    const detail = payload.detail || {};
+    renderLaneDetail('scrape', detail.scrape);
+    renderLaneDetail('template', detail.template);
+    renderLaneDetail('seed', detail.seed);
+    renderLaneDetail('orders', payload.orders);
+    renderLaneDetail('cdc', detail.cdc);
+    renderOrderFeed(payload.orders, payload.schedule);
+  }
+
+  function fetchState() {
+    fetch('/state').then((r) => r.json()).then((payload) => {
+      lastRenderedPayload = payload;
+      document.getElementById('reconnect-note').classList.add('hidden');
+      renderBuilding(payload);
+      if (payload.finished && pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }).catch(() => {
+      // Leave the last-rendered state on screen — never blank the page
+      // mid-run just because one poll's fetch failed.
+      document.getElementById('reconnect-note').classList.remove('hidden');
+    });
+  }
+
+  function pollState() {
+    fetchState();
+    if (!pollTimer) {
+      pollTimer = setInterval(fetchState, 2000);
+    }
   }
 
   // ---- switchPhase() ----

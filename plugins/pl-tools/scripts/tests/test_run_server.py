@@ -281,5 +281,34 @@ class TestIntakeTemplate(unittest.TestCase):
         self.assertIn('id="phase-building"', self.html)
 
 
+class TestBuildingTemplate(unittest.TestCase):
+    def setUp(self):
+        self.html = run_server.TEMPLATE.read_text()
+
+    def test_has_a_panel_per_lane(self):
+        for lane in ("scrape", "template", "seed", "orders", "cdc"):
+            self.assertIn(f'id="panel-{lane}"', self.html)
+
+    def test_has_a_lane_button_per_lane(self):
+        for lane in ("scrape", "template", "seed", "orders", "cdc"):
+            self.assertIn(f"toggleLane('{lane}')", self.html)
+
+    def test_renders_seed_exchange_demos(self):
+        for demo in ("in_product_even", "cross_product_even",
+                     "uneven_upward", "uneven_downward"):
+            self.assertIn(demo, self.html)
+
+    def test_surfaces_generate_orders(self):
+        self.assertIn("generate_orders", self.html)
+
+    def test_has_no_hardcoded_sample_data_from_the_mockup(self):
+        for sample in ("Sarah Mitchell", "James Carter", "Maria Gonzalez",
+                       "pl-1041", "pl-1042", "pl-1043"):
+            self.assertNotIn(sample, self.html)
+
+    def test_polls_on_an_interval(self):
+        self.assertIn("setInterval", self.html)
+
+
 if __name__ == "__main__":
     unittest.main()
