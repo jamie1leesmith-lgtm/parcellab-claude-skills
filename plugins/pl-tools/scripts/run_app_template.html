@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>parcelLab demo build</title>
 {{BRAND_FONTS_LINK}}
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
   :root {
     --brand: {{BRAND_PRIMARY}};
@@ -11,18 +12,730 @@
     --tint: {{BRAND_TINT}};
     --card: {{BRAND_CARD}};
   }
-  body { font-family: {{BRAND_FONT}}; color: var(--fg); }
+  body { font-family: {{BRAND_FONT}}; color: var(--fg); background: #fff; }
+
+  /* Expand/collapse without layout jank. Animating max-height stutters
+     because the browser cannot interpolate to a content-derived height;
+     0fr -> 1fr on a grid row can. */
+  .panel { display: grid; grid-template-rows: 0fr; opacity: 0;
+           transition: grid-template-rows .25s ease, opacity .2s ease; }
+  .panel > div { overflow: hidden; min-height: 0; }
+  .panel.open { grid-template-rows: 1fr; opacity: 1; margin-top: 1rem; }
+
+  .field-row { display: grid; grid-template-rows: 0fr; opacity: 0;
+               transition: grid-template-rows .2s ease, opacity .15s ease; }
+  .field-row > div { overflow: hidden; min-height: 0; }
+  .field-row.open { grid-template-rows: 1fr; opacity: 1; }
+
+  .parcel-split { display: grid; grid-template-rows: 0fr; opacity: 0;
+                  transition: grid-template-rows .2s ease, opacity .15s ease; }
+  .parcel-split > div { overflow: hidden; min-height: 0; }
+  .parcel-split.open { grid-template-rows: 1fr; opacity: 1; margin-top: .5rem; }
+
+  .dropdown-panel { transform-origin: top;
+                     transition: transform .15s cubic-bezier(.2,.8,.2,1), opacity .15s ease; }
+
+  .pill-btn { transition: background-color .15s ease, color .15s ease,
+              border-color .15s ease; }
+  .card-in { animation: card-in .2s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes card-in { from { opacity: 0; transform: translateY(4px); }
+                       to { opacity: 1; transform: translateY(0); } }
 </style>
 </head>
-<body>
-<div class="pl-logo">{{BRAND_LOGO}}</div>
-<div id="app"></div>
-<!-- Keep the script tag below on exactly one line with no wrapping or
-     reformatting. tests/test_run_server.py's
-     test_context_is_valid_json_in_the_page finds the embedded context by
-     splitting the rendered page on two fixed markers that straddle the
-     assignment and the closing tag; reflowing this line would break that
-     extraction. -->
+<body class="min-h-screen bg-gray-50">
+
+<div class="mx-auto max-w-4xl px-6 py-10">
+
+  <header class="mb-8 flex items-center gap-3" style="color: var(--brand)">
+    {{BRAND_LOGO}}
+  </header>
+
+  <!-- Shared step indicator, driven by switchPhase() -->
+  <nav class="mb-8">
+    <ol class="flex items-center gap-4 text-sm font-medium" id="steps">
+      <li class="flex items-center gap-2" data-step="intake">
+        <span class="flex h-6 w-6 items-center justify-center rounded-full text-white text-xs step-badge">1</span>
+        Intake
+      </li>
+      <li class="h-px flex-1 bg-gray-200"></li>
+      <li class="flex items-center gap-2 text-gray-400" data-step="building">
+        <span class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 text-xs step-badge">2</span>
+        Building
+      </li>
+      <li class="h-px flex-1 bg-gray-200"></li>
+      <li class="flex items-center gap-2 text-gray-400" data-step="live">
+        <span class="flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 text-xs step-badge">3</span>
+        Live
+      </li>
+    </ol>
+  </nav>
+
+  <section id="phase-intake">
+
+    <div class="mb-8">
+      <h1 class="text-2xl font-semibold text-gray-900">Build a demo environment</h1>
+      <p class="mt-1 text-sm text-gray-500">One form, every question — fill it in and submit to start the build.</p>
+    </div>
+
+    <p id="submit-error" class="hidden mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700"></p>
+
+    <form class="space-y-10" id="intake-form">
+
+      <!-- Section: prospect -->
+      <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-3 border-b border-gray-200 pb-10">
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Prospect</h2>
+          <p class="mt-1 text-sm text-gray-500">Who is this demo for, and where it ships.</p>
+        </div>
+        <div class="sm:col-span-2 grid grid-cols-1 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-900">Prospect website</label>
+            <input type="text" id="prospect-name" class="mt-1.5 block w-full rounded-md border-0 px-3 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 text-sm">
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-900">Destination region</label>
+              <select id="region-select" class="mt-1.5 block w-full rounded-md border-0 px-3 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 text-sm" onchange="onRegionChange()"></select>
+              <p class="mt-1 text-xs text-gray-400">Auto-inferred from the site's TLD — override if wrong.</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-900">Default courier</label>
+              <select id="courier-select" class="mt-1.5 block w-full rounded-md border-0 px-3 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 text-sm"></select>
+              <p class="mt-1 text-xs text-gray-400">Pre-filled from the region's default. Override per order/parcel below.</p>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between rounded-md border border-gray-300 px-4 py-3">
+              <div class="flex items-center gap-2.5">
+                <svg class="h-5 w-5 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M15.3 3.4c-.1-.1-.3-.2-.5-.2-.1 0-1.3.1-1.3.1s-.9-.9-1-1c-.2-.2-.6-.1-.7-.1s-.3.1-.5.2c0 0-.3.1-.7.4-.4-1.3-1.2-1.9-2.1-1.9-.2 0-.5 0-.7.1-.2-.3-.5-.5-.9-.5-1.9 0-2.8 2.4-3.1 3.6-.7.2-1.2.4-1.3.4-.4.1-.4.1-.5.5-.1.3-1 7.8-1 7.8L9.5 24l7.4-1.6s-1.5-10.4-1.6-10.7c-.1-.3-.4-.3-.4-.3zM11 3.9c-.3.1-.6.2-1 .3v-.2c0-.7-.1-1.3-.3-1.8.7.1 1.1.8 1.3 1.7zm-1.9-1.5c.2.5.4 1.2.4 2.1v.1c-.7.2-1.4.4-2.1.7.4-1.5 1.1-2.3 1.7-2.9zm-.8-.7c.1 0 .2 0 .3.1-.8.6-1.6 1.6-2 3.4l-1.7.5c.5-1.6 1.6-3.9 3.4-4z"/>
+                </svg>
+                <span class="text-sm font-medium text-gray-900">Shopify opportunity?</span>
+              </div>
+              <button type="button" id="shopify-toggle"
+                      class="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200 transition-colors"
+                      onclick="toggleShopify()" aria-pressed="false">
+                <span id="shopify-knob" class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform translate-x-1"></span>
+              </button>
+            </div>
+            <p class="mt-1.5 text-xs text-gray-500" id="shopify-hint">No — uses the standard <code class="rounded bg-gray-100 px-1">retain</code> template pack, no Shopify calls.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: reuse (rendered only when a candidate exists) -->
+      <div id="reuse-section" class="hidden grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-3 border-b border-gray-200 pb-10">
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Reuse a prior scrape?</h2>
+          <p class="mt-1 text-sm text-gray-500" id="reuse-hint"></p>
+        </div>
+        <div class="sm:col-span-2 flex items-center gap-6">
+          <label class="flex items-center gap-2 text-sm text-gray-800">
+            <input type="radio" name="reuse_pool" value="true" onchange="setReusePool(true)" class="text-indigo-600">
+            Reuse it
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-800">
+            <input type="radio" name="reuse_pool" value="false" onchange="setReusePool(false)" class="text-indigo-600">
+            Scrape fresh
+          </label>
+        </div>
+      </div>
+
+      <!-- Section: order matrix -->
+      <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-3 border-b border-gray-200 pb-10">
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Order matrix</h2>
+          <p class="mt-1 text-sm text-gray-500">How many orders, and whether you want to hand-pick each one's fraud level, scenario, split and courier.</p>
+        </div>
+        <div class="sm:col-span-2 space-y-4">
+
+          <div>
+            <label class="block text-sm font-medium text-gray-900 mb-2">Number of orders</label>
+            <div class="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1" id="count-group"></div>
+            <p class="mt-1.5 text-xs text-gray-500">Fraud level and scenario are auto-varied across orders by default.</p>
+          </div>
+
+          <div class="flex items-center justify-between rounded-md border border-gray-300 px-4 py-3">
+            <span class="text-sm font-medium text-gray-900">Customise each order individually?</span>
+            <button type="button" id="matrix-toggle"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200 transition-colors"
+                    onclick="toggleMatrix()">
+              <span id="matrix-knob" class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform translate-x-1"></span>
+            </button>
+          </div>
+
+          <div id="matrix-panel" class="panel">
+            <div id="order-cards" class="space-y-3"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: customisation -->
+      <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-3 border-b border-gray-200 pb-10">
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Customisation</h2>
+          <p class="mt-1 text-sm text-gray-500">Add extras to every order, or leave everything as-is.</p>
+        </div>
+        <div class="sm:col-span-2">
+          <div class="flex items-center justify-between rounded-md border border-gray-300 px-4 py-3">
+            <span class="text-sm font-medium text-gray-900">Customise this run's orders?</span>
+            <button type="button" id="extras-toggle"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200 transition-colors"
+                    onclick="toggleExtras()">
+              <span id="extras-knob" class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform translate-x-1"></span>
+            </button>
+          </div>
+
+          <div id="extras-panel" class="panel">
+            <div class="space-y-3">
+
+              <div class="relative">
+                <button type="button" id="dd-btn" onclick="toggleDropdown()"
+                        class="flex w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:border-gray-400">
+                  <span id="dd-label">Add extras…</span>
+                  <svg id="dd-chevron" class="h-4 w-4 text-gray-400 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+                </button>
+                <div id="dd-panel" class="dropdown-panel absolute z-10 mt-1 hidden w-full rounded-md border border-gray-200 bg-white p-1 shadow-lg">
+                  <label class="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" onchange="toggleField('recipients', this.checked)" class="mt-0.5 rounded text-indigo-600">
+                    <span><span class="font-medium text-gray-900">Dynamic recipients</span><br><span class="text-xs text-gray-500">Extra role/email pairs on the order and tracking</span></span>
+                  </label>
+                  <label class="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" onchange="toggleField('promise', this.checked)" class="mt-0.5 rounded text-indigo-600">
+                    <span><span class="font-medium text-gray-900">Promise dates</span><br><span class="text-xs text-gray-500">Announced delivery date, min/max window</span></span>
+                  </label>
+                  <label class="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" onchange="toggleField('financials', this.checked)" class="mt-0.5 rounded text-indigo-600">
+                    <span><span class="font-medium text-gray-900">Order financials</span><br><span class="text-xs text-gray-500">Tax, net and discount amounts</span></span>
+                  </label>
+                  <label class="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" onchange="toggleField('articles', this.checked)" class="mt-0.5 rounded text-indigo-600">
+                    <span><span class="font-medium text-gray-900">Extra articles</span><br><span class="text-xs text-gray-500">Additional line items beyond the core order</span></span>
+                  </label>
+                  <label class="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" onchange="toggleField('tags', this.checked)" class="mt-0.5 rounded text-indigo-600">
+                    <span><span class="font-medium text-gray-900">Tags / custom fields</span><br><span class="text-xs text-gray-500">What filter-driven Journey triggers key on</span></span>
+                  </label>
+                  <label class="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" onchange="toggleField('delivery', this.checked)" class="mt-0.5 rounded text-indigo-600">
+                    <span><span class="font-medium text-gray-900">Delivery detail</span><br><span class="text-xs text-gray-500">Method, courier service level, signature required</span></span>
+                  </label>
+                  <label class="flex items-start gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" onchange="toggleField('weight', this.checked)" class="mt-0.5 rounded text-indigo-600">
+                    <span><span class="font-medium text-gray-900">Article physical data</span><br><span class="text-xs text-gray-500">Weight + unit, per article</span></span>
+                  </label>
+                </div>
+              </div>
+
+              <div id="field-recipients" class="field-row"><div class="rounded-md bg-gray-50 p-3">
+                <label class="block text-xs font-medium text-gray-700">Recipient role</label>
+                <div class="mt-1 grid grid-cols-2 gap-2">
+                  <input id="extra-recipient-role" placeholder="role (must match Journey exactly)" class="rounded-md border-gray-300 text-sm py-1.5">
+                  <input id="extra-recipient-email" placeholder="email" class="rounded-md border-gray-300 text-sm py-1.5">
+                </div>
+              </div></div>
+
+              <div id="field-promise" class="field-row"><div class="rounded-md bg-gray-50 p-3 grid grid-cols-3 gap-2">
+                <div><label class="block text-xs font-medium text-gray-700">Promise date</label><input id="extra-promise-date" type="date" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+                <div><label class="block text-xs font-medium text-gray-700">Min</label><input id="extra-promise-min" type="date" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+                <div><label class="block text-xs font-medium text-gray-700">Max</label><input id="extra-promise-max" type="date" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+              </div></div>
+
+              <div id="field-financials" class="field-row"><div class="rounded-md bg-gray-50 p-3 grid grid-cols-3 gap-2">
+                <div><label class="block text-xs font-medium text-gray-700">Tax</label><input id="extra-tax" type="number" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+                <div><label class="block text-xs font-medium text-gray-700">Net</label><input id="extra-net" type="number" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+                <div><label class="block text-xs font-medium text-gray-700">Discount</label><input id="extra-discount" type="number" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+              </div></div>
+
+              <div id="field-articles" class="field-row"><div class="rounded-md bg-gray-50 p-3">
+                <label class="block text-xs font-medium text-gray-700">Extra article line items</label>
+                <input id="extra-articles" placeholder="e.g. gift wrap, 1x" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5">
+              </div></div>
+
+              <div id="field-tags" class="field-row"><div class="rounded-md bg-gray-50 p-3">
+                <label class="block text-xs font-medium text-gray-700">Tags / attributes</label>
+                <input id="extra-tags" placeholder="comma-separated" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5">
+              </div></div>
+
+              <div id="field-delivery" class="field-row"><div class="rounded-md bg-gray-50 p-3 grid grid-cols-3 gap-2">
+                <div><label class="block text-xs font-medium text-gray-700">Method</label><input id="extra-delivery-method" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+                <div><label class="block text-xs font-medium text-gray-700">Service level</label><input id="extra-service-level" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+                <div class="flex items-end pb-1.5"><label class="flex items-center gap-2 text-xs text-gray-600"><input id="extra-signature" type="checkbox" class="rounded text-indigo-600"> Signature required</label></div>
+              </div></div>
+
+              <div id="field-weight" class="field-row"><div class="rounded-md bg-gray-50 p-3 grid grid-cols-2 gap-2">
+                <div><label class="block text-xs font-medium text-gray-700">Weight</label><input id="extra-weight" type="number" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></div>
+                <div><label class="block text-xs font-medium text-gray-700">Unit</label><select id="extra-weight-unit" class="mt-1 w-full rounded-md border-gray-300 text-sm py-1.5"></select></div>
+              </div></div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: mode -->
+      <div class="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-3 pb-6">
+        <div>
+          <h2 class="text-base font-semibold text-gray-900">Mode</h2>
+          <p class="mt-1 text-sm text-gray-500">Babysit pauses at two checkpoints; auto runs unattended.</p>
+        </div>
+        <div class="sm:col-span-2">
+          <select id="mode-select" class="rounded-md border-gray-300 text-sm py-1.5 w-full sm:w-64"></select>
+        </div>
+      </div>
+
+    </form>
+
+    <div class="flex items-center justify-end gap-3 border-t border-gray-200 pt-6">
+      <button type="button" id="submit-btn" onclick="submitIntake()" class="rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm submit-btn">Submit and start build</button>
+    </div>
+
+  </section>
+
+  <section id="phase-building" hidden></section>
+
+</div>
+
 <script>window.__CONTEXT__ = {{CONTEXT_JSON}};</script>
+<script>
+  const CTX = window.__CONTEXT__;
+
+  // ---- Brand-tinted controls that Tailwind's CDN build can't pick up from
+  // CSS variables alone (arbitrary-value classes aren't in its default scan). ----
+  (function paintBrand() {
+    const style = document.createElement('style');
+    style.textContent = `
+      .step-badge { background-color: var(--brand); }
+      li[data-step] .step-badge { background-color: transparent; }
+      li[data-step].is-active .step-badge { background-color: var(--brand); color: #fff; border-color: var(--brand); }
+      li[data-step].is-active { color: var(--brand); }
+      .submit-btn { background-color: var(--brand); }
+      .submit-btn:hover { opacity: .9; }
+      input:focus, select:focus { --tw-ring-color: var(--brand); }
+      .count-btn.is-selected { background-color: var(--brand); color: #fff; }
+    `;
+    document.head.appendChild(style);
+  })();
+
+  // ---- Prospect section ----
+  document.getElementById('prospect-name').value = CTX.prospect_name || '';
+
+  function populateRegionSelect() {
+    const select = document.getElementById('region-select');
+    select.innerHTML = CTX.regions.map(r =>
+      `<option value="${r}" ${r === CTX.defaults.region ? 'selected' : ''}>${r}</option>`
+    ).join('');
+  }
+
+  function populateCourierSelect(region) {
+    const select = document.getElementById('courier-select');
+    const courier = CTX.region_couriers[region];
+    select.innerHTML = `<option value="${courier}" selected>${courier}</option>`;
+  }
+
+  function onRegionChange() {
+    const region = document.getElementById('region-select').value;
+    populateCourierSelect(region);
+    renderOrderCards();
+  }
+
+  populateRegionSelect();
+  populateCourierSelect(CTX.defaults.region);
+
+  // ---- Shopify toggle ----
+  let shopifyOn = !!CTX.defaults.shopify_opp;
+  function paintShopify() {
+    const toggle = document.getElementById('shopify-toggle');
+    const knob = document.getElementById('shopify-knob');
+    const hint = document.getElementById('shopify-hint');
+    toggle.classList.toggle('bg-emerald-600', shopifyOn);
+    toggle.classList.toggle('bg-gray-200', !shopifyOn);
+    toggle.setAttribute('aria-pressed', String(shopifyOn));
+    knob.classList.toggle('translate-x-6', shopifyOn);
+    knob.classList.toggle('translate-x-1', !shopifyOn);
+    hint.innerHTML = shopifyOn
+      ? 'Yes — seeds orders through Shopify draft orders and tags them <code class="rounded bg-gray-100 px-1">retain-shopify</code>.'
+      : 'No — uses the standard <code class="rounded bg-gray-100 px-1">retain</code> template pack, no Shopify calls.';
+  }
+  function toggleShopify() { shopifyOn = !shopifyOn; paintShopify(); }
+  paintShopify();
+
+  // ---- Reuse question (only when a candidate exists) ----
+  let reusePool = null;
+  if (CTX.reuse_candidate) {
+    document.getElementById('reuse-section').classList.remove('hidden');
+    document.getElementById('reuse-hint').textContent =
+      `A prior scrape from ${CTX.reuse_candidate} is available.`;
+  }
+  function setReusePool(value) { reusePool = value; }
+
+  // ---- Order matrix ----
+  const scenarioLabels = {
+    happy: 'Happy path',
+    'stuck-delay': 'Stuck — delayed',
+    recovered: 'Recovered from delay',
+    locker: 'Delivered to locker',
+    manual_return: 'Manual return',
+    return_tracking: 'Return tracking',
+    custom: 'Custom sequence…',
+  };
+  const scenarioList = CTX.scenarios.slice().sort();
+
+  let orderCount = CTX.defaults.orders.length;
+  let matrixOn = false;
+  const orderState = {};
+
+  // Seed orderState from __CONTEXT__.defaults.orders so the pre-fill matches
+  // default_answers() exactly, rather than re-deriving a different default here.
+  CTX.defaults.orders.forEach((order, idx) => {
+    const i = idx + 1;
+    if (order.split) {
+      orderState[i] = {
+        fraud: order.fraud, split: true,
+        scenario: 'happy', courier: null,
+        parcelA: { scenario: order.parcels[0].scenario, courier: order.parcels[0].courier },
+        parcelB: { scenario: order.parcels[1].scenario, courier: order.parcels[1].courier },
+      };
+    } else {
+      orderState[i] = {
+        fraud: order.fraud, split: false,
+        scenario: order.scenario, courier: order.courier,
+        parcelA: { scenario: 'happy', courier: null },
+        parcelB: { scenario: 'stuck-delay', courier: null },
+      };
+    }
+  });
+
+  function defaultOrder(i) {
+    const fraudLevels = ['low', 'medium', 'high'];
+    return {
+      fraud: fraudLevels[(i - 1) % 3],
+      split: false,
+      scenario: 'happy',
+      courier: null,
+      parcelA: { scenario: 'happy', courier: null },
+      parcelB: { scenario: 'stuck-delay', courier: null },
+    };
+  }
+
+  function fraudPills(i, selected) {
+    return ['low', 'medium', 'high'].map(f => `
+      <button type="button" class="pill-btn px-2.5 py-1 text-xs font-medium rounded-md border ${f === selected ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}"
+              onclick="setOrderField(${i}, 'fraud', '${f}')">${f}</button>
+    `).join('');
+  }
+
+  function scenarioSelect(i, key, selected) {
+    const options = scenarioList.map(s =>
+      `<option value="${s}" ${s === selected ? 'selected' : ''}>${scenarioLabels[s] || s}</option>`
+    ).join('');
+    const onchange = key === 'self'
+      ? `setOrderField(${i}, 'scenario', this.value)`
+      : `setNestedField(${i}, '${key}', 'scenario', this.value)`;
+    return `<select class="rounded-md border-gray-300 text-xs py-1.5 pr-7" onchange="${onchange}">${options}</select>`;
+  }
+
+  function courierInput(i, key, value) {
+    const onchange = key === 'self'
+      ? `setOrderField(${i}, 'courier', this.value)`
+      : `setNestedField(${i}, '${key}', 'courier', this.value)`;
+    return `<input type="text" placeholder="default" value="${value || ''}" class="w-28 rounded-md border-gray-300 text-xs py-1.5"
+              onchange="${onchange}">`;
+  }
+
+  function renderOrderCards() {
+    const wrap = document.getElementById('order-cards');
+    let html = '';
+    for (let i = 1; i <= orderCount; i++) {
+      if (!orderState[i]) orderState[i] = defaultOrder(i);
+      const s = orderState[i];
+
+      html += `<div class="card-in rounded-md border border-gray-200 bg-white px-3 py-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-gray-900 w-16">Order #${i}</span>
+          <div class="flex items-center gap-1.5">${fraudPills(i, s.fraud)}</div>
+          <label class="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+            <input type="checkbox" class="rounded text-indigo-600" ${s.split ? 'checked' : ''} onchange="setOrderField(${i}, 'split', this.checked)">
+            split shipment
+          </label>
+        </div>`;
+
+      if (!s.split) {
+        html += `<div class="mt-2 flex items-center justify-end gap-2 border-t border-gray-100 pt-2">
+          <span class="text-xs text-gray-400">scenario</span>
+          ${scenarioSelect(i, 'self', s.scenario)}
+          <span class="text-xs text-gray-400 ml-2">courier</span>
+          ${courierInput(i, 'self', s.courier)}
+        </div>`;
+      } else {
+        html += `<div class="mt-2 space-y-1.5 border-t border-gray-100 pt-2">
+          <div class="flex items-center justify-between rounded bg-gray-50 px-2 py-1.5">
+            <span class="text-xs font-medium text-gray-700">Parcel A</span>
+            <div class="flex items-center gap-2">
+              ${scenarioSelect(i, 'parcelA', s.parcelA.scenario)}
+              ${courierInput(i, 'parcelA', s.parcelA.courier)}
+            </div>
+          </div>
+          <div class="flex items-center justify-between rounded bg-gray-50 px-2 py-1.5">
+            <span class="text-xs font-medium text-gray-700">Parcel B</span>
+            <div class="flex items-center gap-2">
+              ${scenarioSelect(i, 'parcelB', s.parcelB.scenario)}
+              ${courierInput(i, 'parcelB', s.parcelB.courier)}
+            </div>
+          </div>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    wrap.innerHTML = html;
+  }
+
+  function setOrderField(i, field, value) {
+    orderState[i][field] = value;
+    renderOrderCards();
+  }
+
+  function setNestedField(i, group, field, value) {
+    orderState[i][group][field] = value;
+  }
+
+  function populateCountGroup() {
+    const group = document.getElementById('count-group');
+    let html = '';
+    for (let n = 1; n <= CTX.max_orders; n++) {
+      html += `<button type="button" class="count-btn pill-btn w-9 py-1.5 text-sm font-medium rounded-md ${n === orderCount ? 'is-selected' : ''}" data-n="${n}">${n}</button>`;
+    }
+    group.innerHTML = html;
+    group.querySelectorAll('.count-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        orderCount = parseInt(btn.dataset.n, 10);
+        group.querySelectorAll('.count-btn').forEach(b => {
+          b.classList.toggle('is-selected', b === btn);
+        });
+        renderOrderCards();
+      });
+    });
+  }
+  populateCountGroup();
+
+  function toggleMatrix() {
+    matrixOn = !matrixOn;
+    const toggle = document.getElementById('matrix-toggle');
+    const knob = document.getElementById('matrix-knob');
+    const panel = document.getElementById('matrix-panel');
+    toggle.classList.toggle('bg-indigo-600', matrixOn);
+    toggle.classList.toggle('bg-gray-200', !matrixOn);
+    knob.classList.toggle('translate-x-6', matrixOn);
+    knob.classList.toggle('translate-x-1', !matrixOn);
+    panel.classList.toggle('open', matrixOn);
+    if (matrixOn) renderOrderCards();
+  }
+
+  // ---- Customisation extras ----
+  let extrasOn = false;
+  function toggleExtras() {
+    extrasOn = !extrasOn;
+    const toggle = document.getElementById('extras-toggle');
+    const knob = document.getElementById('extras-knob');
+    const panel = document.getElementById('extras-panel');
+    toggle.classList.toggle('bg-indigo-600', extrasOn);
+    toggle.classList.toggle('bg-gray-200', !extrasOn);
+    knob.classList.toggle('translate-x-6', extrasOn);
+    knob.classList.toggle('translate-x-1', !extrasOn);
+    panel.classList.toggle('open', extrasOn);
+  }
+
+  let ddOpen = false;
+  function toggleDropdown() {
+    ddOpen = !ddOpen;
+    const panel = document.getElementById('dd-panel');
+    const chevron = document.getElementById('dd-chevron');
+    panel.classList.toggle('hidden', !ddOpen);
+    chevron.style.transform = ddOpen ? 'rotate(180deg)' : '';
+  }
+
+  const selectedExtras = new Set();
+  function toggleField(key, checked) {
+    if (checked) selectedExtras.add(key); else selectedExtras.delete(key);
+    document.getElementById('field-' + key).classList.toggle('open', checked);
+    const label = document.getElementById('dd-label');
+    label.textContent = selectedExtras.size === 0
+      ? 'Add extras…'
+      : selectedExtras.size + ' extra' + (selectedExtras.size > 1 ? 's' : '') + ' selected';
+  }
+
+  function populateWeightUnitSelect() {
+    const select = document.getElementById('extra-weight-unit');
+    select.innerHTML = CTX.weight_units.map(u => `<option value="${u}">${u}</option>`).join('');
+  }
+  populateWeightUnitSelect();
+
+  // ---- Mode ----
+  function populateModeSelect() {
+    const select = document.getElementById('mode-select');
+    select.innerHTML = CTX.modes.slice().sort().map(m =>
+      `<option value="${m}" ${m === CTX.defaults.mode ? 'selected' : ''}>${m.charAt(0).toUpperCase() + m.slice(1)}</option>`
+    ).join('');
+  }
+  populateModeSelect();
+
+  // ---- collectAnswers() ----
+  function collectExtras() {
+    if (!extrasOn || selectedExtras.size === 0) return {};
+    const extras = {};
+
+    if (selectedExtras.has('recipients')) {
+      const role = document.getElementById('extra-recipient-role').value.trim();
+      const email = document.getElementById('extra-recipient-email').value.trim();
+      if (role || email) {
+        extras.additional_recipients = [{ role, email }];
+      }
+    }
+    if (selectedExtras.has('promise')) {
+      const date = document.getElementById('extra-promise-date').value;
+      const min = document.getElementById('extra-promise-min').value;
+      const max = document.getElementById('extra-promise-max').value;
+      if (date) extras.announced_delivery_date = date;
+      if (min) extras.announced_delivery_date_min = min;
+      if (max) extras.announced_delivery_date_max = max;
+    }
+    if (selectedExtras.has('financials')) {
+      const tax = document.getElementById('extra-tax').value;
+      const net = document.getElementById('extra-net').value;
+      const discount = document.getElementById('extra-discount').value;
+      if (tax !== '') extras.order_tax_amount = Number(tax);
+      if (net !== '') extras.order_net_amount = Number(net);
+      if (discount !== '') extras.order_discount_amount = Number(discount);
+    }
+    if (selectedExtras.has('articles')) {
+      const value = document.getElementById('extra-articles').value.trim();
+      if (value) extras.extra_articles = value.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (selectedExtras.has('tags')) {
+      const value = document.getElementById('extra-tags').value.trim();
+      if (value) {
+        extras.tags = value.split(',').map(s => s.trim()).filter(Boolean);
+        extras.additional_attributes = {};
+      }
+    }
+    if (selectedExtras.has('delivery')) {
+      const method = document.getElementById('extra-delivery-method').value.trim();
+      const level = document.getElementById('extra-service-level').value.trim();
+      const signature = document.getElementById('extra-signature').checked;
+      if (method) extras.delivery_method = method;
+      if (level) extras.courier_service_level = level;
+      extras.requires_signature = signature;
+    }
+    if (selectedExtras.has('weight')) {
+      const weight = document.getElementById('extra-weight').value;
+      const unit = document.getElementById('extra-weight-unit').value;
+      if (weight !== '') {
+        extras.article_weights = { default: { weight: Number(weight), weight_unit: unit } };
+      }
+    }
+    return extras;
+  }
+
+  function collectOrders() {
+    const orders = [];
+    for (let i = 1; i <= orderCount; i++) {
+      const s = orderState[i] || defaultOrder(i);
+      if (s.split) {
+        orders.push({
+          label: `#${i}`, fraud: s.fraud, split: true,
+          parcels: [
+            { label: 'A', scenario: s.parcelA.scenario, courier: s.parcelA.courier || null },
+            { label: 'B', scenario: s.parcelB.scenario, courier: s.parcelB.courier || null },
+          ],
+        });
+      } else {
+        orders.push({
+          label: `#${i}`, fraud: s.fraud, split: false,
+          scenario: s.scenario, courier: s.courier || null,
+        });
+      }
+    }
+    return orders;
+  }
+
+  function collectAnswers() {
+    const extras = collectExtras();
+    const gate_c = (extrasOn && Object.keys(extras).length > 0) ? 'extras' : 'send-as-is';
+    return {
+      shopify_opp: shopifyOn,
+      reuse_pool: CTX.reuse_candidate ? reusePool : null,
+      region: document.getElementById('region-select').value,
+      courier: document.getElementById('courier-select').value,
+      orders: collectOrders(),
+      gate_c: gate_c,
+      extras: gate_c === 'extras' ? extras : {},
+      mode: document.getElementById('mode-select').value,
+    };
+  }
+
+  // ---- Submit ----
+  function showError(message) {
+    const el = document.getElementById('submit-error');
+    el.textContent = message;
+    el.classList.remove('hidden');
+  }
+  function clearError() {
+    document.getElementById('submit-error').classList.add('hidden');
+  }
+
+  function submitIntake() {
+    clearError();
+    const button = document.getElementById('submit-btn');
+    button.disabled = true;
+    fetch('/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collectAnswers()),
+    }).then(async (response) => {
+      const body = await response.json();
+      if (response.ok && body.ok) {
+        switchPhase('building');
+        startPolling();
+      } else {
+        showError(body.error || 'submission failed');
+        button.disabled = false;
+      }
+    }).catch((err) => {
+      showError(String(err));
+      button.disabled = false;
+    });
+  }
+
+  // ---- switchPhase() ----
+  function switchPhase(phase) {
+    document.getElementById('phase-intake').hidden = (phase !== 'intake');
+    document.getElementById('phase-building').hidden = (phase !== 'building');
+    document.querySelectorAll('#steps li[data-step]').forEach(li => {
+      const step = li.dataset.step;
+      const isActive = (step === 'intake' && phase === 'intake')
+        || (step === 'building' && phase === 'building');
+      li.classList.toggle('is-active', isActive);
+      li.classList.toggle('text-gray-400', !isActive);
+    });
+  }
+
+  // Task 5 fills in pollState()'s rendering; this stub keeps Task 4
+  // self-contained without a live polling loop.
+  function startPolling() {
+    if (typeof pollState === 'function') pollState();
+  }
+
+  // ---- Boot ----
+  fetch('/state').then(r => r.json()).then((state) => {
+    if (state.phase === 'building') {
+      switchPhase('building');
+      startPolling();
+    } else {
+      switchPhase('intake');
+    }
+  }).catch(() => switchPhase('intake'));
+</script>
 </body>
 </html>

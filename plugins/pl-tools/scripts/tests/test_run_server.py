@@ -246,5 +246,40 @@ class TestSubmit(ServerTestCase):
         self.assertEqual(leftover, [], f"stray temp files: {leftover}")
 
 
+class TestIntakeTemplate(unittest.TestCase):
+    """The template is HTML, so these check its contract with the server and
+    the schema rather than its appearance — a missing hook here is exactly the
+    kind of break that renders a silently non-functional form."""
+
+    def setUp(self):
+        self.html = run_server.TEMPLATE.read_text()
+
+    def test_no_unsubstituted_placeholder_names_are_invented(self):
+        known = {"{{BRAND_PRIMARY}}", "{{BRAND_TEXT}}", "{{BRAND_TINT}}",
+                 "{{BRAND_CARD}}", "{{BRAND_FONT}}", "{{BRAND_FONTS_LINK}}",
+                 "{{BRAND_LOGO}}", "{{CONTEXT_JSON}}"}
+        import re
+        found = set(re.findall(r"\{\{[A-Z_]+\}\}", self.html))
+        self.assertEqual(found - known, set())
+
+    def test_posts_to_submit(self):
+        self.assertIn("/submit", self.html)
+
+    def test_polls_state(self):
+        self.assertIn("/state", self.html)
+
+    def test_does_not_hardcode_a_region_list(self):
+        for invented in ("correos-es", "dpd-uk", "colissimo-fr", "dhl-de"):
+            self.assertNotIn(invented, self.html)
+
+    def test_reads_vocabularies_from_context(self):
+        for key in ("regions", "region_couriers", "scenarios", "defaults"):
+            self.assertIn(key, self.html)
+
+    def test_has_both_phase_containers(self):
+        self.assertIn('id="phase-intake"', self.html)
+        self.assertIn('id="phase-building"', self.html)
+
+
 if __name__ == "__main__":
     unittest.main()
