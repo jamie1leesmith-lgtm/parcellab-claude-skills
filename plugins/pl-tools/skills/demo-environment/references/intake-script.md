@@ -56,9 +56,19 @@ Scenario vocabulary: `happy` · `stuck-delay` · `recovered`
 (`InTransit → WarehouseDelay → OutForDelivery → Delivered`, proven live
 2026-08-11) · `locker` (`… → Delivered-ParcelLocker`, status unproven) ·
 `custom` (user-specified sequence, labelled per order-lifecycle's confidence
-rules). Runs of 2+ orders need at least one split-shipment order. Every order
-gets a distinct synthetic customer (region-appropriate name + email) —
-generate them and show them.
+rules). `manual_return` and `return_tracking` are **not** scenarios — they are
+`cdc_slot` values, and no event sequence is documented for either, so
+return-flow demos are requested via `custom` (with the sequence spelled out)
+until their sequences are proven live, at which point they can be restored to
+`intake_schema.SCENARIOS`.
+
+Runs of 2+ orders need at least one split-shipment order, and at least one
+shipment must end in the literal event `Delivered` — which only `happy` and
+`recovered` do (`intake_schema.DELIVERED_TERMINATING_SCENARIOS`; `locker`
+ends `Delivered-ParcelLocker`, a different string). Both rules are enforced
+by `parse_answers`, so the form rejects a matrix that would fail
+`validate_manifest.py` later. Every order gets a distinct synthetic customer
+(region-appropriate name + email) — generate them and show them.
 
 ### Customisation (send-as-is / the seven extras)
 
@@ -97,10 +107,38 @@ at manifest-write time — a full ISO datetime is rejected by the API.
 
 ### Deriving article weights
 
-When the form's extras carry `article_weights`, do not ask for a value per
-product on top of what the form collected. Derive one per article from its
-`product_type` and show every derived value at the ✋ gate, article by
-article, so it can be corrected before anything is sent.
+Two mechanisms, and which one applies depends entirely on whether the
+operator typed a weight. Never ask for a value per product on top of what
+the form collected; either way, show every resolved value at the ✋ gate,
+article by article, so it can be corrected before anything is sent.
+
+**1 — The operator supplied a weight (the form emitted
+`article_weights`).** That single value is the **run-wide** weight: the form
+has no product ids to key by, because the scrape lane only runs after intake
+is submitted, so it arrives under the sentinel key
+`__run_default__` (`intake_schema.RUN_DEFAULT_WEIGHT_KEY`). **Fan it out** at
+manifest-write time to
+
+```json
+{"<product id 1>": {"weight": …, "weight_unit": …},
+ "<product id 2>": {"weight": …, "weight_unit": …}}
+```
+
+— one entry per product id in the run (the `core4`, plus any
+`shopify_extra`), all carrying the same value the operator typed. The
+`product_type` table below is **not** consulted in this case; using it would
+discard the number the operator just entered. The sentinel key must never
+reach the manifest — `validate_manifest.py` rejects any
+`article_weights` key that is not a product `id`
+(`MANIFEST INVALID: extras.article_weights: unknown product …`).
+
+**2 — The operator supplied no weight**, so `article_weights` is absent from
+the submitted extras. Then no weights are written for the run — an absent
+key is an answer, not a gap to fill. The table below is the fallback for the
+one remaining case: a weight is needed later in the run (the operator asks
+for one after the ✋ gate, or an order-lifecycle Gate C follow-up wants one)
+and no operator value exists to fan out. Derive one weight per article from
+its `product_type`, keyed by product `id` exactly as above.
 
 Match case-insensitively on the `product_type` string; first match wins.
 

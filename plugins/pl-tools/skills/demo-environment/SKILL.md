@@ -294,18 +294,53 @@ quiet rather than needing to be removed.
       this step serves the last run's state to this run's operator, with no
       error anywhere to catch it. Do this every time, even when this looks
       like the first run of the session.
-   4. **Upsert the launch entry:**
+   4. **Upsert the launch entry.** **Resolve `${CLAUDE_PLUGIN_ROOT}` to its
+      real absolute path first and paste that path into the JSON string** —
+      the `{PLUGIN_ROOT}` placeholder below is substituted by you, before
+      the command runs. This is the one place in this skill that must not
+      keep `${CLAUDE_PLUGIN_ROOT}` in the text: the entry is written
+      verbatim into `launch.json`, and `preview_start` spawns
+      `runtimeExecutable` + `runtimeArgs` directly — no shell, and no
+      `CLAUDE_PLUGIN_ROOT` in the child environment — so an unexpanded
+      placeholder reaches `python3` as a literal filename and the server
+      dies with "can't open file". `preview_start` still reports a started
+      server and `run_server`'s own stderr never appears, so the run
+      silently falls through to the step-7 chat fallback. Same substitution
+      pattern branded-template Step 8 uses for `{HOME}`, and step 3 below
+      for the scrape brief.
+
+      Do it in this order:
+
+      1. `echo "${CLAUDE_PLUGIN_ROOT}"` (or `printenv CLAUDE_PLUGIN_ROOT`)
+         and read the absolute path back — e.g.
+         `/Users/<you>/.claude/plugins/cache/parcellab-skills/pl-tools/<sha>`.
+      2. Build the entry JSON with that path in place of `{PLUGIN_ROOT}`.
+      3. Before running the command, re-read the JSON you are about to pass
+         and confirm it contains no `$`, no `{`, and no `}` inside the
+         `runtimeArgs` path. If it does, you have not substituted it.
 
       ```bash
       python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ensure_launch_config.py \
         "$PWD/.claude/launch.json" \
         '{"name": "demo-run-server", "runtimeExecutable": "python3",
-          "runtimeArgs": ["${CLAUDE_PLUGIN_ROOT}/scripts/run_server.py",
+          "runtimeArgs": ["{PLUGIN_ROOT}/scripts/run_server.py",
                           "<run dir>", "--prospect-name", "<brand name>",
                           "--region", "<pre-resolved region>",
                           "--reuse-candidate", "<date, only if found>"],
           "port": 8097}'
       ```
+
+      (`${CLAUDE_PLUGIN_ROOT}` on the *first* line is fine and stays as-is —
+      that one is expanded by the shell running the command. Only the path
+      inside the single-quoted JSON needs substituting, because single
+      quotes stop the shell expanding anything. `<run dir>` is already an
+      absolute path for the same reason.)
+
+      Then confirm what landed on disk: `ensure_launch_config.py` prints the
+      file it wrote, so read the `demo-run-server` entry back out of
+      `.claude/launch.json` and check the `run_server.py` path is absolute
+      and exists (`ls <that path>`). A literal `${CLAUDE_PLUGIN_ROOT}` in
+      the file means step 5 will start a server that cannot serve anything.
 
    5. **`preview_start`** → `{name: "demo-run-server"}`, note the returned
       `tabId`, and tell the operator to fill in the form.
@@ -648,7 +683,15 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    never SKU — the same rule as everywhere else in the manifest —
    `{<product id>: {weight: <number greater than 0>, weight_unit:
    "kg"|"g"|"lbs"|"oz"}}` — `weight_unit` is always written explicitly; a
-   missing one is rejected.
+   missing one is rejected. **`intake.json` does not carry that shape:** the
+   form collects one run-wide weight (it has no product ids to key by, since
+   the scrape lane runs after intake) and emits it under the sentinel key
+   `__run_default__`. Fan that one value out to every product id in the run
+   — the `core4` plus any `shopify_extra` — when writing the manifest, and
+   never copy the sentinel key across; `validate_manifest.py` rejects it as
+   `unknown product __run_default__`. See `references/intake-script.md`,
+   "Deriving article weights", for both this fan-out and the `product_type`
+   fallback that applies only when the operator gave no weight.
    `validate_manifest.py` enforces all of this,
    `approvals{products_approved_at,intake_completed_at}` — the approval stamps
    are the one part written after their gates, since that is when they happen).

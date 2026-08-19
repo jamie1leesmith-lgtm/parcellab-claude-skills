@@ -113,7 +113,32 @@ def make_handler(run_dir, context):
         def _send_json(self, status, payload):
             self._send(status, json.dumps(payload), "application/json")
 
+        def _guard(self, handle):
+            """Turn any unexpected exception into a JSON 500.
+
+            Without this, an exception escaping do_GET/do_POST reaches
+            socketserver, which prints a traceback and drops the connection
+            with no response at all — the page's only data source dies and
+            the client cannot tell a crash from a network blip. Every
+            deliberate status (the 400s, the 404s, the TimeoutError close)
+            is raised and answered inside `handle`, so it never reaches here.
+            """
+            try:
+                handle()
+            except Exception as exc:                  # noqa: BLE001
+                try:
+                    self._send_json(500, {"ok": False, "error": str(exc)})
+                except OSError:
+                    # The client is already gone; nothing left to report to.
+                    self.close_connection = True
+
         def do_GET(self):
+            self._guard(self._get)
+
+        def do_POST(self):
+            self._guard(self._post)
+
+        def _get(self):
             path = self.path.split("?", 1)[0]
             if path == "/":
                 self._send(200, render_page(run_dir, context),
@@ -123,7 +148,7 @@ def make_handler(run_dir, context):
             else:
                 self._send_json(404, {"ok": False, "error": "not found"})
 
-        def do_POST(self):
+        def _post(self):
             if self.path.split("?", 1)[0] != "/submit":
                 self._send_json(404, {"ok": False, "error": "not found"})
                 return
@@ -173,6 +198,10 @@ def make_handler(run_dir, context):
                 tmp.write_text(json.dumps(answers, indent=2))
                 tmp.replace(target)
             except OSError:
+                # Clean up the partial temp file, then let it propagate: the
+                # _guard wrapper turns it into a JSON 500 the page can show,
+                # so a full disk or a read-only run dir is reported rather
+                # than dropping the connection.
                 tmp.unlink(missing_ok=True)
                 raise
             self._send_json(200, {"ok": True})

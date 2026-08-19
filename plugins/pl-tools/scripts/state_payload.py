@@ -4,9 +4,10 @@ Everything here is derived from files the run already writes — run-state.json
 is the source of truth for progress, and the per-lane drill-down detail comes
 from the same side files the old run-page renderer read. Nothing writes.
 
-Every side file is read defensively: a half-written or missing file leaves its
-detail section None rather than failing the whole poll, because the page
-polling every two seconds will inevitably catch a write mid-flight.
+Every file is read defensively — run-state.json included: a half-written or
+missing file leaves its detail section None (or, for run-state.json, every
+field at its own fallback) rather than failing the whole poll, because the
+page polling every two seconds will inevitably catch a write mid-flight.
 """
 import json
 import pathlib
@@ -20,6 +21,22 @@ def _read_json(path):
         return json.loads(pathlib.Path(path).read_text())
     except (OSError, ValueError):
         return None
+
+
+def _load_state(run_dir):
+    """The run state, or an empty dict if it cannot be read.
+
+    `run-state.json` is written by `run_state.init()` before the server
+    starts, so a missing file means something unexpected — but a poll is the
+    wrong place to find out. Raising here escapes the request handler and the
+    page loses its only data source; degrading returns a usable payload with
+    every field falling back to its own default, exactly as the side files
+    already do.
+    """
+    try:
+        return run_state.load(str(run_dir))
+    except (OSError, ValueError):
+        return {}
 
 
 def _scrape_detail(run_dir):
@@ -143,7 +160,7 @@ def _orders_with_fraud_level(state, manifest):
 def build(run_dir):
     """Return the page's whole data contract for one poll."""
     run_dir = pathlib.Path(run_dir)
-    state = run_state.load(str(run_dir))
+    state = _load_state(run_dir)
     manifest = _read_json(run_dir / "demo-manifest.json")
 
     return {

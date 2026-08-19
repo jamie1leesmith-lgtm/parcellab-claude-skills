@@ -32,10 +32,29 @@ FRAUD_LEVELS_ORDERED = ("low", "medium", "high")
 
 # `split` is deliberately absent: a split is a per-order boolean that forks
 # the order into two parcels, each with its own scenario from this set.
+#
+# `manual_return` and `return_tracking` are deliberately absent too. They are
+# valid `cdc_slot` values (validate_manifest.CDC_SLOTS) but no event sequence
+# is documented for them anywhere in the skill tree, so offering them as
+# scenarios leaves the conductor inventing one. Return-flow demos go through
+# `custom` until their sequences are proven — see
+# demo-environment/references/intake-script.md.
 SCENARIOS = frozenset({
-    "happy", "stuck-delay", "recovered", "locker",
-    "manual_return", "return_tracking", "custom",
+    "happy", "stuck-delay", "recovered", "locker", "custom",
 })
+
+# Scenarios whose documented event sequence literally ends in the event
+# "Delivered". Derived from validate_manifest.py's own check, which is
+# `events[-1] == "Delivered"` — an exact string comparison, not a
+# "did it arrive?" judgement. Cross-checked against
+# validate_manifest.PROVEN_SEQUENCES: only ("InTransit", "OutForDelivery",
+# "Delivered") — `happy` — and ("InTransit", "WarehouseDelay",
+# "OutForDelivery", "Delivered") — `recovered` — terminate in "Delivered".
+# `stuck-delay` ends in "WarehouseDelay"; `locker` ends in
+# "Delivered-ParcelLocker", which is a different string and therefore does
+# not satisfy the check despite the name; `custom` is whatever the operator
+# specifies, so nothing the form sees can vouch for it.
+DELIVERED_TERMINATING_SCENARIOS = frozenset({"happy", "recovered"})
 
 MODES = frozenset({"babysit", "auto"})
 GATE_C_VALUES = frozenset({"send-as-is", "extras"})
@@ -58,6 +77,16 @@ EXTRA_KEYS = frozenset(set(PROMISE_DATE_FIELDS) | {
     "delivery_method", "courier_service_level", "requires_signature",
     "article_weights",
 })
+
+# The form collects ONE run-wide article weight, not a weight per product:
+# nothing on the intake page knows the product ids yet, because the scrape
+# lane is only dispatched after intake is submitted. That single value
+# arrives under this sentinel key, and the conductor fans it out to
+# `{<each product id in the run>: {weight, weight_unit}}` at manifest-write
+# time (see demo-environment/references/intake-script.md, "Deriving article
+# weights"). validate_manifest.py requires every article_weights key to be a
+# product id, so the sentinel must never be copied into the manifest as-is.
+RUN_DEFAULT_WEIGHT_KEY = "__run_default__"
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -158,10 +187,14 @@ def _check_extras(extras, gate_c):
                 f"extras.{field} must be YYYY-MM-DD, not a full ISO "
                 f"datetime (got {value!r})")
 
+    # Keys are NOT checked against product ids here, unlike
+    # validate_manifest.py: at intake time no product pool exists, so the only
+    # key the form can produce is RUN_DEFAULT_WEIGHT_KEY. The per-entry shape
+    # is still checked, because that is what gets copied onto each product.
     weights = extras.get("article_weights") or {}
     if not isinstance(weights, dict):
-        raise ValueError("extras.article_weights must be an object keyed by "
-                         "product id")
+        raise ValueError("extras.article_weights must be an object of "
+                         "{weight, weight_unit} entries")
     for pid, entry in weights.items():
         if not isinstance(entry, dict):
             raise ValueError(
@@ -241,6 +274,24 @@ def parse_answers(raw_json):
     # so the operator hears it on the form instead of at Phase 1.
     if len(orders) >= 2 and not any(o["split"] for o in orders):
         raise ValueError("runs of 2+ orders need at least one split order")
+
+    # The validator's third cross-order rule: a retain run needs at least one
+    # shipment whose events end "Delivered", and every run this form produces
+    # is `retain` or `retain-shopify`. Checked here so an all-delay matrix is
+    # rejected inline on the form, rather than at Phase 1 after intake.json
+    # has been written and the form has gone.
+    chosen = set()
+    for order in orders:
+        if order["split"]:
+            chosen.update(p.get("scenario") for p in order["parcels"])
+        else:
+            chosen.add(order.get("scenario"))
+    if not chosen & DELIVERED_TERMINATING_SCENARIOS:
+        raise ValueError(
+            "at least one shipment must end in Delivered — give one order "
+            f"or parcel a scenario from "
+            f"{sorted(DELIVERED_TERMINATING_SCENARIOS)} "
+            f"(got {sorted(s for s in chosen if s)})")
 
     _check_extras(data["extras"], data["gate_c"])
 

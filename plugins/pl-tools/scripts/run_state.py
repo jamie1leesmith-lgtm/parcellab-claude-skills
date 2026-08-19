@@ -210,11 +210,13 @@ def record_render(run_dir):
 
 
 def record_publish(run_dir, url):
-    """Stamp an Artifact call and the URL it returned.
+    """Stamp a published page and the URL it returned.
 
-    Self-reported: only the conductor knows a publish happened. A publish
-    count below the render count is therefore the signal that the Artifact
-    call was skipped.
+    Nothing calls this any more, for the same reason `record_render` does not:
+    the run page is served live by `run_server.py` and polls `GET /state`, so
+    there is no publish step left to record. Retained, alongside
+    `record_render`, only so the `page.publishes` / `page.renders` lists it
+    maintains keep existing (empty) for `build_telemetry_row.py`.
     """
     def apply(state):
         _page(state).setdefault("publishes", []).append(

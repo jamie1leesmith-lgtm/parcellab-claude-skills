@@ -42,10 +42,34 @@ class TestVocabularies(unittest.TestCase):
         self.assertNotIn("split", intake_schema.SCENARIOS)
 
     def test_scenario_vocabulary_is_the_documented_one(self):
+        # Exactly the five scenarios intake-script.md documents an event
+        # sequence for. manual_return/return_tracking are cdc_slot values,
+        # not scenarios, and have no documented sequence.
         self.assertEqual(
             set(intake_schema.SCENARIOS),
-            {"happy", "stuck-delay", "recovered", "locker",
-             "manual_return", "return_tracking", "custom"})
+            {"happy", "stuck-delay", "recovered", "locker", "custom"})
+
+    def test_return_slots_are_not_scenarios(self):
+        for slot in ("manual_return", "return_tracking"):
+            self.assertNotIn(slot, intake_schema.SCENARIOS)
+            # Still legitimate as cdc_slot values.
+            self.assertIn(slot, validate_manifest.CDC_SLOTS)
+
+    def test_delivered_terminating_scenarios_are_a_subset(self):
+        self.assertTrue(
+            intake_schema.DELIVERED_TERMINATING_SCENARIOS
+            <= intake_schema.SCENARIOS)
+
+    def test_delivered_terminating_set_matches_proven_sequences(self):
+        # Derived from validate_manifest's literal `events[-1] ==
+        # "Delivered"` check: exactly two proven sequences end on that
+        # event, and they are happy and recovered.
+        ending_delivered = [seq for seq in validate_manifest.PROVEN_SEQUENCES
+                            if seq[-1] == "Delivered"]
+        self.assertEqual(len(ending_delivered),
+                         len(intake_schema.DELIVERED_TERMINATING_SCENARIOS))
+        self.assertEqual(set(intake_schema.DELIVERED_TERMINATING_SCENARIOS),
+                         {"happy", "recovered"})
 
     def test_fraud_levels_ordered_matches_the_set(self):
         # The tuple is the display order (low-to-high severity); the
@@ -92,6 +116,16 @@ class TestDefaultAnswers(unittest.TestCase):
         parsed = intake_schema.parse_answers(json.dumps(defaults))
         self.assertEqual(parsed["region"], "UK")
         self.assertEqual(parsed["courier"], "royal-mail")
+
+    def test_defaults_satisfy_the_delivered_rule(self):
+        # The pre-fill must never be the thing the form rejects.
+        for region in intake_schema.REGIONS:
+            defaults = intake_schema.default_answers(region=region)
+            intake_schema.parse_answers(json.dumps(defaults))
+        scenarios = {o.get("scenario")
+                     for o in intake_schema.default_answers()["orders"]}
+        self.assertTrue(
+            scenarios & intake_schema.DELIVERED_TERMINATING_SCENARIOS)
 
     def test_defaults_include_a_split_order_when_multiple(self):
         defaults = intake_schema.default_answers()
@@ -163,6 +197,40 @@ class TestParseAnswers(unittest.TestCase):
         payload["orders"] = [payload["orders"][0]]
         parsed = intake_schema.parse_answers(json.dumps(payload))
         self.assertEqual(len(parsed["orders"]), 1)
+
+    def test_rejects_a_run_with_no_delivered_terminating_scenario(self):
+        # Every shipment stuck in a warehouse delay: validate_manifest.py
+        # would reject the manifest at Phase 1 ("Retain runs need at least
+        # one shipment ending Delivered") long after the form is gone.
+        payload = _valid()
+        payload["orders"][0]["scenario"] = "stuck-delay"
+        payload["orders"][1]["parcels"][0]["scenario"] = "stuck-delay"
+        payload["orders"][1]["parcels"][1]["scenario"] = "stuck-delay"
+        with self.assertRaisesRegex(ValueError, "end in Delivered"):
+            intake_schema.parse_answers(json.dumps(payload))
+
+    def test_locker_alone_does_not_satisfy_the_delivered_rule(self):
+        # locker ends "Delivered-ParcelLocker", which is not the literal
+        # event validate_manifest.py compares against.
+        payload = _valid()
+        payload["orders"] = [{"label": "#1", "fraud": "low", "split": False,
+                              "scenario": "locker", "courier": None}]
+        with self.assertRaisesRegex(ValueError, "end in Delivered"):
+            intake_schema.parse_answers(json.dumps(payload))
+
+    def test_recovered_on_a_parcel_satisfies_the_delivered_rule(self):
+        payload = _valid()
+        payload["orders"][0]["scenario"] = "stuck-delay"
+        payload["orders"][1]["parcels"][0]["scenario"] = "recovered"
+        payload["orders"][1]["parcels"][1]["scenario"] = "stuck-delay"
+        parsed = intake_schema.parse_answers(json.dumps(payload))
+        self.assertEqual(len(parsed["orders"]), 2)
+
+    def test_rejects_a_retired_return_scenario(self):
+        payload = _valid()
+        payload["orders"][0]["scenario"] = "manual_return"
+        with self.assertRaisesRegex(ValueError, "scenario"):
+            intake_schema.parse_answers(json.dumps(payload))
 
     def test_send_as_is_rejects_populated_extras(self):
         payload = _valid()

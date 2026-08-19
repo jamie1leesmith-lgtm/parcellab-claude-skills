@@ -176,5 +176,38 @@ class TestStatePayload(unittest.TestCase):
         self.assertEqual(payload["run_id"], "pccomponentes-20260819-1546")
 
 
+class TestMissingRunState(unittest.TestCase):
+    """A poll must degrade, not raise, when run-state.json is unreadable.
+
+    Raising escapes the request handler and the client gets a dropped
+    connection rather than a response — the page's only data source, with
+    nothing to diagnose from.
+    """
+
+    def setUp(self):
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+
+    def test_no_run_state_file_still_builds_a_payload(self):
+        payload = state_payload.build(self.dir)
+        self.assertEqual(payload["phase"], "intake")
+        self.assertIsNone(payload["run_id"])
+        self.assertEqual(payload["lanes"], {})
+        self.assertEqual(payload["orders"], [])
+        self.assertEqual(payload["failures"], [])
+        self.assertFalse(payload["finished"])
+        for key in ("scrape", "template", "seed", "cdc"):
+            self.assertIn(key, payload["detail"])
+
+    def test_malformed_run_state_still_builds_a_payload(self):
+        (self.dir / "run-state.json").write_text("{ broken")
+        payload = state_payload.build(self.dir)
+        self.assertIsNone(payload["run_id"])
+        self.assertEqual(payload["orders"], [])
+
+    def test_phase_still_flips_without_run_state(self):
+        (self.dir / "intake.json").write_text("{}")
+        self.assertEqual(state_payload.build(self.dir)["phase"], "building")
+
+
 if __name__ == "__main__":
     unittest.main()

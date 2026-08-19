@@ -164,7 +164,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-900">Default courier</label>
-              <select id="courier-select" class="mt-1.5 block w-full rounded-md border-0 px-3 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 text-sm"></select>
+              <input type="text" id="courier-select" class="mt-1.5 block w-full rounded-md border-0 px-3 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 text-sm">
               <p class="mt-1 text-xs text-gray-400">Pre-filled from the region's default. Override per order/parcel below.</p>
             </div>
           </div>
@@ -456,20 +456,24 @@
     ).join('');
   }
 
-  function populateCourierSelect(region) {
-    const select = document.getElementById('courier-select');
-    const courier = CTX.region_couriers[region];
-    select.innerHTML = `<option value="${courier}" selected>${courier}</option>`;
+  // Free text, not a picker: the courier field is a courier code the API
+  // accepts, and region_couriers only carries one documented default per
+  // region. A single-option select would look like a closed vocabulary it
+  // is not, and the per-order and per-parcel courier overrides below are
+  // free-text inputs too.
+  function populateCourierDefault(region) {
+    document.getElementById('courier-select').value =
+      CTX.region_couriers[region] || '';
   }
 
   function onRegionChange() {
     const region = document.getElementById('region-select').value;
-    populateCourierSelect(region);
+    populateCourierDefault(region);
     renderOrderCards();
   }
 
   populateRegionSelect();
-  populateCourierSelect(CTX.defaults.region);
+  populateCourierDefault(CTX.defaults.region);
 
   // ---- Shopify toggle ----
   let shopifyOn = !!CTX.defaults.shopify_opp;
@@ -504,8 +508,6 @@
     'stuck-delay': 'Stuck — delayed',
     recovered: 'Recovered from delay',
     locker: 'Delivered to locker',
-    manual_return: 'Manual return',
-    return_tracking: 'Return tracking',
     custom: 'Custom sequence…',
   };
   const scenarioList = CTX.scenarios.slice().sort();
@@ -758,7 +760,15 @@
       const weight = document.getElementById('extra-weight').value;
       const unit = document.getElementById('extra-weight-unit').value;
       if (weight !== '') {
-        extras.article_weights = { default: { weight: Number(weight), weight_unit: unit } };
+        // One run-wide value under a sentinel key that cannot be mistaken
+        // for a product id (intake_schema.RUN_DEFAULT_WEIGHT_KEY). No
+        // product ids exist yet at intake time — the scrape lane runs after
+        // submission — so the conductor fans this out to every product id
+        // in the run at manifest-write time, which is what
+        // validate_manifest.py requires the keys to be.
+        extras.article_weights = {
+          __run_default__: { weight: Number(weight), weight_unit: unit },
+        };
       }
     }
     return extras;
@@ -949,9 +959,17 @@
     return `<div>${heading}<ol class="relative border-l border-gray-200 pl-4 space-y-3">${rows}</ol></div>`;
   }
 
+  let lastOrderFeedJson = null;
+
   function renderOrderFeed(orders) {
     const wrap = document.getElementById('order-feed');
     if (!wrap) return;
+    // Rewriting innerHTML restarts the .cascade fade-in, staggered delays
+    // and all. On a two-second poll that means the whole feed re-animates
+    // for the entire run, so only redraw when the orders actually changed.
+    const serialized = JSON.stringify(orders || []);
+    if (serialized === lastOrderFeedJson) return;
+    lastOrderFeedJson = serialized;
     if (!orders || orders.length === 0) {
       wrap.innerHTML = '<p class="text-sm text-gray-400">No orders started yet.</p>';
       return;
@@ -1076,7 +1094,11 @@
       const runId = (lastRenderedPayload && lastRenderedPayload.run_id) || '';
       const handle = runId.includes('-') ? runId.split('-').slice(0, -2).join('-') : runId;
       const basename = brand || handle;
-      const previewHref = basename ? `parcellab-previews/${basename}-parcellab-layout.html` : '#';
+      // branded-template's own preview server, which serves
+      // $HOME/parcellab-previews/ on port 8098. This server serves only /,
+      // /state and /submit, so a relative path here 404s.
+      const previewHref = basename
+        ? `http://127.0.0.1:8098/${basename}-parcellab-layout.html` : '#';
       el.innerHTML = `<div class="rounded-lg border border-gray-200 bg-white p-4 mb-8">
         <div class="mb-3 flex items-center justify-between">
           <h3 class="text-sm font-semibold text-gray-900">Template — ${escapeHtml(detail.status || 'pending')}</h3>
@@ -1242,10 +1264,8 @@
     });
   }
 
-  // Task 5 fills in pollState()'s rendering; this stub keeps Task 4
-  // self-contained without a live polling loop.
   function startPolling() {
-    if (typeof pollState === 'function') pollState();
+    pollState();
   }
 
   // ---- Boot ----

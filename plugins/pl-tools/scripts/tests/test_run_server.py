@@ -246,6 +246,72 @@ class TestSubmit(ServerTestCase):
         self.assertEqual(leftover, [], f"stray temp files: {leftover}")
 
 
+class TestHandlerErrorGuard(unittest.TestCase):
+    """An unexpected exception must come back as an HTTP response.
+
+    Escaping the handler makes socketserver print a traceback and drop the
+    connection, so the client sees no status at all — the failure mode that
+    killed the page's only data source with nothing diagnosable.
+    """
+
+    def setUp(self):
+        # Deliberately NO run_state.init(): run-state.json is missing, which
+        # is what used to raise FileNotFoundError inside do_GET.
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+        context = run_server.build_context(
+            self.dir, prospect_name="Brand", region="US",
+            reuse_candidate=None)
+        self.httpd = run_server.make_server(self.dir, context, port=0)
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever,
+                                       daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join(timeout=5)
+
+    def test_state_without_run_state_json_still_answers(self):
+        url = f"http://127.0.0.1:{self.port}/state"
+        with urllib.request.urlopen(url, timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            payload = json.loads(response.read())
+        self.assertEqual(payload["phase"], "intake")
+        self.assertIsNone(payload["run_id"])
+
+    def test_an_unexpected_exception_becomes_a_json_500(self):
+        original = run_server.state_payload.build
+        run_server.state_payload.build = lambda _dir: (_ for _ in ()).throw(
+            RuntimeError("boom"))
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{self.port}/state", timeout=5)
+        finally:
+            run_server.state_payload.build = original
+        self.assertEqual(caught.exception.code, 500)
+        body = json.loads(caught.exception.read())
+        self.assertFalse(body["ok"])
+        self.assertIn("boom", body["error"])
+
+    def test_an_unexpected_post_exception_becomes_a_json_500(self):
+        original = run_server.intake_schema.parse_answers
+        run_server.intake_schema.parse_answers = \
+            lambda _raw: (_ for _ in ()).throw(RuntimeError("kaboom"))
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{self.port}/submit", data=b"{}",
+                headers={"Content-Type": "application/json"}, method="POST")
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request, timeout=5)
+        finally:
+            run_server.intake_schema.parse_answers = original
+        self.assertEqual(caught.exception.code, 500)
+        self.assertIn("kaboom", json.loads(caught.exception.read())["error"])
+        self.assertFalse((self.dir / "intake.json").exists())
+
+
 class TestIntakeTemplate(unittest.TestCase):
     """The template is HTML, so these check its contract with the server and
     the schema rather than its appearance — a missing hook here is exactly the
@@ -308,6 +374,18 @@ class TestBuildingTemplate(unittest.TestCase):
 
     def test_polls_on_an_interval(self):
         self.assertIn("setInterval", self.html)
+
+    def test_preview_link_points_at_the_layout_preview_server(self):
+        # branded-template serves $HOME/parcellab-previews/ on 8098; this
+        # server serves only /, /state and /submit, so a relative path 404s.
+        self.assertIn("http://127.0.0.1:8098/", self.html)
+
+    def test_order_feed_skips_an_unchanged_payload(self):
+        self.assertIn("lastOrderFeedJson", self.html)
+
+    def test_no_retired_return_scenario_labels(self):
+        for retired in ("manual_return", "return_tracking"):
+            self.assertNotIn(retired, self.html)
 
 
 if __name__ == "__main__":
