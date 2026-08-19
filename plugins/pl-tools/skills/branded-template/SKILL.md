@@ -346,26 +346,15 @@ Serve the HTML file from disk and open it in the built-in Browser pane. This kee
 
 **Serving directory — TCC warning:** the preview server's spawned process **cannot read `~/Documents`** (macOS TCC protection → 404 "No permission to list directory"). Always serve from `$HOME/parcellab-previews/`.
 
-1. Ensure the launch config exists at `{project}/.claude/launch.json`, substituting the current user's real home path for `{HOME}`. **It usually will not exist** — it is per-machine (the path is absolute) and must not be committed, so create it on first use in each checkout and leave it untracked:
+1. Ensure the `layout-preview` entry exists at `{project}/.claude/launch.json` — it is per-machine (the path is absolute) and must not be committed, so it is created on first use in each checkout and left untracked. **Do not write this file by hand or with the `Write` tool.** `launch.json` is shared with other skills and the user's own dev-server configs; a previous version of this step wrote the whole file from a JSON literal on the assumption "it usually will not exist," which silently destroyed an unrelated entry a user already had in the file (no backup, unrecoverable) the one time that assumption was wrong. Always go through the merge-by-name script instead, which is safe whether the file is missing, empty, or already has other entries in it:
 
-```json
-{
-  "version": "0.0.1",
-  "configurations": [
-    {
-      "name": "layout-preview",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": [
-        "-c",
-        "import sys; sys.path = [p for p in sys.path if p]; import http.server, socketserver, functools; H = functools.partial(http.server.SimpleHTTPRequestHandler, directory='{HOME}/parcellab-previews'); socketserver.TCPServer(('127.0.0.1', 8098), H).serve_forever()"
-      ],
-      "port": 8098
-    }
-  ]
-}
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ensure_launch_config.py \
+  {project}/.claude/launch.json \
+  '{"name": "layout-preview", "runtimeExecutable": "python3", "runtimeArgs": ["-c", "import sys; sys.path = [p for p in sys.path if p]; import http.server, socketserver, functools; H = functools.partial(http.server.SimpleHTTPRequestHandler, directory=\"{HOME}/parcellab-previews\"); socketserver.TCPServer((\"127.0.0.1\", 8098), H).serve_forever()"], "port": 8098}'
 ```
 
-(The `sys.path` cleanup works around the Python 3.14 empty-path issue; the inline `-c` server avoids `--directory` cwd quirks.)
+substituting the current user's real home path for `{HOME}` inside the JSON string. The script reads any existing `launch.json`, replaces the `layout-preview` entry if one is already there (e.g. from a prior run) or appends it if not, and leaves every other entry in `configurations` untouched. (The `sys.path` cleanup in the inline server command works around the Python 3.14 empty-path issue; the inline `-c` server avoids `--directory` cwd quirks.)
 
 2. `mcp__Claude_Browser__preview_start` → `{ name: "layout-preview" }` (starts the python server from launch.json, reusing it if already running).
 3. Point the pane at the file: `mcp__Claude_Browser__navigate` → `{ tabId: <the tabId this preview_start call returned>, url: "http://127.0.0.1:8098/{brand}-parcellab-layout.html" }`. This is a **new** `preview_start` call, so it returns its own `tabId` — do not reuse the brand-scrape tab's id from Step 2.

@@ -106,6 +106,44 @@ cover raw delivery-status delay checkpoints.
 > reader cannot re-check is one they will re-derive; a 404 in the "How to check"
 > block is exactly that, so the working command replaces it above.
 
+### The same slot mismatch also affects account 1622356 — confirmed on two runs
+
+**Proven 2026-08-19** (triaging rows written 2026-08-19 for runs on 2026-08-18),
+account 1622356, runs `lovehoney-20260818-1306` (order `#1002`) and
+`sportsshoes-20260818-1705` (order `#1005`). Both rows independently reported
+`delay_update` never firing for a `WarehouseDelay` checkpoint, confirmed on
+each run by two checks 5-10+ minutes apart.
+
+`journey event list --account 1622356` (71 rows) has no account-specific event
+mapping `WarehouseDelay`/`Exception` onto `onDeliveryStatus` — only the global
+wildcard "All events" (id 15308, `account: 1`) covers that slot, and it is not
+wired into the relevant trigger. The "Delay Update" messageType (33912,
+message 75557) is `releaseStatus: published` / `hasReleasedVersion: true` /
+`active: true` on `en` — ruling out message release before it's even
+considered. Its journey (`Standard Delivery Notifications`, config 15958)
+trigger 52398 ("Package delayed in transit") is wired only to global event
+**3808** (`onDelay` slot) — identical wiring shape to 1626102's trigger 54636.
+
+Checked against control **1626718** (Jamie's own account): its account-specific
+event **17372** (`WarehouseDelay`, `Exception` → `onDeliveryStatus`) still
+resolves as of 2026-08-19.
+
+Checkpoints did attach correctly: `track tracking list --account 1622356`
+shows both order `#1005` and order `#1002` at
+`activityMonitorCurrentDeliveryStatus: WarehouseDelay` — so this is the
+trigger-wiring gap, not a missing checkpoint, exactly as on 1626102.
+
+**The rule this adds:** the slot-mismatch gap is not unique to 1626102. Any
+demo-shell account without an account-specific `onDeliveryStatus` event
+mapping for `WarehouseDelay`/`Exception` will silently drop delay comms the
+same way. Check `journey event list --account <id>` for this mapping on
+**any** account before assuming a delay comm's absence is run-specific —
+across the pool seen so far (1622356, 1626102), both instances found the gap,
+none found a working per-account mapping other than 1626718 (which is not a
+demo shell). Not yet written: whether the wider demo-shell pool (1622522,
+1622456) shares the same gap — check before reusing them for a delay-comm
+demo.
+
 ### The same slot mismatch recurred on 1626102 three days later — unfixed accounts re-offend
 
 **Re-proven 2026-08-17**, account 1626102, run `windsor-20260817-0956`. Identical
