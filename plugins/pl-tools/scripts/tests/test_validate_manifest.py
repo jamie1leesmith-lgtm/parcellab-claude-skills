@@ -256,22 +256,6 @@ class TestValidateManifest(unittest.TestCase):
         m["run"]["mode"] = "yolo"
         self.assertTrue(any("run.mode" in e for e in validate(m, pre_gate=True)))
 
-    def test_run_answers_doc_absent_is_valid(self):
-        m = valid_manifest()
-        m["run"].pop("answers_doc", None)
-        self.assertEqual(validate(m, pre_gate=True), [])
-
-    def test_run_answers_doc_string_is_valid(self):
-        m = valid_manifest()
-        m["run"]["answers_doc"] = "/tmp/answers.json"
-        self.assertEqual(validate(m, pre_gate=True), [])
-
-    def test_run_answers_doc_non_string_rejected(self):
-        m = valid_manifest()
-        m["run"]["answers_doc"] = 123
-        self.assertTrue(
-            any("run.answers_doc" in e for e in validate(m, pre_gate=True)))
-
     def test_gate_c_value_must_be_known(self):
         errs = validate(broken(
             lambda m: m["gates"]["order_lifecycle"].update(gate_c="maybe")))

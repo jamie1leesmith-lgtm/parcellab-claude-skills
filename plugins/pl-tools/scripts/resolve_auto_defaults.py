@@ -1,4 +1,4 @@
-"""Auto-mode resolution: country/category inference and answers-doc merge.
+"""Auto-mode resolution: country/category inference for demo-environment.
 
 Pure functions only — no network, no filesystem — so the demo-environment
 skill's Phase 0 can call these against data it has already scraped, and so
@@ -100,9 +100,9 @@ def infer_category(product_pool):
     return DEFAULT_CATEGORY
 
 
-# Every field auto-mode can resolve without asking, and its non-doc default.
+# Every field auto-mode can resolve without asking, and its default.
 # Q1 (shopify_opp) is deliberately absent: the spec requires it always be
-# asked live, in both modes, never defaulted or doc-supplied. Returns are
+# asked live, in both modes, via the intake questionnaire. Returns are
 # always in scope now (the old Q1/"engage" path was retired), so there is
 # no separate returns-in-scope field for this function to guard at all.
 _STATIC_DEFAULTS = {
@@ -111,19 +111,12 @@ _STATIC_DEFAULTS = {
     "edit_mode_fix": True,
 }
 
-_NEVER_ASK_FIELDS = frozenset({"shopify_opp"})
 
-
-def resolve_auto_fields(prospect_url, product_pool, answers_doc=None):
-    """Merge inferred/default values with an optional answers doc.
-
-    Precedence per field: answers_doc value, if present and known, else the
-    inferred or static default. Unknown doc keys are never applied — they
-    are collected in "_ignored_doc_keys" so the caller can report them
-    (Beat 1), rather than silently dropped or treated as an error.
+def resolve_auto_fields(prospect_url, product_pool):
+    """Values every run resolves without asking, once the scrape's product
+    pool exists — category joins country/region/pace here now that it is
+    never a live question either, in any mode.
     """
-    doc = {k: v for k, v in (answers_doc or {}).items() if k not in _NEVER_ASK_FIELDS}
-
     country = infer_country(prospect_url, product_pool)
     category = infer_category(product_pool)
 
@@ -135,14 +128,6 @@ def resolve_auto_fields(prospect_url, product_pool, answers_doc=None):
     for key, value in _STATIC_DEFAULTS.items():
         fields[key] = {"value": value, "source": "default"}
 
-    ignored = []
-    for key, value in doc.items():
-        if key in fields:
-            fields[key] = {"value": value, "source": "doc"}
-        else:
-            ignored.append(key)
-
-    fields["_ignored_doc_keys"] = sorted(ignored)
     return fields
 
 
@@ -153,8 +138,6 @@ def main():
     ap.add_argument("--prospect-url", required=True)
     ap.add_argument("--product-pool-file", required=True,
                      help="path to scrape/product-pool.json")
-    ap.add_argument("--answers-doc-file", default=None,
-                     help="optional path to an auto-mode answers doc")
     args = ap.parse_args()
 
     try:
@@ -162,10 +145,7 @@ def main():
         # scrape/product-pool.json may be a bare list or {"products": [...]}
         # — inline_assets.py already accepts both shapes; match that here.
         pool = pool if isinstance(pool, list) else pool["products"]
-        answers = None
-        if args.answers_doc_file:
-            answers = json.loads(Path(args.answers_doc_file).read_text())
-        print(json.dumps(resolve_auto_fields(args.prospect_url, pool, answers), indent=2))
+        print(json.dumps(resolve_auto_fields(args.prospect_url, pool), indent=2))
     except (ValueError, OSError) as exc:
         print(f"resolve_auto_defaults: {exc}", file=sys.stderr)
         sys.exit(1)
