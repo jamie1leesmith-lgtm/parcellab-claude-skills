@@ -111,6 +111,14 @@ class ParseAnswersTests(unittest.TestCase):
             riq.parse_answers(_valid_answers(
                 order_matrix=[{"label": "#1", "fraud": "low", "scenario": "nonsense"}]))
 
+    def test_rejects_non_object_top_level_json(self):
+        with self.assertRaises(ValueError):
+            riq.parse_answers('"just a string"')
+
+    def test_rejects_non_object_order_matrix_row(self):
+        with self.assertRaises(ValueError):
+            riq.parse_answers(_valid_answers(order_matrix=["not-a-dict"]))
+
 
 class CliTests(unittest.TestCase):
     def _script_path(self):

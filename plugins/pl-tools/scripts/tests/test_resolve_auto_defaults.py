@@ -116,7 +116,7 @@ class ResolveAutoFieldsTests(unittest.TestCase):
             result["gates.order_lifecycle.gate_c"], {"value": "send-as-is", "source": "default"}
         )
 
-    def test_never_ask_fields_absent(self):
+    def test_shopify_opp_is_never_in_resolved_fields(self):
         result = resolve_auto_fields(self.url, self.pool)
         self.assertNotIn("shopify_opp", result)
 

@@ -24,7 +24,7 @@ about that; every run is either **retain** or **retain-shopify**.
 ### The default order matrix
 
 The questionnaire pre-fills this; the operator edits from it. 1–5 orders,
-default 3.
+default 5 (every row starts checked; uncheck rows to reduce the count).
 
 | Order | Fraud | Scenario |
 |---|---|---|

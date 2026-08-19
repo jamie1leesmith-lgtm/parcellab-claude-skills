@@ -20,8 +20,8 @@ defining its contract).
 
 ## Paths
 
-Ask **"Is this a Shopify opp?"** first — the only path question now, since
-returns are always in scope for this demo.
+The questionnaire's first field is **"Is this a Shopify opp?"** — the only
+path question, since returns are always in scope for this demo.
 - No → **retain** path.
 - Yes → **retain-shopify** path.
 
@@ -72,16 +72,6 @@ config is always `selected_account_config_id: null`, `config_source:
 into the manifest exactly where its question already writes it — Phase
 1–4 and `validate_manifest.py` do not distinguish an auto-resolved field
 from a human-answered one.
-
-Q6's resolved value (`resolve_auto_defaults.py`'s `edit_mode_fix`
-output) is not itself a manifest field — there is no `edit_mode_fix`
-slot to write. It is an internal signal that drives the edit-mode-guard
-fix *action* directly: when true, run the same fix Phase 0 step 4
-offers in babysit mode. That action's outcome is what populates
-`account.edit_mode_verified`, exactly as babysit mode's own Q6 answer
-does — the auto-resolved value and a human "Fix it" answer both flow
-into the same existing field through the same action, not through two
-different write paths.
 
 **Both hard gates are auto-approved in auto mode**: at ★ (Phase 0 step
 8), accept the pre-built template HTML as-is — no screenshot
@@ -346,8 +336,9 @@ URL that stopped updating.
      left to gate it on, but the resolved name is still stated in Beat 1 so
      it stays visible after the fact. Verify
      `parcellab settings edit-mode show` says `account-restricted` for that
-     same account, offering the fix if not (Q6). In the same round, check
-     write permissions per *Write permissions* above (Q7 if something is
+     same account, offering the fix if not (the edit-mode guard check
+     above). In the same round, check write permissions per *Write
+     permissions* above (the write-permissions check above, if something is
      missing) — a missing rule is cheap to fix here and stalls the run
      mid-build if it surfaces after the gate.
    - **CDC config (every run):** always write
@@ -505,7 +496,7 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    the order/scenario/fraud matrix with expected comm per event (mark
    unproven items) · CDC region/category/config source ·
    `CDC synthetic generation: off` (a fixed line, never a question) ·
-   **every extra agreed at Q4, field by field with its actual value** —
+   **every extra agreed on the questionnaire, field by field with its actual value** —
    including each auto-derived article weight listed per article, because an
    auto-derived value the user never saw is worse than one they rejected ·
    the account by name. One explicit yes
@@ -796,11 +787,8 @@ orders were submitted for linking, and the config source (say "caller's
 default config" when `config_source` is `none`). No currency symbols.
 **In auto mode, Beat 1 also lists every auto-resolved field** — one
 line per field from `resolve_auto_defaults.py`'s output, showing its
-value and source (`default` | `inferred` | `doc`), in the same
-plan-card list style as the rest of Beat 1. Any answers-doc key that
-did not match a known field (`resolve_auto_fields`'s
-`_ignored_doc_keys`) is listed once here as ignored — not an error,
-not a blocker.
+value and source (`default` | `inferred`), in the same plan-card list
+style as the rest of Beat 1.
 Once Beat 1 is posted: record it via `run_state.py` — `mark(d, "gate", "beat1", "end")`, which is where `Duration to build` ends — re-render with `render_run_page.py <run dir>` and republish — non-fatal.
 Update the telemetry row (stage `beat1`) with the build results, if
 `results/telemetry.json` exists.

@@ -168,6 +168,9 @@ def parse_answers(raw_json):
     except json.JSONDecodeError as exc:
         raise ValueError(f"not valid JSON: {exc}") from exc
 
+    if not isinstance(data, dict):
+        raise ValueError("answers must be a JSON object")
+
     required = {"shopify_opp", "reuse_pool", "order_matrix", "gate_c", "mode"}
     missing = required - set(data)
     if missing:
@@ -189,6 +192,8 @@ def parse_answers(raw_json):
     if not isinstance(matrix, list) or not matrix:
         raise ValueError("order_matrix must be a non-empty list")
     for row in matrix:
+        if not isinstance(row, dict):
+            raise ValueError(f"order_matrix row {row!r} must be an object")
         if row.get("fraud") not in FRAUD_LEVELS:
             raise ValueError(f"order_matrix row {row!r} has an invalid fraud level")
         if row.get("scenario") not in SCENARIOS:

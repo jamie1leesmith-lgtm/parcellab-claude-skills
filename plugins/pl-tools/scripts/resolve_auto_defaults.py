@@ -100,7 +100,7 @@ def infer_category(product_pool):
     return DEFAULT_CATEGORY
 
 
-# Every field auto-mode can resolve without asking, and its non-doc default.
+# Every field auto-mode can resolve without asking, and its default.
 # Q1 (shopify_opp) is deliberately absent: the spec requires it always be
 # asked live, in both modes, via the intake questionnaire. Returns are
 # always in scope now (the old Q1/"engage" path was retired), so there is
