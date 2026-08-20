@@ -1334,6 +1334,7 @@
     // Re-rendering while the operator is mid-note would wipe what they typed.
     if (card.dataset.gate === name && card.innerHTML) return;
     card.dataset.gate = name;
+    card.classList.remove('hidden');
     const copy = GATE_COPY[name];
     card.innerHTML = `
       <div class="rounded-lg border-2 bg-white p-5 shadow-sm" style="border-color: var(--brand)">
