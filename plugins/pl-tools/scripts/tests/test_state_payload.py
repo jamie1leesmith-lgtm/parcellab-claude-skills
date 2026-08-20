@@ -244,6 +244,97 @@ class TestStatePayload(unittest.TestCase):
         self.assertEqual(state_payload.build(self.dir)["gates"]["plan"],
                          "pending")
 
+    MANIFEST = {
+        "brand": {"region": "UK", "category": "Electronics"},
+        "account": {"id": 1626718, "name": "Demo - JLS"},
+        "cdc": {"config_source": "none", "generate_orders": False,
+                "orders": []},
+        "products": [
+            {"id": "h100", "name": "Beoplay H100",
+             "product_type": "Over-Ear Headphones", "price": "1500.00"},
+            {"id": "a5", "name": "Beosound A5",
+             "product_type": "Portable Home Speaker", "price": "1400.00"},
+            {"id": "ex", "name": "Beosound Explore",
+             "product_type": "Outdoor Speaker", "price": "219.00"},
+            {"id": "el", "name": "Beoplay Eleven",
+             "product_type": "Wireless Earbuds", "price": "429.00"},
+        ],
+        "selection": {"core4": ["h100", "a5", "ex", "el"],
+                      "shopify_extra": []},
+        "orders": [{
+            "label": "fraud-low", "fraud_level": "low",
+            "cdc_slot": "fraud_low",
+            "customer": {"name": "James Wilson",
+                         "email": "james@example.com"},
+            "products": ["el"],
+            "shipments": [{"label": "A", "scenario": "happy",
+                           "courier": "dpd-uk",
+                           "events": ["InTransit", "Delivered"]}],
+        }],
+        "gates": {"order_lifecycle": {
+            "gate_c": "extras",
+            "extras": {"article_weights": {
+                "el": {"weight": 0.4, "weight_unit": "kg"}}}}},
+    }
+
+    def write_manifest(self):
+        (self.dir / "demo-manifest.json").write_text(
+            json.dumps(self.MANIFEST))
+
+    def test_plan_detail_is_none_before_the_gate_opens(self):
+        self.write_manifest()
+        self.assertIsNone(state_payload.build(self.dir)["detail"]["plan"])
+
+    def test_plan_detail_appears_when_the_gate_is_open(self):
+        self.write_manifest()
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        plan = state_payload.build(self.dir)["detail"]["plan"]
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["account"], "Demo - JLS")
+
+    def test_plan_core4_resolves_ids_to_products(self):
+        self.write_manifest()
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        core4 = state_payload.build(self.dir)["detail"]["plan"]["core4"]
+        self.assertEqual([p["name"] for p in core4],
+                         ["Beoplay H100", "Beosound A5",
+                          "Beosound Explore", "Beoplay Eleven"])
+        self.assertEqual(core4[0]["product_type"], "Over-Ear Headphones")
+
+    def test_plan_orders_carry_shipments_and_product_names(self):
+        self.write_manifest()
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        orders = state_payload.build(self.dir)["detail"]["plan"]["orders"]
+        self.assertEqual(orders[0]["products"], ["Beoplay Eleven"])
+        self.assertEqual(orders[0]["shipments"][0]["scenario"], "happy")
+        self.assertEqual(orders[0]["shipments"][0]["events"],
+                         ["InTransit", "Delivered"])
+
+    def test_plan_cdc_block_states_generation_is_off(self):
+        self.write_manifest()
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        cdc = state_payload.build(self.dir)["detail"]["plan"]["cdc"]
+        self.assertEqual(cdc["region"], "UK")
+        self.assertEqual(cdc["category"], "Electronics")
+        self.assertEqual(cdc["config_source"], "none")
+        self.assertFalse(cdc["generate_orders"])
+
+    def test_plan_extras_are_flattened_field_by_field(self):
+        """An auto-derived value the operator never saw is worse than one
+        they rejected — so weights are listed per article, not summarised."""
+        self.write_manifest()
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        extras = state_payload.build(self.dir)["detail"]["plan"]["extras"]
+        self.assertEqual(extras["gate_c"], "extras")
+        labels = [row[0] for row in extras["fields"]]
+        self.assertIn("Beoplay Eleven weight", labels)
+        values = dict(extras["fields"])
+        self.assertEqual(values["Beoplay Eleven weight"], "0.4 kg")
+
+    def test_plan_detail_is_none_when_the_manifest_is_unreadable(self):
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        self.assertIsNone(state_payload.build(self.dir)["detail"]["plan"])
+
 
 class TestMissingRunState(unittest.TestCase):
     """A poll must degrade, not raise, when run-state.json is unreadable.

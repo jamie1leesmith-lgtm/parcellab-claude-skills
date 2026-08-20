@@ -187,6 +187,73 @@ def gate_states(state):
             for name in GATE_NAMES}
 
 
+def _plan_detail(manifest, gates):
+    """The plan card's contents, or None until the plan gate opens.
+
+    Gated on the gate rather than on the manifest existing: the manifest is
+    written at Phase 0 step 7, BEFORE the template gate, so keying on the
+    file would show the whole plan while the operator is still being asked
+    about the template. SKILL.md's rule is that ordering comes from the
+    timeline, not from which files happen to exist.
+    """
+    if gates.get("plan") != "open" or not manifest:
+        return None
+
+    products = {p.get("id"): p for p in (manifest.get("products") or [])}
+
+    def named(pid):
+        return (products.get(pid) or {}).get("name") or pid
+
+    selection = manifest.get("selection") or {}
+    core4 = [{"id": pid,
+              "name": named(pid),
+              "product_type": (products.get(pid) or {}).get("product_type"),
+              "price": (products.get(pid) or {}).get("price")}
+             for pid in (selection.get("core4") or [])]
+
+    orders = [{
+        "label": o.get("label"),
+        "customer": o.get("customer") or {},
+        "fraud_level": o.get("fraud_level"),
+        "cdc_slot": o.get("cdc_slot"),
+        "products": [named(p) for p in (o.get("products") or [])],
+        "shipments": [{"label": s.get("label"),
+                       "scenario": s.get("scenario"),
+                       "courier": s.get("courier"),
+                       "events": s.get("events") or []}
+                      for s in (o.get("shipments") or [])],
+    } for o in (manifest.get("orders") or [])]
+
+    brand = manifest.get("brand") or {}
+    cdc = manifest.get("cdc") or {}
+    gate_block = ((manifest.get("gates") or {}).get("order_lifecycle") or {})
+    extras = gate_block.get("extras") or {}
+
+    fields = []
+    for key, value in sorted(extras.items()):
+        if key == "article_weights":
+            # Listed per article, never summarised: the operator has to see
+            # each auto-derived weight to be able to reject it.
+            for pid, entry in sorted((value or {}).items()):
+                entry = entry or {}
+                fields.append((f"{named(pid)} weight",
+                               f"{entry.get('weight')} "
+                               f"{entry.get('weight_unit')}"))
+        else:
+            fields.append((key, value))
+
+    return {
+        "core4": core4,
+        "orders": orders,
+        "cdc": {"region": brand.get("region"),
+                "category": brand.get("category"),
+                "config_source": cdc.get("config_source"),
+                "generate_orders": bool(cdc.get("generate_orders"))},
+        "extras": {"gate_c": gate_block.get("gate_c"), "fields": fields},
+        "account": (manifest.get("account") or {}).get("name"),
+    }
+
+
 def build(run_dir):
     """Return the page's whole data contract for one poll."""
     run_dir = pathlib.Path(run_dir)
@@ -205,9 +272,11 @@ def build(run_dir):
     else:
         phase = "building"
 
+    gates = gate_states(state)
+
     return {
         "phase": phase,
-        "gates": gate_states(state),
+        "gates": gates,
         "run_id": state.get("run_id"),
         "account_name": state.get("account_name"),
         "path": state.get("path"),
@@ -223,5 +292,6 @@ def build(run_dir):
             "template": _template_detail(state, manifest),
             "seed": _seed_detail(run_dir),
             "cdc": _cdc_detail(run_dir, state, manifest),
+            "plan": _plan_detail(manifest, gates),
         },
     }
