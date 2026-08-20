@@ -187,6 +187,29 @@ def gate_states(state):
             for name in GATE_NAMES}
 
 
+def gate_marks(state):
+    """The `at` timestamp of each gate's latest 'asked' mark.
+
+    Kept separate from `gate_states` so the 409 check in `run_server.py`
+    (`states.get(gate) != "open"`) and the payload's `gates` key keep
+    reading exactly the status strings they always have — nothing about
+    that shape changes here.
+
+    This exists for the page's re-render guard: a rejected gate is re-asked
+    under the SAME name (`gate_states` already makes that free — "last mark
+    wins"), so a guard keyed only on the name can't tell a fresh ask from a
+    repeat poll of one it already rendered. Handing over the latest ask's
+    timestamp gives the page a second key to check.
+    """
+    latest = {}
+    for entry in (state.get("timeline") or []):
+        if entry.get("kind") == "gate" and entry.get("phase") == "asked":
+            name = entry.get("name")
+            if name in GATE_NAMES:
+                latest[name] = entry.get("at")
+    return latest
+
+
 def _plan_detail(manifest, gates):
     """The plan card's contents, or None until the plan gate opens.
 
@@ -220,7 +243,13 @@ def _plan_detail(manifest, gates):
         "shipments": [{"label": s.get("label"),
                        "scenario": s.get("scenario"),
                        "courier": s.get("courier"),
-                       "events": s.get("events") or []}
+                       "events": s.get("events") or [],
+                       # validate_manifest.py's confidence labelling
+                       # (unproven_events/unproven_chain) — carried through
+                       # so the plan card can mark them, not just the
+                       # events themselves.
+                       "unproven_events": s.get("unproven_events") or [],
+                       "unproven_chain": bool(s.get("unproven_chain"))}
                       for s in (o.get("shipments") or [])],
     } for o in (manifest.get("orders") or [])]
 
@@ -277,6 +306,11 @@ def build(run_dir):
     return {
         "phase": phase,
         "gates": gates,
+        # The latest 'asked' timestamp per gate — lets the page tell a fresh
+        # re-ask of the same gate apart from a repeat poll of one already
+        # rendered. Never consumed for the open/closed decision itself;
+        # `gates` above remains the single source of truth for that.
+        "gates_at": gate_marks(state),
         "run_id": state.get("run_id"),
         "account_name": state.get("account_name"),
         "path": state.get("path"),

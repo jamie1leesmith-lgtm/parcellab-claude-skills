@@ -217,6 +217,60 @@ class TestStatePayload(unittest.TestCase):
         state = json.loads((self.dir / "run-state.json").read_text())
         self.assertEqual(state_payload.gate_states(state)["template"], "open")
 
+    def test_gate_marks_returns_the_latest_asked_timestamp(self):
+        run_state.mark(str(self.dir), "gate", "template", "asked")
+        state = json.loads((self.dir / "run-state.json").read_text())
+        marks = state_payload.gate_marks(state)
+        self.assertEqual(set(marks), {"template"})
+        self.assertTrue(marks["template"])
+
+    def test_gate_marks_tolerates_a_missing_timeline(self):
+        self.assertEqual(state_payload.gate_marks({}), {})
+
+    def test_a_fresh_ask_after_a_rejection_produces_a_new_mark(self):
+        """A rejected gate is re-asked under the SAME name — gate_states
+        already makes that free ("last mark wins"), which is exactly why
+        the page's re-render guard needs a second signal: `gate_marks`
+        must expose that the re-ask is a genuinely new timeline entry, not
+        just the same status recurring.
+
+        `run_state.mark`'s timestamps have whole-second resolution, so two
+        marks made back-to-back in a fast test run can legitimately share
+        an `at` string. Assert on the count of recorded entries (proof a
+        fresh one was appended) and on which entry `gate_marks` reports,
+        rather than on the strings being unequal — so this cannot flake.
+        """
+        path = self.dir / "run-state.json"
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        first_state = json.loads(path.read_text())
+        first_gate_entries = sum(1 for e in first_state["timeline"]
+                                  if e.get("kind") == "gate")
+
+        run_state.mark(str(self.dir), "gate", "plan", "answered")
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        second_state = json.loads(path.read_text())
+        second_gate_entries = sum(1 for e in second_state["timeline"]
+                                   if e.get("kind") == "gate")
+
+        self.assertGreater(second_gate_entries, first_gate_entries)
+        self.assertEqual(state_payload.gate_states(second_state)["plan"],
+                         "open")
+
+        asked_ats = [e["at"] for e in second_state["timeline"]
+                    if e.get("kind") == "gate" and e.get("name") == "plan"
+                    and e.get("phase") == "asked"]
+        self.assertEqual(len(asked_ats), 2)
+        # The mark handed to the page must track the LATEST ask, not the
+        # first one it ever saw.
+        self.assertEqual(state_payload.gate_marks(second_state)["plan"],
+                         asked_ats[-1])
+
+    def test_build_payload_carries_gates_at(self):
+        run_state.mark(str(self.dir), "gate", "template", "asked")
+        gates_at = state_payload.build(self.dir)["gates_at"]
+        self.assertIn("template", gates_at)
+        self.assertTrue(gates_at["template"])
+
     def test_lane_and_agent_marks_never_affect_gates(self):
         run_state.mark(str(self.dir), "lane", "template", "start")
         run_state.mark(str(self.dir), "agent", "scrape", "start")
@@ -330,6 +384,31 @@ class TestStatePayload(unittest.TestCase):
         self.assertIn("Beoplay Eleven weight", labels)
         values = dict(extras["fields"])
         self.assertEqual(values["Beoplay Eleven weight"], "0.4 kg")
+
+    def test_plan_shipments_carry_unproven_events_and_chain_flag(self):
+        """validate_manifest.py's confidence labelling — a shipment may
+        list events outside the proven set in `unproven_events`, and flag
+        a proven-events-but-unproven-sequence chain via `unproven_chain`.
+        The plan card is documented (SKILL.md) to mark both; it can't if
+        `_plan_detail` drops them on the floor.
+        """
+        manifest = json.loads(json.dumps(self.MANIFEST))  # deep copy
+        manifest["orders"][0]["shipments"][0]["unproven_events"] = ["Delivered"]
+        manifest["orders"][0]["shipments"][0]["unproven_chain"] = True
+        (self.dir / "demo-manifest.json").write_text(json.dumps(manifest))
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        shipment = state_payload.build(
+            self.dir)["detail"]["plan"]["orders"][0]["shipments"][0]
+        self.assertEqual(shipment["unproven_events"], ["Delivered"])
+        self.assertTrue(shipment["unproven_chain"])
+
+    def test_plan_shipments_default_unproven_fields_when_absent(self):
+        self.write_manifest()
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        shipment = state_payload.build(
+            self.dir)["detail"]["plan"]["orders"][0]["shipments"][0]
+        self.assertEqual(shipment["unproven_events"], [])
+        self.assertFalse(shipment["unproven_chain"])
 
     def test_plan_detail_is_none_when_the_manifest_is_unreadable(self):
         run_state.mark(str(self.dir), "gate", "plan", "asked")
