@@ -1261,19 +1261,31 @@
 
   function planTable(plan) {
     if (!plan) return '<p class="text-sm text-gray-400">Plan unavailable.</p>';
+    const thClass = 'py-1 pr-4 text-[10px] font-semibold uppercase text-gray-400';
     const core = (plan.core4 || []).map((p) =>
       `<tr><td class="py-1 pr-4">${escapeHtml(p.name || '')}</td>
            <td class="py-1 pr-4 text-gray-500">${escapeHtml(p.product_type || '')}</td>
            <td class="py-1 text-gray-500">${escapeHtml(p.price || '')}</td></tr>`).join('');
-    const orders = (plan.orders || []).map((o) => (o.shipments || []).map((s, i) =>
-      `<tr><td class="py-1 pr-4">${i === 0 ? escapeHtml(o.label || '') : ''}</td>
+    const orders = (plan.orders || []).map((o) => (o.shipments || []).map((s, i) => {
+      const unproven = new Set(s.unproven_events || []);
+      const eventsHtml = (s.events || []).map((e) => unproven.has(e)
+        ? `<span class="text-amber-600">${escapeHtml(e)}*</span>`
+        : escapeHtml(e)).join(' → ');
+      const chainNote = s.unproven_chain
+        ? ' <span class="text-[10px] font-medium text-amber-600">(unproven sequence)</span>'
+        : '';
+      return `<tr>
+           <td class="py-1 pr-4">${i === 0 ? escapeHtml(o.label || '') : ''}</td>
            <td class="py-1 pr-4">${i === 0 ? escapeHtml((o.customer || {}).name || '') : ''}</td>
            <td class="py-1 pr-4">${i === 0 ? escapeHtml(o.fraud_level || '') : ''}</td>
+           <td class="py-1 pr-4">${i === 0 ? escapeHtml(o.cdc_slot || '') : ''}</td>
+           <td class="py-1 pr-4">${i === 0 ? escapeHtml((o.products || []).join(', ')) : ''}</td>
            <td class="py-1 pr-4">${escapeHtml(s.label || '')}</td>
            <td class="py-1 pr-4">${escapeHtml(s.scenario || '')}</td>
            <td class="py-1 pr-4">${escapeHtml(s.courier || '')}</td>
-           <td class="py-1 text-gray-500">${(s.events || []).map(escapeHtml).join(' → ')}</td>
-       </tr>`).join('')).join('');
+           <td class="py-1 text-gray-500">${eventsHtml}${chainNote}</td>
+       </tr>`;
+    }).join('')).join('');
     const cdc = plan.cdc || {};
     const extras = plan.extras || {};
     const extraRows = (extras.fields || []).map(([label, value]) =>
@@ -1282,11 +1294,35 @@
       <div class="space-y-4 text-sm">
         <div>
           <p class="mb-1 text-xs font-semibold uppercase text-gray-400">Core 4</p>
-          <table class="w-full text-left"><tbody>${core}</tbody></table>
+          <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead><tr>
+              <th class="${thClass}">Product</th>
+              <th class="${thClass}">Type</th>
+              <th class="py-1 text-[10px] font-semibold uppercase text-gray-400">Price</th>
+            </tr></thead>
+            <tbody>${core}</tbody>
+          </table>
+          </div>
         </div>
         <div>
           <p class="mb-1 text-xs font-semibold uppercase text-gray-400">Orders</p>
-          <table class="w-full text-left"><tbody>${orders}</tbody></table>
+          <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead><tr>
+              <th class="${thClass}">Order</th>
+              <th class="${thClass}">Customer</th>
+              <th class="${thClass}">Fraud</th>
+              <th class="${thClass}">CDC slot</th>
+              <th class="${thClass}">Products</th>
+              <th class="${thClass}">Shipment</th>
+              <th class="${thClass}">Scenario</th>
+              <th class="${thClass}">Courier</th>
+              <th class="py-1 text-[10px] font-semibold uppercase text-gray-400">Events</th>
+            </tr></thead>
+            <tbody>${orders}</tbody>
+          </table>
+          </div>
         </div>
         <div>
           <p class="mb-1 text-xs font-semibold uppercase text-gray-400">CDC</p>
@@ -1331,9 +1367,20 @@
       gateSubmitting = false;
       return;
     }
-    // Re-rendering while the operator is mid-note would wipe what they typed.
-    if (card.dataset.gate === name && card.innerHTML) return;
+    // Re-rendering while the operator is mid-note would wipe what they
+    // typed — but only for a poll of the SAME ask. A rejected gate is
+    // re-asked under the same name (gate_states makes that free), so the
+    // guard also keys on the latest ask's timestamp: unchanged name AND
+    // unchanged timestamp is a plain poll (skip it); either changing means
+    // a fresh card (rebuild it, and let the operator submit again).
+    const at = String((payload.gates_at || {})[name] || '');
+    if (card.dataset.gate === name && card.dataset.gateAt === at
+        && card.innerHTML) {
+      return;
+    }
     card.dataset.gate = name;
+    card.dataset.gateAt = at;
+    gateSubmitting = false;
     card.classList.remove('hidden');
     const copy = GATE_COPY[name];
     card.innerHTML = `
@@ -1342,7 +1389,7 @@
         <p class="mb-3 mt-0.5 text-xs text-gray-500">${escapeHtml(copy.blurb)}</p>
         ${name === 'template' ? templatePreview() : planTable((payload.detail || {}).plan)}
         <div id="gate-error" class="mb-2 hidden rounded-md bg-red-50 px-3 py-2 text-xs text-red-700"></div>
-        <div class="flex items-center gap-2">
+        <div id="gate-actions" class="flex items-center gap-2">
           <button type="button" id="gate-approve"
                   class="rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm submit-btn">Approve &amp; continue</button>
           <button type="button" id="gate-reject"
@@ -1391,7 +1438,17 @@
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
     }).then((r) => r.json().then((j) => ({ok: r.ok, j}))).then(({ok, j}) => {
-      if (ok) return;                    // next poll clears the card
+      if (ok) {
+        // Stay visible — a later poll (gate no longer open) is what clears
+        // the card, not this response. Just tell the operator it landed.
+        const actions = document.getElementById('gate-actions');
+        if (actions) {
+          actions.textContent = 'Sent — waiting for the run to pick this up…';
+        }
+        const noteWrap = document.getElementById('gate-note-wrap');
+        if (noteWrap) noteWrap.classList.add('hidden');
+        return;
+      }
       throw new Error(j.error || 'could not send');
     }).catch((err) => {
       gateSubmitting = false;
