@@ -19,6 +19,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import approval_schema
 import intake_schema
 import pl_brand
 import state_payload
@@ -27,6 +28,9 @@ DEFAULT_PORT = 8097          # 8098 belongs to branded-template's layout-preview
 TEMPLATE = pathlib.Path(__file__).resolve().parent / "run_app_template.html"
 MAX_BODY_BYTES = 1 << 20     # an intake payload is a few KB; refuse anything wild
 REQUEST_TIMEOUT = 30         # seconds a connection may sit idle before we drop it
+APPROVAL_FILES = {"template": "template-approval.json",
+                  "plan": "plan-approval.json"}
+TEMPLATE_PREVIEW_FILE = "template-preview.html"
 
 
 def _context_json(context):
@@ -145,34 +149,71 @@ def make_handler(run_dir, context):
                            "text/html; charset=utf-8")
             elif path == "/state":
                 self._send_json(200, state_payload.build(run_dir))
+            elif path == "/template.html":
+                self._serve_template_preview()
             else:
                 self._send_json(404, {"ok": False, "error": "not found"})
 
+        def _serve_template_preview(self):
+            """The built layout, copied into the run dir by the conductor.
+
+            A fixed filename inside run_dir — no path parameter, so there is
+            no traversal surface. Served here rather than iframed from the
+            layout-preview server on 8098 because the run page must not
+            depend on a second server being alive.
+            """
+            preview = run_dir / TEMPLATE_PREVIEW_FILE
+            try:
+                body = preview.read_bytes()
+            except OSError:
+                self._send_json(404, {"ok": False,
+                                      "error": "no template preview yet"})
+                return
+            self._send(200, body, "text/html; charset=utf-8")
+
         def _post(self):
-            if self.path.split("?", 1)[0] != "/submit":
+            path = self.path.split("?", 1)[0]
+            gate = None
+            if path.startswith("/approve/"):
+                gate = path[len("/approve/"):]
+                if gate not in APPROVAL_FILES:
+                    self._send_json(404, {"ok": False, "error": "not found"})
+                    return
+            elif path != "/submit":
                 self._send_json(404, {"ok": False, "error": "not found"})
                 return
 
+            raw = self._read_body()
+            if raw is None:
+                return          # _read_body already answered or closed
+
+            if gate is None:
+                self._handle_submit(raw)
+            else:
+                self._handle_approval(gate, raw)
+
+        def _read_body(self):
+            """The request body, or None when it has already been answered."""
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except (TypeError, ValueError):
                 self._send_json(400, {"ok": False,
                                       "error": "invalid Content-Length"})
-                return
+                return None
             if length > MAX_BODY_BYTES:
                 self._send_json(400, {"ok": False,
                                       "error": "payload too large"})
-                return
+                return None
             try:
-                raw = self.rfile.read(length).decode("utf-8", "replace")
+                return self.rfile.read(length).decode("utf-8", "replace")
             except TimeoutError:
                 # The client declared more bytes than it ever sent. Close
                 # rather than hang this thread on a body that will never
-                # arrive; ThreadingHTTPServer means other requests are
-                # unaffected either way, but this thread should not leak.
+                # arrive.
                 self.close_connection = True
-                return
+                return None
 
+        def _handle_submit(self, raw):
             try:
                 answers = intake_schema.parse_answers(raw)
             except ValueError as exc:
@@ -191,11 +232,42 @@ def make_handler(run_dir, context):
             # fixed temp path could interleave and publish a torn document —
             # the rename is atomic, but only over whichever bytes happen to
             # be in the file at replace() time.
-            target = run_dir / "intake.json"
-            tmp = target.with_name(
-                f"intake.json.{os.getpid()}.{threading.get_ident()}.tmp")
+            self._write_sentinel("intake.json", answers)
+            self._send_json(200, {"ok": True})
+
+        def _handle_approval(self, gate, raw):
+            # 409 rather than 400: the body may be perfectly valid, it is the
+            # gate that is not accepting answers. Stops a stale browser tab
+            # answering a gate already resolved in chat via the fallback.
+            states = state_payload.gate_states(
+                state_payload.load_state(run_dir))
+            if states.get(gate) != "open":
+                self._send_json(409, {
+                    "ok": False,
+                    "error": f"gate {gate!r} is not open for approval"})
+                return
             try:
-                tmp.write_text(json.dumps(answers, indent=2))
+                decision = approval_schema.parse_decision(raw)
+            except ValueError as exc:
+                self._send_json(400, {"ok": False, "error": str(exc)})
+                return
+            self._write_sentinel(APPROVAL_FILES[gate], decision)
+            self._send_json(200, {"ok": True})
+
+        def _write_sentinel(self, name, payload):
+            """Atomic publish of a file whose existence is a signal.
+
+            Unique temp name per request (pid + thread id), never a fixed
+            ".tmp": the server is threaded, so two concurrent writes sharing
+            one temp path could interleave and publish a torn document — the
+            rename is atomic, but only over whichever bytes are in the file
+            at replace() time.
+            """
+            target = run_dir / name
+            tmp = target.with_name(
+                f"{name}.{os.getpid()}.{threading.get_ident()}.tmp")
+            try:
+                tmp.write_text(json.dumps(payload, indent=2))
                 tmp.replace(target)
             except OSError:
                 # Clean up the partial temp file, then let it propagate: the
@@ -204,7 +276,6 @@ def make_handler(run_dir, context):
                 # than dropping the connection.
                 tmp.unlink(missing_ok=True)
                 raise
-            self._send_json(200, {"ok": True})
 
     return Handler
 

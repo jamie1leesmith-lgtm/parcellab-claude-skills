@@ -23,7 +23,7 @@ def _read_json(path):
         return None
 
 
-def _load_state(run_dir):
+def load_state(run_dir):
     """The run state, or an empty dict if it cannot be read.
 
     `run-state.json` is written by `run_state.init()` before the server
@@ -37,6 +37,9 @@ def _load_state(run_dir):
         return run_state.load(str(run_dir))
     except (OSError, ValueError):
         return {}
+
+
+_load_state = load_state          # existing internal callers
 
 
 def _scrape_detail(run_dir):
@@ -187,7 +190,7 @@ def gate_states(state):
 def build(run_dir):
     """Return the page's whole data contract for one poll."""
     run_dir = pathlib.Path(run_dir)
-    state = _load_state(run_dir)
+    state = load_state(run_dir)
     manifest = _read_json(run_dir / "demo-manifest.json")
 
     # The file is the flag: the conductor writes intake.json on a valid
