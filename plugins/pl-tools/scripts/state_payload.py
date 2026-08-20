@@ -157,6 +157,33 @@ def _orders_with_fraud_level(state, manifest):
     return result
 
 
+GATE_NAMES = ("template", "plan")
+
+
+def gate_states(state):
+    """Which gates are waiting on the operator, derived from the timeline.
+
+    Derived rather than stored so the `mark(gate, ..., "asked")` calls the
+    conductor already makes ARE the trigger — there is no second field to
+    forget to set. That failure mode is not hypothetical: SKILL.md documented
+    `mark` while the run page's lane pills read `set_lane`, so every real run
+    left its pills on "pending" while the tests stayed green.
+
+    Last mark wins, which makes re-asking a rejected gate free: mark `asked`
+    again and the gate is open again, no state to reset.
+    """
+    latest = {}
+    for entry in (state.get("timeline") or []):
+        if entry.get("kind") != "gate":
+            continue
+        name = entry.get("name")
+        if name in GATE_NAMES and entry.get("phase") in ("asked", "answered"):
+            latest[name] = entry["phase"]
+    return {name: {"asked": "open", "answered": "answered"}.get(
+                latest.get(name), "pending")
+            for name in GATE_NAMES}
+
+
 def build(run_dir):
     """Return the page's whole data contract for one poll."""
     run_dir = pathlib.Path(run_dir)
@@ -177,6 +204,7 @@ def build(run_dir):
 
     return {
         "phase": phase,
+        "gates": gate_states(state),
         "run_id": state.get("run_id"),
         "account_name": state.get("account_name"),
         "path": state.get("path"),

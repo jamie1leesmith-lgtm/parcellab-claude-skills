@@ -193,6 +193,57 @@ class TestStatePayload(unittest.TestCase):
         self.assertIsNone(payload["orders"][0]["fraud_level"])
         self.assertEqual(payload["run_id"], "pccomponentes-20260819-1546")
 
+    def test_gate_states_default_to_pending(self):
+        gates = state_payload.gate_states(
+            json.loads((self.dir / "run-state.json").read_text()))
+        self.assertEqual(gates, {"template": "pending", "plan": "pending"})
+
+    def test_asked_without_answered_is_open(self):
+        run_state.mark(str(self.dir), "gate", "template", "asked")
+        state = json.loads((self.dir / "run-state.json").read_text())
+        self.assertEqual(state_payload.gate_states(state)["template"], "open")
+        self.assertEqual(state_payload.gate_states(state)["plan"], "pending")
+
+    def test_asked_then_answered_is_answered(self):
+        run_state.mark(str(self.dir), "gate", "plan", "asked")
+        run_state.mark(str(self.dir), "gate", "plan", "answered")
+        state = json.loads((self.dir / "run-state.json").read_text())
+        self.assertEqual(state_payload.gate_states(state)["plan"], "answered")
+
+    def test_re_asking_after_an_answer_reopens_the_gate(self):
+        """A rejected gate is re-asked: last mark wins, so it is open again."""
+        for phase in ("asked", "answered", "asked"):
+            run_state.mark(str(self.dir), "gate", "template", phase)
+        state = json.loads((self.dir / "run-state.json").read_text())
+        self.assertEqual(state_payload.gate_states(state)["template"], "open")
+
+    def test_lane_and_agent_marks_never_affect_gates(self):
+        run_state.mark(str(self.dir), "lane", "template", "start")
+        run_state.mark(str(self.dir), "agent", "scrape", "start")
+        gates = state_payload.gate_states(
+            json.loads((self.dir / "run-state.json").read_text()))
+        self.assertEqual(gates, {"template": "pending", "plan": "pending"})
+
+    def test_build_payload_carries_gates(self):
+        run_state.mark(str(self.dir), "gate", "template", "asked")
+        self.assertEqual(state_payload.build(self.dir)["gates"]["template"],
+                         "open")
+
+    def test_gate_states_tolerates_a_missing_timeline(self):
+        self.assertEqual(state_payload.gate_states({}),
+                         {"template": "pending", "plan": "pending"})
+
+    def test_plan_gate_stays_pending_when_only_the_manifest_exists(self):
+        """The manifest exists from Phase 0 step 7 — before the plan gate.
+
+        Keying the plan card on the manifest would leak the whole plan while
+        the operator is still being asked about the template.
+        """
+        (self.dir / "demo-manifest.json").write_text(json.dumps(
+            {"brand": {"name": "Brand"}}))
+        self.assertEqual(state_payload.build(self.dir)["gates"]["plan"],
+                         "pending")
+
 
 class TestMissingRunState(unittest.TestCase):
     """A poll must degrade, not raise, when run-state.json is unreadable.
