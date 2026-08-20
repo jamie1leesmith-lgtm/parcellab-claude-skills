@@ -109,15 +109,18 @@ into the manifest exactly where its question already writes it — Phase
 from a human-answered one.
 
 **Both hard gates are auto-approved in auto mode**: at ★ (Phase 0 step
-8), accept the pre-built template HTML as-is — no screenshot
-round-trip, no chat question. At ✋ (Phase 0 step 9), once
+8), accept the pre-built template HTML as-is — no page gate is opened,
+no chat question. At ✋ (Phase 0 step 9), once
 `validate_manifest.py --pre-gate` passes, treat the plan as approved
-without a chat round-trip. The `mark(d, "gate", ...)` calls still fire
-exactly as documented above, `asked` immediately followed by
-`answered` — telemetry and the run page see no difference from a fast
-human yes. A gate whose underlying artifact failed to render or
-validate is never auto-approved — that becomes a blocker (below), not
-a silent skip.
+without opening a page gate or a chat round-trip. Write both
+`<run dir>/template-approval.json` and `<run dir>/plan-approval.json`
+directly (`{"decision": "approved", "note": null, "at": "<ISO8601 UTC>"}`)
+rather than waiting on a human to post them, and still call
+`mark(d, "gate", "<name>", "asked")` immediately followed by
+`mark(d, "gate", "<name>", "answered")` for each — telemetry and the run
+page see no difference from a fast human yes. A gate whose underlying
+artifact failed to render or validate is never auto-approved — that
+becomes a blocker (below), not a silent skip.
 
 ## Write permissions — settle these BEFORE the gate
 
@@ -570,23 +573,50 @@ quiet rather than needing to be removed.
    once `mark(d, "gate", "plan", "asked")` is in the timeline, so state 2b
    below still shows the template and swatches alone. Ordering is enforced by
    the timeline, not by which files happen to exist.
-8. ★ **Show the template and get it approved — before anything else is
-   proposed.** The HTML exists on disk from step 6, so serve it and put it in
-   front of the user now: follow branded-template Step 8 (launch config →
-   `preview_start` → navigate → screenshot), ask *"Does this look right before
-   I push it to parcelLab?"* — `mark(d, "gate", "template", "asked")` as you
-   ask, `"answered"` when they reply — and iterate on the file until they say yes,
-logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`. This
-   is the run's first deliverable and it gates every comm the environment will
-   send, so it is approved on its own, ahead of the plan.
-   - **Serve the actual file before asking.** The preview shown in the Browser
-     pane is the file at
+8. ★ **Gate the template on the run page — before anything else is
+   proposed.** The HTML exists on disk from step 6. Copy it to
+   `<run dir>/template-preview.html` — this is what `GET /template.html`
+   serves and what the gate card embeds; skipping the copy leaves the card
+   pointed at a 404 iframe. Then `mark(d, "gate", "template", "asked")`: the
+   page's next poll of `GET /state` sees `gates.template` go from `pending`
+   to `open` and renders the gate card from that file. Post **one** chat
+   line naming what is waiting (the template) and the link
+   (`run.page_url`) — do not paste the template into chat or narrate its
+   contents; the page already shows it. Then wait for the answer with a
+   tracked background task (`run_in_background: true` — never `nohup`, which
+   loses the tracking this relies on) rather than blocking silently:
+
+   ```bash
+   until [ -f "<run dir>/template-approval.json" ]; do sleep 5; done
+   ```
+
+   Read the file once it appears. `decision: "approved"` →
+   `mark(d, "gate", "template", "answered")` and continue to step 9 — mark
+   this promptly, since the gate card stays on screen, looking unresolved,
+   until the page's next poll sees the answered mark.
+   `decision: "changes_requested"` → read `note` (the operator's stated
+   reason — the schema requires one, so there is always something to act
+   on), iterate on the file in chat, `rm` the approval file so a stale
+   `approved` cannot be replayed, re-copy the corrected file, `mark(asked)`
+   again, and log the round via `add_deviation(d, "gate_reasked", ...)`.
+   This is the run's first deliverable and it gates every comm the
+   environment will send, so it is approved on its own, ahead of the plan.
+
+   A page gate answered silently is still a gate the operator has to be
+   looking at the page to answer — the chat line is what tells them to
+   look. A conductor that only waits on the file, posting nothing, produces
+   a run that stalls invisibly: the same failure class as the un-armed Beat
+   2 that left a finished environment unverified for 19 minutes live on
+   2026-08-12. One short line per gate is not optional politeness — it is
+   the only thing that makes the wait visible at all.
+   - **Serve the actual file before asking.** The file copied to
+     `<run dir>/template-preview.html` must be
      `$HOME/parcellab-previews/{brand}-parcellab-layout.html`, resolved from
-     the manifest's brand or the run id's handle — make sure that file is
-     current before `preview_start`/`navigate`. Asking for approval against a
+     the manifest's brand or the run id's handle, taken fresh — make sure
+     that file is current before copying it. Asking for approval against a
      stale file is the defect this ordering exists to prevent.
-   - **Hold the run page here.** It shows a template-only state — the preview
-     swatches, and nothing downstream — because the plan card only appears
+   - **Hold the run page here.** It shows a template-only state — the
+     gate card, and nothing downstream — because the plan card only appears
      once `mark(d, "gate", "plan", "asked")` is in the timeline (below), and
      that has not happened yet at this step. Do not front-run it by writing
      the plan into the manifest early: putting detail on screen that the user
@@ -597,19 +627,38 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
      preview and `results/branded-template.json` already exists.
    - **Approval here covers the push.** Phase 1's branded-template run does not
      ask again; its own Step 8 checkpoint is already satisfied.
+   - **If the server is not running**, fall back to today's chat-only path:
+     follow branded-template Step 8 (launch config → `preview_start` →
+     navigate → screenshot) in the Browser pane, ask *"Does this look right
+     before I push it to parcelLab?"*, and still mark `asked`/`answered`
+     around the exchange. The page has never been load-bearing.
 9. **Propose the plan** and gate on approval (✋ — the sends gate;
    one yes releases the sends, and nothing before this step has *sent
    anything to* parcelLab, Shopify or the CDC — the only prior calls are
    read-only lookups plus the edit-mode guard).
 
-   **The plan is shown on the run page, not typed into the question.** Mark
-   the gate asked (below) — the page's own next poll of `GET /state` then
-   shows the plan card, rendering every item below from the manifest written
-   at step 7, with nothing further for the conductor to do. Then ask in chat
-   for a short approve-or-change, and link the page (`run.page_url`). A plan
-   pasted into an AskUserQuestion option label is unreadable, and it was
-   pasted there on 2026-08-12 *because* the page of the time could not show
-   it — a page that renders itself is what makes the short question honest.
+   **The plan lives on the run page, not in the question.** `mark(d, "gate",
+   "plan", "asked")` is the whole act of posing it: the page's own next poll
+   of `GET /state` sees `gates.plan` go to `open` and renders the plan card
+   from the manifest written at step 7, with nothing further for the
+   conductor to build or send. Never paste the plan into chat, and never put
+   it in an `AskUserQuestion` option label — that happened on 2026-08-12
+   *because* the page of the time could not show it, was logged as an
+   `instruction_unfollowable` deviation, and is exactly the defect this gate
+   now exists to remove. Post **one** short chat line naming that the plan is
+   waiting for review plus the link (`run.page_url`), then wait for the
+   answer with a tracked background task (`run_in_background: true` — never
+   `nohup`, which loses the tracking this relies on):
+
+   ```bash
+   until [ -f "<run dir>/plan-approval.json" ]; do sleep 5; done
+   ```
+
+   The one chat line still matters even though the plan itself is on the
+   page: a conductor that only waits on the file, saying nothing, produces a
+   run that stalls invisibly while the operator isn't looking — the same
+   failure class as the un-armed Beat 2 that left a finished environment
+   unverified for 19 minutes live on 2026-08-12.
 
    The page's plan card covers:
    core 4 (four distinct product types) · per-order product distribution ·
@@ -620,22 +669,25 @@ logging each round beyond the first via `add_deviation(d, "gate_reasked", ...)`.
    **every extra agreed on the questionnaire, field by field with its actual value** —
    including each auto-derived article weight listed per article, because an
    auto-derived value the user never saw is worse than one they rejected ·
-   the account by name. One explicit yes
-   covers all of it; any tweak loops back here. When the gate opens: record it
-   via `run_state.py` — `mark(d, "gate", "plan", "asked")` as you pose it, and
-   again on every re-ask (also `add_deviation(d, "gate_reasked", ...)` each
-   time, per *Deviation logging* above). That call is the whole instruction —
-   the page picks it up on its own within two seconds.
+   the account by name. One explicit yes covers all of it; any tweak loops
+   back here: read `note` from `plan-approval.json` on
+   `decision: "changes_requested"` (the schema requires a note, so there is
+   always a reason to act on), iterate in chat, `rm` the approval file,
+   `mark(d, "gate", "plan", "asked")` again, and log the round via
+   `add_deviation(d, "gate_reasked", ...)` (per *Deviation logging* above).
 
    **If the server is not running, the plan still has to be readable** — post
    it in chat as a markdown table then, and say the page is unavailable (the
    same fallback posture as Phase 0 step 2). The page being non-fatal never
    means the user approves something unseen.
 
-   **Once approved**, do these four things before any build work starts:
+   **Once approved** (`decision: "approved"` in `plan-approval.json`), do
+   these four things before any build work starts:
 
    1. `mark(d, "gate", "plan", "answered")` at the moment the yes arrives —
-      this is where `Duration to build` starts.
+      this is where `Duration to build` starts, and doing it promptly matters:
+      the gate card stays on screen until the page's next poll sees this mark,
+      so a delay here reads to the operator as an unhandled approval.
    2. Re-validate **without** `--pre-gate` (the approval stamp exists now):
       `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/validate_manifest.py <run>/demo-manifest.json`.
    3. No render step — the page already shows the updated state on its next

@@ -42,6 +42,12 @@ class TestRenderPage(unittest.TestCase):
             self.dir, {"prospect_name": "</script><script>alert(1)"})
         self.assertNotIn("</script><script>alert(1)", html)
 
+    def test_page_has_a_gate_card_container(self):
+        html = run_server.render_page(self.dir, {"prospect_name": "Brand"})
+        self.assertIn('id="gate-card"', html)
+        self.assertIn("renderGate", html)
+        self.assertIn("/approve/", html)
+
 
 class TestBuildContext(unittest.TestCase):
     def setUp(self):
@@ -386,6 +392,95 @@ class TestBuildingTemplate(unittest.TestCase):
     def test_no_retired_return_scenario_labels(self):
         for retired in ("manual_return", "return_tracking"):
             self.assertNotIn(retired, self.html)
+
+
+class TestApprovalRoutes(ServerTestCase):
+    def open_gate(self, name):
+        run_state.mark(str(self.dir), "gate", name, "asked")
+
+    def test_approving_an_open_gate_writes_the_sentinel(self):
+        self.open_gate("template")
+        status, body = self.post("/approve/template", {"decision": "approved"})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        written = json.loads(
+            (self.dir / "template-approval.json").read_text())
+        self.assertEqual(written["decision"], "approved")
+        self.assertIsNone(written["note"])
+        self.assertTrue(written["at"].endswith("Z"))
+
+    def test_requesting_changes_writes_the_note(self):
+        self.open_gate("plan")
+        status, _ = self.post("/approve/plan", {
+            "decision": "changes_requested", "note": "use UK address"})
+        self.assertEqual(status, 200)
+        written = json.loads((self.dir / "plan-approval.json").read_text())
+        self.assertEqual(written["note"], "use UK address")
+
+    def test_each_gate_writes_its_own_file(self):
+        self.open_gate("template")
+        self.post("/approve/template", {"decision": "approved"})
+        self.assertTrue((self.dir / "template-approval.json").exists())
+        self.assertFalse((self.dir / "plan-approval.json").exists())
+
+    def test_posting_to_a_gate_that_was_never_asked_is_409(self):
+        status, body = self.post("/approve/plan", {"decision": "approved"})
+        self.assertEqual(status, 409)
+        self.assertFalse(body["ok"])
+        self.assertFalse((self.dir / "plan-approval.json").exists())
+
+    def test_posting_to_an_already_answered_gate_is_409(self):
+        """A stale browser tab must not answer a resolved gate."""
+        self.open_gate("template")
+        run_state.mark(str(self.dir), "gate", "template", "answered")
+        status, _ = self.post("/approve/template", {"decision": "approved"})
+        self.assertEqual(status, 409)
+
+    def test_invalid_decision_is_400_and_writes_nothing(self):
+        self.open_gate("template")
+        status, body = self.post("/approve/template", {"decision": "maybe"})
+        self.assertEqual(status, 400)
+        self.assertIn("approved", body["error"])
+        self.assertFalse((self.dir / "template-approval.json").exists())
+
+    def test_changes_without_a_note_is_400(self):
+        self.open_gate("plan")
+        status, body = self.post("/approve/plan",
+                                 {"decision": "changes_requested"})
+        self.assertEqual(status, 400)
+        self.assertIn("note", body["error"])
+
+    def test_unknown_gate_name_is_404(self):
+        status, _ = self.post("/approve/nope", {"decision": "approved"})
+        self.assertEqual(status, 404)
+
+    def test_submit_still_works_after_the_route_refactor(self):
+        status, body = self.post("/submit",
+                                 intake_schema.default_answers(region="US"))
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        self.assertTrue((self.dir / "intake.json").exists())
+
+
+class TestTemplatePreviewRoute(ServerTestCase):
+    def test_serves_the_preview_file(self):
+        (self.dir / "template-preview.html").write_text(
+            "<html><body>preview</body></html>")
+        status, body = self.get("/template.html")
+        self.assertEqual(status, 200)
+        self.assertIn(b"preview", body)
+
+    def test_missing_preview_is_404(self):
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.get("/template.html")
+        self.assertEqual(caught.exception.code, 404)
+
+    def test_preview_is_served_as_html(self):
+        (self.dir / "template-preview.html").write_text("<html></html>")
+        with urllib.request.urlopen(
+                self.url("/template.html"), timeout=5) as response:
+            self.assertIn("text/html",
+                          response.headers.get("Content-Type", ""))
 
 
 if __name__ == "__main__":

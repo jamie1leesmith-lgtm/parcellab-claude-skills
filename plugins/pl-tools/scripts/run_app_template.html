@@ -379,6 +379,8 @@
 
   <section id="phase-building" hidden>
 
+    <div id="gate-card" class="mb-6 hidden"></div>
+
     <div class="live-bar mb-8" id="live-bar"><div class="stripe"></div></div>
 
     <div id="failures-band" class="hidden mb-6 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
@@ -1241,10 +1243,228 @@
     return `updated ${secs}s ago`;
   }
 
+  // ---- Approval gates ----
+  let gateSubmitting = false;
+
+  const GATE_COPY = {
+    template: {
+      title: 'Template ready for review',
+      blurb: 'This is the branded layout that every comm in this run will '
+           + 'use. Approve it and it gets pushed and published.',
+    },
+    plan: {
+      title: 'Plan ready for review',
+      blurb: 'One yes covers all of it. Nothing has been sent to parcelLab '
+           + 'yet.',
+    },
+  };
+
+  function planTable(plan) {
+    if (!plan) return '<p class="text-sm text-gray-400">Plan unavailable.</p>';
+    const thClass = 'py-1 pr-4 text-[10px] font-semibold uppercase text-gray-400';
+    const core = (plan.core4 || []).map((p) =>
+      `<tr><td class="py-1 pr-4">${escapeHtml(p.name || '')}</td>
+           <td class="py-1 pr-4 text-gray-500">${escapeHtml(p.product_type || '')}</td>
+           <td class="py-1 text-gray-500">${escapeHtml(p.price || '')}</td></tr>`).join('');
+    const orders = (plan.orders || []).map((o) => (o.shipments || []).map((s, i) => {
+      const unproven = new Set(s.unproven_events || []);
+      const eventsHtml = (s.events || []).map((e) => unproven.has(e)
+        ? `<span class="text-amber-600">${escapeHtml(e)}*</span>`
+        : escapeHtml(e)).join(' → ');
+      const chainNote = s.unproven_chain
+        ? ' <span class="text-[10px] font-medium text-amber-600">(unproven sequence)</span>'
+        : '';
+      return `<tr>
+           <td class="py-1 pr-4">${i === 0 ? escapeHtml(o.label || '') : ''}</td>
+           <td class="py-1 pr-4">${i === 0 ? escapeHtml((o.customer || {}).name || '') : ''}</td>
+           <td class="py-1 pr-4">${i === 0 ? escapeHtml(o.fraud_level || '') : ''}</td>
+           <td class="py-1 pr-4">${i === 0 ? escapeHtml(o.cdc_slot || '') : ''}</td>
+           <td class="py-1 pr-4">${i === 0 ? escapeHtml((o.products || []).join(', ')) : ''}</td>
+           <td class="py-1 pr-4">${escapeHtml(s.label || '')}</td>
+           <td class="py-1 pr-4">${escapeHtml(s.scenario || '')}</td>
+           <td class="py-1 pr-4">${escapeHtml(s.courier || '')}</td>
+           <td class="py-1 text-gray-500">${eventsHtml}${chainNote}</td>
+       </tr>`;
+    }).join('')).join('');
+    const cdc = plan.cdc || {};
+    const extras = plan.extras || {};
+    const extraRows = (extras.fields || []).map(([label, value]) =>
+      `<li>${escapeHtml(String(label))}: <span class="text-gray-500">${escapeHtml(String(value))}</span></li>`).join('');
+    return `
+      <div class="space-y-4 text-sm">
+        <div>
+          <p class="mb-1 text-xs font-semibold uppercase text-gray-400">Core 4</p>
+          <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead><tr>
+              <th class="${thClass}">Product</th>
+              <th class="${thClass}">Type</th>
+              <th class="py-1 text-[10px] font-semibold uppercase text-gray-400">Price</th>
+            </tr></thead>
+            <tbody>${core}</tbody>
+          </table>
+          </div>
+        </div>
+        <div>
+          <p class="mb-1 text-xs font-semibold uppercase text-gray-400">Orders</p>
+          <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead><tr>
+              <th class="${thClass}">Order</th>
+              <th class="${thClass}">Customer</th>
+              <th class="${thClass}">Fraud</th>
+              <th class="${thClass}">CDC slot</th>
+              <th class="${thClass}">Products</th>
+              <th class="${thClass}">Shipment</th>
+              <th class="${thClass}">Scenario</th>
+              <th class="${thClass}">Courier</th>
+              <th class="py-1 text-[10px] font-semibold uppercase text-gray-400">Events</th>
+            </tr></thead>
+            <tbody>${orders}</tbody>
+          </table>
+          </div>
+        </div>
+        <div>
+          <p class="mb-1 text-xs font-semibold uppercase text-gray-400">CDC</p>
+          <p class="text-gray-600">region ${escapeHtml(cdc.region || '')}
+             · category ${escapeHtml(cdc.category || '')}
+             · config ${escapeHtml(cdc.config_source === 'none' ? "caller's default" : (cdc.config_source || ''))}
+             · synthetic generation: ${cdc.generate_orders ? 'ON' : 'off'}</p>
+        </div>
+        <div>
+          <p class="mb-1 text-xs font-semibold uppercase text-gray-400">Enrichment (${escapeHtml(extras.gate_c || '')})</p>
+          <ul class="list-disc pl-5 text-gray-600">${extraRows || '<li class="list-none text-gray-400">none</li>'}</ul>
+        </div>
+        <p class="text-xs text-gray-400">Account: ${escapeHtml(plan.account || '')}</p>
+      </div>`;
+  }
+
+  function templatePreview() {
+    return `
+      <div class="mb-3">
+        <div class="overflow-hidden rounded-md border border-gray-200 bg-white"
+             style="width: 300px; height: 600px;">
+          <iframe src="/template.html" title="Template preview"
+                  style="width: 600px; height: 1200px; border: 0;
+                         transform: scale(0.5); transform-origin: top left;">
+          </iframe>
+        </div>
+        <a href="/template.html" target="_blank" rel="noopener"
+           class="mt-1.5 inline-block text-xs underline" style="color: var(--brand)">
+          open full size ↗</a>
+      </div>`;
+  }
+
+  function renderGate(payload) {
+    const card = document.getElementById('gate-card');
+    if (!card) return;
+    const gates = payload.gates || {};
+    const name = gates.template === 'open' ? 'template'
+               : gates.plan === 'open' ? 'plan' : null;
+    if (!name) {
+      card.classList.add('hidden');
+      card.innerHTML = '';
+      gateSubmitting = false;
+      return;
+    }
+    // Re-rendering while the operator is mid-note would wipe what they
+    // typed — but only for a poll of the SAME ask. A rejected gate is
+    // re-asked under the same name (gate_states makes that free), so the
+    // guard also keys on the latest ask's timestamp: unchanged name AND
+    // unchanged timestamp is a plain poll (skip it); either changing means
+    // a fresh card (rebuild it, and let the operator submit again).
+    const at = String((payload.gates_at || {})[name] || '');
+    if (card.dataset.gate === name && card.dataset.gateAt === at
+        && card.innerHTML) {
+      return;
+    }
+    card.dataset.gate = name;
+    card.dataset.gateAt = at;
+    gateSubmitting = false;
+    card.classList.remove('hidden');
+    const copy = GATE_COPY[name];
+    card.innerHTML = `
+      <div class="rounded-lg border-2 bg-white p-5 shadow-sm" style="border-color: var(--brand)">
+        <p class="text-sm font-semibold text-gray-900">${escapeHtml(copy.title)}</p>
+        <p class="mb-3 mt-0.5 text-xs text-gray-500">${escapeHtml(copy.blurb)}</p>
+        ${name === 'template' ? templatePreview() : planTable((payload.detail || {}).plan)}
+        <div id="gate-error" class="mb-2 hidden rounded-md bg-red-50 px-3 py-2 text-xs text-red-700"></div>
+        <div id="gate-actions" class="flex items-center gap-2">
+          <button type="button" id="gate-approve"
+                  class="rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm submit-btn">Approve &amp; continue</button>
+          <button type="button" id="gate-reject"
+                  class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">Request changes</button>
+        </div>
+        <div id="gate-note-wrap" class="mt-3 hidden">
+          <textarea id="gate-note" rows="3" placeholder="What needs changing?"
+                    class="block w-full rounded-md border-0 px-3 py-1.5 text-sm text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2"></textarea>
+          <button type="button" id="gate-send"
+                  class="mt-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700">Send</button>
+        </div>
+      </div>`;
+    document.getElementById('gate-approve').onclick =
+      () => sendDecision(name, 'approved', null);
+    document.getElementById('gate-reject').onclick = () => {
+      document.getElementById('gate-note-wrap').classList.remove('hidden');
+      document.getElementById('gate-note').focus();
+    };
+    document.getElementById('gate-send').onclick = () => {
+      const note = document.getElementById('gate-note').value.trim();
+      if (!note) {
+        gateError('Say what needs changing so it can be acted on.');
+        return;
+      }
+      sendDecision(name, 'changes_requested', note);
+    };
+  }
+
+  function gateError(message) {
+    const box = document.getElementById('gate-error');
+    if (!box) return;
+    box.textContent = message;
+    box.classList.remove('hidden');
+  }
+
+  function sendDecision(gate, decision, note) {
+    if (gateSubmitting) return;
+    gateSubmitting = true;
+    ['gate-approve', 'gate-reject', 'gate-send'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = true;
+    });
+    const body = note === null ? {decision} : {decision, note};
+    fetch('/approve/' + gate, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    }).then((r) => r.json().then((j) => ({ok: r.ok, j}))).then(({ok, j}) => {
+      if (ok) {
+        // Stay visible — a later poll (gate no longer open) is what clears
+        // the card, not this response. Just tell the operator it landed.
+        const actions = document.getElementById('gate-actions');
+        if (actions) {
+          actions.textContent = 'Sent — waiting for the run to pick this up…';
+        }
+        const noteWrap = document.getElementById('gate-note-wrap');
+        if (noteWrap) noteWrap.classList.add('hidden');
+        return;
+      }
+      throw new Error(j.error || 'could not send');
+    }).catch((err) => {
+      gateSubmitting = false;
+      ['gate-approve', 'gate-reject', 'gate-send'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = false;
+      });
+      gateError(String(err.message || err));
+    });
+  }
+
   function renderBuilding(payload) {
     if (CTX.prospect_name) {
       document.title = CTX.prospect_name + ' \u2014 parcelLab demo build';
     }
+    renderGate(payload);
     // The business being demoed, not the operator — CTX.prospect_name comes
     // from --prospect-name. account_name is the pL account ("Demo - <person>").
     document.getElementById('build-title').textContent =

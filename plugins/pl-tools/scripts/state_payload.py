@@ -23,7 +23,7 @@ def _read_json(path):
         return None
 
 
-def _load_state(run_dir):
+def load_state(run_dir):
     """The run state, or an empty dict if it cannot be read.
 
     `run-state.json` is written by `run_state.init()` before the server
@@ -37,6 +37,9 @@ def _load_state(run_dir):
         return run_state.load(str(run_dir))
     except (OSError, ValueError):
         return {}
+
+
+_load_state = load_state          # existing internal callers
 
 
 def _scrape_detail(run_dir):
@@ -157,10 +160,133 @@ def _orders_with_fraud_level(state, manifest):
     return result
 
 
+GATE_NAMES = ("template", "plan")
+
+
+def gate_states(state):
+    """Which gates are waiting on the operator, derived from the timeline.
+
+    Derived rather than stored so the `mark(gate, ..., "asked")` calls the
+    conductor already makes ARE the trigger — there is no second field to
+    forget to set. That failure mode is not hypothetical: SKILL.md documented
+    `mark` while the run page's lane pills read `set_lane`, so every real run
+    left its pills on "pending" while the tests stayed green.
+
+    Last mark wins, which makes re-asking a rejected gate free: mark `asked`
+    again and the gate is open again, no state to reset.
+    """
+    latest = {}
+    for entry in (state.get("timeline") or []):
+        if entry.get("kind") != "gate":
+            continue
+        name = entry.get("name")
+        if name in GATE_NAMES and entry.get("phase") in ("asked", "answered"):
+            latest[name] = entry["phase"]
+    return {name: {"asked": "open", "answered": "answered"}.get(
+                latest.get(name), "pending")
+            for name in GATE_NAMES}
+
+
+def gate_marks(state):
+    """The `at` timestamp of each gate's latest 'asked' mark.
+
+    Kept separate from `gate_states` so the 409 check in `run_server.py`
+    (`states.get(gate) != "open"`) and the payload's `gates` key keep
+    reading exactly the status strings they always have — nothing about
+    that shape changes here.
+
+    This exists for the page's re-render guard: a rejected gate is re-asked
+    under the SAME name (`gate_states` already makes that free — "last mark
+    wins"), so a guard keyed only on the name can't tell a fresh ask from a
+    repeat poll of one it already rendered. Handing over the latest ask's
+    timestamp gives the page a second key to check.
+    """
+    latest = {}
+    for entry in (state.get("timeline") or []):
+        if entry.get("kind") == "gate" and entry.get("phase") == "asked":
+            name = entry.get("name")
+            if name in GATE_NAMES:
+                latest[name] = entry.get("at")
+    return latest
+
+
+def _plan_detail(manifest, gates):
+    """The plan card's contents, or None until the plan gate opens.
+
+    Gated on the gate rather than on the manifest existing: the manifest is
+    written at Phase 0 step 7, BEFORE the template gate, so keying on the
+    file would show the whole plan while the operator is still being asked
+    about the template. SKILL.md's rule is that ordering comes from the
+    timeline, not from which files happen to exist.
+    """
+    if gates.get("plan") != "open" or not manifest:
+        return None
+
+    products = {p.get("id"): p for p in (manifest.get("products") or [])}
+
+    def named(pid):
+        return (products.get(pid) or {}).get("name") or pid
+
+    selection = manifest.get("selection") or {}
+    core4 = [{"id": pid,
+              "name": named(pid),
+              "product_type": (products.get(pid) or {}).get("product_type"),
+              "price": (products.get(pid) or {}).get("price")}
+             for pid in (selection.get("core4") or [])]
+
+    orders = [{
+        "label": o.get("label"),
+        "customer": o.get("customer") or {},
+        "fraud_level": o.get("fraud_level"),
+        "cdc_slot": o.get("cdc_slot"),
+        "products": [named(p) for p in (o.get("products") or [])],
+        "shipments": [{"label": s.get("label"),
+                       "scenario": s.get("scenario"),
+                       "courier": s.get("courier"),
+                       "events": s.get("events") or [],
+                       # validate_manifest.py's confidence labelling
+                       # (unproven_events/unproven_chain) — carried through
+                       # so the plan card can mark them, not just the
+                       # events themselves.
+                       "unproven_events": s.get("unproven_events") or [],
+                       "unproven_chain": bool(s.get("unproven_chain"))}
+                      for s in (o.get("shipments") or [])],
+    } for o in (manifest.get("orders") or [])]
+
+    brand = manifest.get("brand") or {}
+    cdc = manifest.get("cdc") or {}
+    gate_block = ((manifest.get("gates") or {}).get("order_lifecycle") or {})
+    extras = gate_block.get("extras") or {}
+
+    fields = []
+    for key, value in sorted(extras.items()):
+        if key == "article_weights":
+            # Listed per article, never summarised: the operator has to see
+            # each auto-derived weight to be able to reject it.
+            for pid, entry in sorted((value or {}).items()):
+                entry = entry or {}
+                fields.append((f"{named(pid)} weight",
+                               f"{entry.get('weight')} "
+                               f"{entry.get('weight_unit')}"))
+        else:
+            fields.append((key, value))
+
+    return {
+        "core4": core4,
+        "orders": orders,
+        "cdc": {"region": brand.get("region"),
+                "category": brand.get("category"),
+                "config_source": cdc.get("config_source"),
+                "generate_orders": bool(cdc.get("generate_orders"))},
+        "extras": {"gate_c": gate_block.get("gate_c"), "fields": fields},
+        "account": (manifest.get("account") or {}).get("name"),
+    }
+
+
 def build(run_dir):
     """Return the page's whole data contract for one poll."""
     run_dir = pathlib.Path(run_dir)
-    state = _load_state(run_dir)
+    state = load_state(run_dir)
     manifest = _read_json(run_dir / "demo-manifest.json")
 
     # The file is the flag: the conductor writes intake.json on a valid
@@ -175,8 +301,16 @@ def build(run_dir):
     else:
         phase = "building"
 
+    gates = gate_states(state)
+
     return {
         "phase": phase,
+        "gates": gates,
+        # The latest 'asked' timestamp per gate — lets the page tell a fresh
+        # re-ask of the same gate apart from a repeat poll of one already
+        # rendered. Never consumed for the open/closed decision itself;
+        # `gates` above remains the single source of truth for that.
+        "gates_at": gate_marks(state),
         "run_id": state.get("run_id"),
         "account_name": state.get("account_name"),
         "path": state.get("path"),
@@ -192,5 +326,6 @@ def build(run_dir):
             "template": _template_detail(state, manifest),
             "seed": _seed_detail(run_dir),
             "cdc": _cdc_detail(run_dir, state, manifest),
+            "plan": _plan_detail(manifest, gates),
         },
     }
