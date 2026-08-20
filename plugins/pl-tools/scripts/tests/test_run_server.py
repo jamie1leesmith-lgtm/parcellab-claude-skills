@@ -42,6 +42,12 @@ class TestRenderPage(unittest.TestCase):
             self.dir, {"prospect_name": "</script><script>alert(1)"})
         self.assertNotIn("</script><script>alert(1)", html)
 
+    def test_page_has_a_gate_card_container(self):
+        html = run_server.render_page(self.dir, {"prospect_name": "Brand"})
+        self.assertIn('id="gate-card"', html)
+        self.assertIn("renderGate", html)
+        self.assertIn("/approve/", html)
+
 
 class TestBuildContext(unittest.TestCase):
     def setUp(self):
