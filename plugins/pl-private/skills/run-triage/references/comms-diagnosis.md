@@ -164,6 +164,35 @@ Before triaging a delay comm on account 1626102, check this ledger first — the
 answer is already here, and the account write that would fix it has not been
 made.
 
+### The 1626102 slot mismatch is now a three-time repeat offender, and it can disguise itself as a "wrong account" message
+
+**Proven 2026-08-20**, account 1626102, run `canyon-20260820-1348`, order `#1098`
+shipment B (`WarehouseDelay`, order-level comm `delay_update`). The row's own
+stated hypothesis — *"message 35988 belongs to a different account (1620732),
+wrong language/type"* — is **disproven**: `journey message list --account
+1626102` shows message **82254** (messageType 35988, `en`, `releaseStatus:
+published`, `hasReleasedVersion: true`) live on **1626102 itself**. The
+confusion is `messageType` (a shared numeric identifier, 35988) vs `message`
+(the account-specific instance carrying that type, 82254) — reading the
+`messageType` id alone and expecting it to name one owning account is the
+trap.
+
+The actual cause is unchanged since 2026-08-14: `journey event list --account
+1626102` is still 63 rows, all global (`account: 1`); trigger **54666**
+"Delivery delayed" (journey config 17475) is still wired only to global event
+**3808** (`onDelay` slot). `WarehouseDelay` checkpoint confirmed attached
+(order `#1098` shipment B reads `activityMonitorCurrentDeliveryStatus:
+WarehouseDelay`). This is the same account, same trigger id, same wiring gap
+as `grailed-20260814-1256` and `windsor-20260817-0956` — a full week later,
+still unremediated.
+
+**The rule this adds:** on account 1626102 specifically, treat any "wrong
+account" or "message doesn't belong here" hypothesis about a delay comm with
+suspicion — check `journey event list --account 1626102` for the known slot
+gap before accepting a different story, because the same numeric
+`messageType` id existing correctly-released on the *right* account is easy to
+misread as evidence of the opposite.
+
 ### A shop not set up to process messages sends nothing, while journey, messages and triggers all read healthy
 
 The whole comms chain can check out — journey `published`, every message

@@ -23,7 +23,11 @@ API call is not a formality; it is the step that pays for the skill.
 
 ## Phase 1 — Sweep
 
-Query the runs database for rows where `Triage status` is `Untriaged`.
+Query the runs database for rows where `Triage status` is `Untriaged` **or
+empty**. Some rows land with the field genuinely `null` instead of the literal
+string — filtering on the string alone silently drops them (two same-day rows
+were missed this way on 2026-08-20). In SQL mode that's
+`WHERE "Triage status" = 'Untriaged' OR "Triage status" IS NULL`.
 
 - Database: `67609211a22643bfaa6bf94ccbd3f391`
 - Data source: `6061c7ca-bbe2-484c-a072-c0a77d9394d3`
