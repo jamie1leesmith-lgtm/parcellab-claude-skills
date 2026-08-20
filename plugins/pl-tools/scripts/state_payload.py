@@ -163,10 +163,20 @@ def build(run_dir):
     state = _load_state(run_dir)
     manifest = _read_json(run_dir / "demo-manifest.json")
 
+    # The file is the flag: the conductor writes intake.json on a valid
+    # submission, so its existence is what moves the page past intake.
+    # "live" is the third and final step — run_state.finish() sets `finished`
+    # at the end of Beat 2, and without emitting it here the page's step 3
+    # could never light and a completed run sat on "Building" forever.
+    if not (run_dir / "intake.json").exists():
+        phase = "intake"
+    elif state.get("finished"):
+        phase = "live"
+    else:
+        phase = "building"
+
     return {
-        # The file is the flag: the conductor writes intake.json on a valid
-        # submission, so its existence is what moves the page to phase two.
-        "phase": "building" if (run_dir / "intake.json").exists() else "intake",
+        "phase": phase,
         "run_id": state.get("run_id"),
         "account_name": state.get("account_name"),
         "path": state.get("path"),

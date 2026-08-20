@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>parcelLab demo build</title>
+<title id="page-title">parcelLab demo build</title>
 {{BRAND_FONTS_LINK}}
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
@@ -935,12 +935,26 @@
     return { maxIdx, nextPlanned, lastConfirmed, delivered, stuck };
   }
 
+  // Three outcomes, derived from the plan alone — deliberately not from
+  // payload.finished. A shipment with no nextPlanned has run out of planned
+  // steps, so nothing further is coming for it whether or not the run as a
+  // whole has ended. That keeps this honest mid-run (an order whose second
+  // parcel is still moving is genuinely in progress) while stopping a
+  // finished run from claiming "In progress" forever because one parcel was
+  // *meant* to end stuck.
   function orderStatus(order) {
     const shipments = order.shipments || [];
     if (shipments.length === 0) return 'queued';
     const progresses = shipments.map(shipmentProgress);
     if (progresses.every((p) => p.delivered)) return 'delivered';
+    const allDone = progresses.every((p) => !p.nextPlanned && p.lastConfirmed);
+    if (allDone && progresses.some((p) => p.stuck)) return 'complete_stuck';
     return 'in_progress';
+  }
+
+  function stuckCount(order) {
+    return (order.shipments || []).map(shipmentProgress)
+      .filter((p) => p.stuck).length;
   }
 
   function shipmentColumn(shipment, label) {
@@ -997,15 +1011,26 @@
     wrap.innerHTML = orders.map((order, i) => {
       const status = orderStatus(order);
       const fraud = order.fraud_level || null;
+      // complete_stuck must not keep the active/pulsing border — the order
+      // is finished, it just ends on a delay.
       const isRunning = status === 'in_progress';
       const statusPill = status === 'delivered'
         ? '<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Delivered</span>'
+        : status === 'complete_stuck'
+        ? `<span class="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700">Complete \u00b7 ${stuckCount(order)} stuck</span>`
         : status === 'in_progress'
         ? `<span class="rounded-full px-2.5 py-1 text-[11px] font-semibold flex items-center gap-1" style="background: var(--tint); color: var(--brand)">
              <span class="h-1.5 w-1.5 rounded-full dot-brand dot-pulse"></span> In progress</span>`
         : '<span class="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-[11px] font-medium text-gray-400">Queued</span>';
+      // low reads as reassuring, not a warning: it previously shared amber
+      // with medium because only 'high' was tested for.
+      const fraudTone = fraud === 'high'
+        ? 'bg-red-50 text-red-600'
+        : fraud === 'medium'
+        ? 'bg-amber-50 text-amber-600'
+        : 'bg-emerald-50 text-emerald-700';
       const fraudPill = fraud
-        ? `<span class="rounded-full ${fraud === 'high' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'} px-2 py-0.5 text-[11px] font-medium">fraud: ${escapeHtml(fraud)}</span>`
+        ? `<span class="rounded-full ${fraudTone} px-2 py-0.5 text-[11px] font-medium">fraud: ${escapeHtml(fraud)}</span>`
         : '';
       const shipments = order.shipments || [];
       let body = '';
@@ -1217,7 +1242,13 @@
   }
 
   function renderBuilding(payload) {
-    document.getElementById('build-title').textContent = (payload.account_name || 'Demo') + ' build';
+    if (CTX.prospect_name) {
+      document.title = CTX.prospect_name + ' \u2014 parcelLab demo build';
+    }
+    // The business being demoed, not the operator — CTX.prospect_name comes
+    // from --prospect-name. account_name is the pL account ("Demo - <person>").
+    document.getElementById('build-title').textContent =
+      (CTX.prospect_name || payload.account_name || 'Demo') + ' build';
     document.getElementById('build-subtitle').textContent =
       (payload.path || '—') + ' path · run ' + (payload.run_id || '—');
     document.getElementById('freshness').textContent = formatFreshness(payload.updated_at);
@@ -1253,6 +1284,9 @@
       lastRenderedPayload = payload;
       document.getElementById('reconnect-note').classList.add('hidden');
       renderBuilding(payload);
+      // Advance the stepper the moment the run reports finished, so the page
+      // shows Live without needing a reload.
+      if (payload.phase) switchPhase(payload.phase);
       if (payload.finished && pollTimer) {
         clearInterval(pollTimer);
         pollTimer = null;
@@ -1274,11 +1308,14 @@
   // ---- switchPhase() ----
   function switchPhase(phase) {
     document.getElementById('phase-intake').hidden = (phase !== 'intake');
-    document.getElementById('phase-building').hidden = (phase !== 'building');
+    // 'live' keeps the build section visible — it is the only section that
+    // renders the finished environment, so hiding it would blank the page at
+    // the exact moment the run completed.
+    document.getElementById('phase-building').hidden =
+      (phase !== 'building' && phase !== 'live');
     document.querySelectorAll('#steps li[data-step]').forEach(li => {
       const step = li.dataset.step;
-      const isActive = (step === 'intake' && phase === 'intake')
-        || (step === 'building' && phase === 'building');
+      const isActive = (step === phase);
       li.classList.toggle('is-active', isActive);
       li.classList.toggle('text-gray-400', !isActive);
     });
@@ -1290,9 +1327,11 @@
 
   // ---- Boot ----
   fetch('/state').then(r => r.json()).then((state) => {
-    if (state.phase === 'building') {
-      switchPhase('building');
-      startPolling();
+    if (state.phase === 'building' || state.phase === 'live') {
+      switchPhase(state.phase);
+      renderBuilding(state);
+      // A finished run needs no poll — its state cannot change again.
+      if (state.phase !== 'live') startPolling();
     } else {
       switchPhase('intake');
     }

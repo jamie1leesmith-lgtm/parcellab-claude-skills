@@ -25,6 +25,24 @@ class TestStatePayload(unittest.TestCase):
         (self.dir / "intake.json").write_text("{}")
         self.assertEqual(state_payload.build(self.dir)["phase"], "building")
 
+    def test_phase_is_live_once_the_run_is_finished(self):
+        """The stepper's third step can only light if the payload says so.
+
+        Beat 2 calls run_state.finish(); before this the payload only ever
+        emitted intake|building, so a completed run sat on "Building"
+        forever.
+        """
+        (self.dir / "intake.json").write_text("{}")
+        run_state.finish(str(self.dir))
+        payload = state_payload.build(self.dir)
+        self.assertEqual(payload["phase"], "live")
+        self.assertTrue(payload["finished"])
+
+    def test_finished_run_without_intake_json_is_not_live(self):
+        """Guard the ordering: live means finished AND past intake."""
+        run_state.finish(str(self.dir))
+        self.assertEqual(state_payload.build(self.dir)["phase"], "intake")
+
     def test_carries_run_state_basics(self):
         payload = state_payload.build(self.dir)
         self.assertEqual(payload["run_id"], "pccomponentes-20260819-1546")
