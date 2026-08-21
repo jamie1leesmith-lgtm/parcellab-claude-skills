@@ -1,0 +1,9 @@
+{
+  "name": "pl-knowledge",
+  "description": "Research parcelLab knowledge and customer accounts through Onyx — fast lookups by default, deep synthesis and call-prep briefs on request. Routes via the parcelLab MCP connector or the parcellab CLI, whichever is available.",
+  "author": {
+    "name": "parcelLab",
+    "email": "jamie.lee-smith@parcellab.com"
+  },
+  "keywords": ["parcellab", "pl", "onyx", "knowledge", "research", "accounts", "gong"]
+}

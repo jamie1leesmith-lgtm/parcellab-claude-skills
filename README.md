@@ -1,8 +1,10 @@
 # parcelLab Claude skills
 
-A private Claude Code plugin marketplace for parcelLab team skills. One plugin,
-**`pl-tools`**, carries all six parcelLab skills plus its setup command. Onyx
-ships separately.
+A private Claude Code plugin marketplace for parcelLab team skills. Three plugins:
+**`pl-tools`** carries all six parcelLab skills plus its setup command,
+**`pl-knowledge`** carries parcelLab knowledge and account research, and **`onyx`**
+is the older knowledge route — now **deprecated**, kept installed but non-functional.
+See [pl-knowledge](#pl-knowledge) and [onyx (deprecated)](#onyx-deprecated) below.
 
 > 🔒 **This repo is private.** You need to be invited as a collaborator before you can add it as a marketplace or install anything. Ask Jamie (`jamie1leesmith-lgtm`) for access.
 
@@ -11,7 +13,8 @@ ships separately.
 1. Open the Claude desktop app → **Code** tab
 2. Click **+** next to the prompt box → **Plugins** → **Add plugin**
 3. Enter this repo as the marketplace source: `jamie1leesmith-lgtm/parcellab-claude-skills`
-4. Install **`pl-tools`** (and **`onyx`** if you want Onyx search too)
+4. Install **`pl-tools`** and **`pl-knowledge`** (skip **`onyx`** — it's deprecated and no
+   longer works; see [onyx (deprecated)](#onyx-deprecated))
 
 Installed skills become available automatically in **new** conversations — the
 one you installed from won't see them.
@@ -28,12 +31,12 @@ and neither covers the other:
 | Installed | Run | Sets up |
 |---|---|---|
 | `pl-tools` | **`/pl-setup`** | Your parcelLab account, the CLI write guard, and the demo-request token if you use `demo-request`. See [One-time setup](#one-time-setup). |
-| `onyx` | **`/onyx-setup`** | Your Onyx API URL and personal token. See [onyx](#onyx). |
+| `pl-knowledge` | *(none needed)* | Uses the parcelLab MCP connector and/or the `parcellab` CLI you already have set up — see [pl-knowledge](#pl-knowledge). |
+| `onyx` *(deprecated)* | ~~`/onyx-setup`~~ | Nothing — the setup script only writes env vars and makes no network call; no credential can restore this route. Don't run it. See [onyx (deprecated)](#onyx-deprecated). |
 
-If you installed both, run both — then **quit and reopen the app once (⌘Q)**. Both
-write into the same `env` block, and it's read only at startup, so a single restart
-covers both. Each section below says "restart afterwards", which reads like two
-restarts if you're doing the pair.
+If you installed both `pl-tools` and `pl-knowledge`, run `/pl-setup` — then **quit
+and reopen the app once (⌘Q)**. Environment variables are read only at startup, so
+nothing above takes effect until you do.
 
 `/pl-setup` takes about two minutes and every parcelLab skill depends on it.
 
@@ -42,9 +45,12 @@ restarts if you're doing the pair.
 ```
 /plugin marketplace add jamie1leesmith-lgtm/parcellab-claude-skills
 /plugin install pl-tools@parcellab-skills
+/plugin install pl-knowledge@parcellab-skills
 ```
 
-Add `/plugin install onyx@parcellab-skills` for Onyx knowledge search.
+`pl-knowledge` is the current route for parcelLab knowledge and account research — see
+[pl-knowledge](#pl-knowledge). Don't install `onyx@parcellab-skills`; it's deprecated and its
+direct Onyx API route is permanently blocked (see [onyx (deprecated)](#onyx-deprecated)).
 
 ## Available skills
 
@@ -62,7 +68,8 @@ they deliberately don't share the `parcellab-` prefix used by the org's
 | `pl-tools:bug-investigation` | Investigates a product bug end to end: checks live config via the `parcellab` CLI, reproduces it in Claude-in-Chrome with real screenshot/recording capture, isolates root cause against sibling portals, and publishes a shareable bug report as an artifact, HTML file, and PDF — always *before* any mitigation, which needs express account-number-specific sign-off | *"Investigate this bug on [portal]"* |
 | `pl-tools:demo-environment` | One interview → a full parcelLab demo: branded template, 1–5 fraud-tagged orders with good/bad journeys, optional Shopify build, CDC request linking the real orders | *"Create a complete parcelLab demo for [brand]"* |
 | `pl-tools:pl-setup` | One-time setup: account, CLI write guard, and per-skill tokens | *`/pl-setup`* |
-| `onyx` *(separate plugin)* | Pulls knowledge from your parcelLab Onyx instance into Claude — semantic search, cited RAG answers, and document retrieval | *"Search Onyx for our return policy on damaged items"* |
+| `pl-knowledge` *(separate plugin)* | Researches parcelLab knowledge and customer/deal context via the parcelLab MCP connector or the `parcellab` CLI — fast lookups by default, synthesis and call-prep briefs on request | *"How does the returns v2 draft preview URL work?"* |
+| `onyx` *(separate plugin, deprecated)* | **No longer works.** Direct Onyx API access is blocked; use `pl-knowledge` instead | — |
 
 ---
 
@@ -143,23 +150,40 @@ confirms which one:
 
 ---
 
-### onyx
+### pl-knowledge
 
-Pulls knowledge from your parcelLab Onyx instance directly into Claude — semantic search, cited RAG answers, and full-document retrieval, via three tools (`onyx_search`, `onyx_ask`, `onyx_fetch_document`) and two commands (`/onyx-search`, `/onyx-ask`).
+Researches parcelLab product knowledge, config detail, and customer/deal context — the current
+route for everything the old `onyx` plugin used to do. Routes through the parcelLab MCP connector
+or the `parcellab` CLI, fast one-call lookups by default, with synthesis and call-prep briefs
+available on request.
 
-**Prerequisites:**
+**Prerequisites:** at least one of the parcelLab MCP connector (enabled in Settings → Connectors)
+or the `parcellab` CLI installed and authenticated (`parcellab auth`). See
+[`plugins/pl-knowledge/README.md`](plugins/pl-knowledge/README.md) for the full detail, including
+why CLI-only makes ordinary lookups materially slower.
 
-1. **Node.js 18+** — the MCP server and setup script use only Node's built-ins, no `npm install` needed.
-2. **Your own Onyx account and API token** — after installing, run `/onyx-setup` and follow its two questions to connect your account. Nobody's credentials are bundled with the plugin; each person configures their own.
+```
+/plugin install pl-knowledge@parcellab-skills
+```
 
-> **Already had Onyx working before installing this plugin?** It'll just work,
-> no setup needed. Credentials live in the `env` block of your global
-> `~/.claude/settings.json` (`ONYX_API_URL`, `ONYX_API_TOKEN`,
-> `ONYX_PERSONA_ID`) — *not* inside the plugin. Anything that wrote those keys
-> before (a hand-rolled MCP server, a manual edit) leaves them there when it's
-> removed, and this plugin's MCP server reads the exact same three variables. So
-> the plugin inherits your existing auth. Only run `/onyx-setup` if
-> `/onyx-search` actually fails.
+No setup command needed — it reuses whatever MCP connector or CLI login you already have.
+
+---
+
+### onyx (deprecated)
+
+**No longer works — do not install, and don't run its setup command if you already have it.**
+`onyx.parcellab.com/api` now sits behind an Envoy `jwt_authn` filter fronted by Keycloak, so every
+`Authorization: Bearer` value — including a freshly minted `onyx_pat_...` token — is validated as
+an OIDC JWT and never reaches Onyx. **This is not an expired or revoked token**, and minting a new
+one will not fix it: a bogus bearer returns the identical 401 as a real one.
+
+This plugin stays installable and its commands (`/onyx-search`, `/onyx-ask`, `/onyx-setup`) stay
+present — deliberately, so the deprecation is reversible — but each one now just explains the
+above and points you at **`pl-knowledge`** instead. Use `pl-knowledge` for everything you used to
+ask onyx. If you have the `onyx` plugin installed, its three MCP tools (`onyx_search`, `onyx_ask`,
+`onyx_fetch_document`) also still appear in your tool list and look usable — they aren't; every
+call 401s the same way.
 
 ---
 
@@ -403,8 +427,15 @@ part of releasing, not an optional courtesy.
 > nobody thinks to open this file. Keep the two in step: this README is the full
 > reference for people, `CLAUDE.md` is the short list of things that break quietly.
 
-New parcelLab skills go **inside `pl-tools`**. No new plugin, no new marketplace
-entry.
+**Default: new parcelLab skills go inside `pl-tools`.** No new plugin, no new marketplace
+entry — that's how `pl-knowledge` should *not* be extended for unrelated skills.
+
+A new plugin is warranted only when the skill is a genuinely distinct capability with its
+own prerequisites that don't apply to the rest of `pl-tools` — the way `pl-knowledge` needed
+the parcelLab MCP connector and/or the `parcellab` CLI as an either/or dependency, and nothing
+else in `pl-tools` shares that shape. If you're unsure, default to `pl-tools`; a new plugin
+means a new `plugin.json`, a new marketplace entry, and — if a predecessor is being retired
+rather than replaced outright — a reversible deprecation like `onyx`'s.
 
 ### The steps
 
@@ -469,6 +500,13 @@ and shell history.
 `pip install` anything. See `plugins/pl-tools/scripts/tests/` for the pattern:
 pure functions, tested against a temp file, run with
 `python3 -m unittest discover -s tests -v`.
+
+**Run `python3 scripts/validate_plugins.py` before pushing.** This repo has no CI, so
+this script is the whole test harness for manifests and skill frontmatter: it confirms
+every required plugin is listed in `marketplace.json`, that `pl-knowledge` has no stray
+`version` field, and that every skill's frontmatter `name:` matches its directory name
+(the silent failure mode above). It prints `PLUGINS OK` on success, or one
+`PLUGINS INVALID: <reason>` line per problem.
 
 **Never commit `node_modules`** — covered by `.gitignore`.
 

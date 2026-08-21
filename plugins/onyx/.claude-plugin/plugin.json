@@ -1,7 +1,7 @@
 {
   "name": "onyx",
-  "version": "0.2.3",
-  "description": "Pull knowledge from your Onyx instance into Claude — semantic search, cited RAG answers, and full-document retrieval over the Onyx REST API.",
+  "version": "0.2.4",
+  "description": "[DEPRECATED — use pl-knowledge] Pull knowledge from your Onyx instance into Claude — semantic search, cited RAG answers, and full-document retrieval over the Onyx REST API.",
   "author": {
     "name": "parcelLab",
     "email": "jamie.lee-smith@parcellab.com"
