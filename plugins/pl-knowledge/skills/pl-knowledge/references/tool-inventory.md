@@ -27,8 +27,8 @@ The binary is `parcellab`. There is no `parcellab-cli` binary.
 | Route | Returns | Latency | Use for |
 |---|---|---|---|
 | `knowledge_ask_gtm_agent` | answer + citations | ~30-60s | Positioning, objection handling, pilot design |
-| `knowledge_query_parcellab_knowledge` | answer + citations | times out on long questions | Short questions only; prefer the CLI |
-| CLI `knowledge search "<q>"` | answer + citations, JSON | ~42s measured | Cited narrative answer; survives MCP timeouts |
+| `knowledge_query_parcellab_knowledge` | answer + citations | succeeds on short questions (~38s measured), times out on long ones | Short questions only; prefer the CLI for anything multi-part |
+| CLI `knowledge search "<q>"` | answer + citations, JSON | ~32-42s measured (varies by run) | Cited narrative answer; survives MCP timeouts |
 
 Both synthesis routes accept `session_id` to continue a thread. Both time out on long multi-part
 questions and succeed on tight single ones — **split the question, do not report a timeout as a
