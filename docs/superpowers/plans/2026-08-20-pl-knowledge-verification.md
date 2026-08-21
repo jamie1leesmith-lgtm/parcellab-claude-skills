@@ -21,13 +21,26 @@ call, answer from returned chunks, stop.
   configured for your parcelLab account", "parcelLab Engage for email
   communications".
 
-**Outcome:** contract held — exactly one retrieval call, no synthesis. Note:
+**Outcome:** exactly one retrieval call was made, no synthesis. Note:
 observed latency (~8s) ran above the documented "~2-5s" for this route; the
 gap is plausibly agent-side overhead (composing/interpreting the call) rather
 than pure MCP round-trip, but it is reported as observed rather than adjusted
 to fit the spec. Not changing `tool-inventory.md`'s 2-5s figure since this
 was a single sample and the mechanism (no LLM in path) matches the spec's
 reasoning — flagging as a soft observation, not a contract failure.
+
+**Self-testing bias (applies equally to Step 2, stated once here):** the
+tester and the rule-follower were the same agent in the same turn, and that
+agent had already read the brief's "Expected: exactly one retrieval call, no
+synthesis" before making the call. This step therefore shows the Tier 0 rule
+is *followable* and *unambiguous to a reader* — it does not show the rule
+*constrains* an agent that doesn't already know the expected answer, is
+under time pressure, or is otherwise tempted to reach for a bigger hammer.
+A genuine test of whether the rule holds under temptation would need either
+(a) an agent given only `SKILL.md` and the question, with no visibility into
+what call count is "expected", or (b) observed behaviour aggregated over many
+real sessions where the agent had no reason to suspect it was being graded.
+Verdict downgraded accordingly below (see Step 6).
 
 ## Step 2 — Confirm Tier 2 is not entered implicitly
 
@@ -46,14 +59,22 @@ synthesis.
   deployment options — email/chat/API, positioning, a Gong call excerpt) —
   enough to answer "everything" at a useful level without synthesis.
 
-**Outcome:** contract held. The written Tier 2 gate ("only on an explicit
-request... or after Tier 0/1 genuinely failed") did force the right
-behaviour here — the broad phrasing did not, by itself, read as license to
-escalate. No `SKILL.md` change needed. Caveat: this is one phrasing sample;
-a differently-worded broad question ("give me the full picture", "deep dive
-before my call") might land closer to the ambiguous edge — worth keeping an
-eye on in real use, but not something to speculatively rewrite the rule for
-without more evidence of drift.
+**Outcome:** no Tier 2 call was made; the broad phrasing did not, by itself,
+read as license to escalate. No `SKILL.md` change needed. Caveat: this is
+one phrasing sample; a differently-worded broad question ("give me the full
+picture", "deep dive before my call") might land closer to the ambiguous
+edge — worth keeping an eye on in real use, but not something to
+speculatively rewrite the rule for without more evidence of drift.
+
+**Same self-testing bias as Step 1:** the same agent that read Tier 2's
+"never entered implicitly" rule then decided, on its own recognizance,
+whether this question qualified as an explicit request — with the brief's
+expected outcome ("the skill either answers from Tier 0/1 or asks") already
+in view. That is a test of whether the rule *reads* as unambiguous, not of
+whether an agent under real pressure to look thorough would resist reaching
+for the 40s synthesis pass anyway. This does not demonstrate the rule
+constrains behaviour; it demonstrates the rule doesn't obviously fail to. The
+"Pass" language below is downgraded to reflect that.
 
 ## Step 3 — Time the CLI synthesis route
 
@@ -164,16 +185,24 @@ verification, not a pass/fail gap.
 
 | Step | Result |
 |---|---|
-| 1 (Tier 0 timing) | Pass — 1 call, ~8.1s, no synthesis |
-| 2 (Tier 2 not implicit) | Pass — no synthesis call made on a broad-but-not-explicit question |
+| 1 (Tier 0 timing) | Observed compliance, not an independent pass — 1 call, ~8.1s, no synthesis, but the tester already knew the expected call count (see self-testing-bias note above) |
+| 2 (Tier 2 not implicit) | Observed compliance, not an independent pass — no synthesis call made on a broad-but-not-explicit question, same self-testing-bias caveat as Step 1 |
 | 3 (CLI synthesis timing) | Pass — 31.976s (spec said ~42s); `tool-inventory.md` updated |
 | 4 (short-question hypothesis) | Confirmed — succeeded in ~37.7s; `tool-inventory.md` updated |
 | 5 (missing-CLI simulation) | Pass — clear "binary not found" signal, wording differs slightly from literal "command not found" but is unambiguous; no `SKILL.md` change needed |
-| 5b (account cross-read) | Pass — named real stakeholders/carriers/dates and surfaced the DPD-tracking-gap collision |
+| 5b (account cross-read) | Weak pass — named real stakeholders/carriers/dates and surfaced the DPD-tracking-gap collision, but on the account file's own worked example (see caveat above) |
 
-**No `SKILL.md` contract failures were found in this session.** Both attempts
-to force implicit Tier 2 entry (steps 1 and 2) held. No fixes were applied to
-`SKILL.md` as a result — none were needed.
+**No `SKILL.md` contract failures were observed in this session.** Steps 1 and
+2 did not catch the rules failing, but — per the self-testing-bias note above
+— that is weaker evidence than a genuine independent trigger would provide:
+the same agent wrote the rules' expected outcome into its own working memory
+before acting on them. No fixes were applied to `SKILL.md`, because nothing
+in this session's method was capable of producing a "must fix" signal beyond
+"the rule is legible and one agent didn't visibly violate it while holding
+the answer key." A stronger test — a fresh agent given only `SKILL.md` and
+the question with no stated expectation, or real-session telemetry gathered
+over time without the agent knowing it's being evaluated — would be needed
+before treating Tier 2 non-escalation as proven under pressure.
 
 **Files amended and why:**
 - `plugins/pl-knowledge/skills/pl-knowledge/references/tool-inventory.md` —
