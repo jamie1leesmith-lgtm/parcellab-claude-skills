@@ -1,3 +1,17 @@
+> ## ⚠️ DEPRECATED — use the `pl-knowledge` plugin instead
+>
+> This plugin's direct Onyx API route is permanently blocked. `onyx.parcellab.com/api` sits behind
+> an Envoy `jwt_authn` filter fronted by Keycloak, so any `Authorization: Bearer` value is validated
+> as an OIDC JWT and `onyx_pat_...` tokens never reach Onyx. Minting a new PAT does not help — a
+> bogus bearer returns the identical 401 as a valid token.
+>
+> **Install `pl-knowledge`**, which routes through the parcelLab MCP connector or the `parcellab`
+> CLI instead.
+>
+> Nothing here has been deleted. If infra issues a Keycloak service-account client for
+> `client_credentials`, or exempts `/api` from `jwt_authn`, this plugin can be revived with a small
+> change to `mcp/onyx-server.mjs`.
+
 # Onyx plugin for Claude Code
 
 Pull knowledge from your [Onyx](https://onyx.app) instance directly into Claude. This
