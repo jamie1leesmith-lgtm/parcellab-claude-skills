@@ -909,7 +909,10 @@ When every order's `order.json` exists, build
 `{"order_number": <order.json order_number>, "name": <human label>}` — the
 label derived from the slot (`fraud_low` → "Fraud risk: low", `manual_return`
 → "Manual return", `return_tracking` → "Return tracking"); `cdc_slot` itself
-never goes to the API (its enum was removed 2026-08-11).
+never goes to the API (its enum was removed 2026-08-11). This is the base
+shape only — no event has fired yet at this point in the run, so there is
+nothing to capture. Phase 2.5 below adds a `messages` array to each entry
+once real Engage comms have had time to land.
 An order whose creation failed is excluded (and reported); one order's
 failure never stops another's driver. Log any such failure via
 `add_deviation(d, "api_error", ...)`.
@@ -937,7 +940,8 @@ launched: record it via `run_state.py` (`mark(d, "lane", "orders", "start")`
 and `set_schedule`, with the matching `"end"` when the watch loop finishes).
 Then write `order.json` (order_number = the Shopify
 order name, e.g. "#1001") and, once all orders are processed, build
-`results/linked-orders.json` the same way as the direct engine.
+`results/linked-orders.json` the same way as the direct engine — base
+shape only, same note about Phase 2.5 applies.
 
 Per-order failure isolation: ingestion timeout, enrichment failure or
 fulfilment failure marks THAT order partial in `order.json`
@@ -945,16 +949,100 @@ fulfilment failure marks THAT order partial in `order.json`
 other orders continue, and the report says exactly which step failed. Log it
 via `add_deviation(d, "api_error", ...)`.
 
+## Phase 2.5 — Wait for comms, then capture real message content
+
+Real parcelLab Engage messages take real time to land after their
+triggering event — Beat 2 already knows this (comms landed in 3-4 minutes
+on single-parcel orders but took over 10 on a split order's parcel,
+measured 2026-08-11). Phase 3 below is the run's **only** chance to attach
+message content to a linked order — linking existing orders (and anything
+riding on them) is only possible on the creation call, there is no
+follow-up endpoint to add data to an order once it is linked. This phase
+exists purely so Phase 3 never fires before there is anything real yet to
+attach.
+
+`mark(d, "lane", "comms_capture", "start")` as this phase begins, so the
+run page shows a pill for this wait instead of looking idle for several
+minutes between orders finishing and Phase 3 firing.
+
+1. **Wait for the same floor Beat 2 uses**, from the same last-event
+   timestamp:
+
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/wait_for_beat2.py <run dir>
+   ```
+
+   Despite the name, this script is a generic "sleep until 5 minutes past
+   the newest event across every order's `events.jsonl`" utility — it
+   writes nothing and has no side effects, so calling it here and again
+   later (Phase 4's own Beat 2 arming) is safe: the floor is anchored to
+   the last event's absolute timestamp, not to when the script happens to
+   be called, so if this wait already satisfied it, that later call
+   returns immediately instead of waiting again. Launch it as a
+   **tracked background task** (`run_in_background: true`, never
+   `nohup`), exactly as Phase 4 does.
+
+2. **Capture real message content for every linked order**:
+
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/capture_order_messages.py <run dir> \
+     --since <this run's own start, ISO8601 UTC>
+   ```
+
+   `--since` is required and must be this run's own start — never omit it
+   or guess. The target account accumulates history across every run
+   anyone has ever pointed at it, and without this floor a bare listing
+   could match this run's order numbers against a stale message from a
+   different day (there is no order/tracking field on the underlying
+   record itself — the script matches by reading each candidate message's
+   own rendered content). Derive the timestamp from the run directory's
+   own `<handle>-<ts>` name (`ts` is `YYYYMMDD-HHMM`, from Phase 0 step 1
+   — the same value the directory was created from).
+
+   This writes a `messages` array onto each entry of
+   `results/linked-orders.json` directly. Nothing else needs to change to
+   carry it further: demo-request's orchestrated-run contract already
+   forwards that file's array **verbatim** as `linked_orders` — `messages`
+   included, once it is there — so Phase 3 needs no changes of its own.
+
+3. **The exit code decides what happens next.** `0` — every linked order
+   got at least one message; proceed to Phase 3. `2` — one or more orders
+   still show zero messages, which is not yet a defect — the same "comm
+   missing at 5 minutes" situation Beat 2's own re-check exists for.
+   `sleep 300` (or re-run `wait_for_beat2.py --from-now --floor 300`) and
+   run the capture script **once more**, then proceed to Phase 3
+   regardless of the second attempt's result — never loop indefinitely; a
+   message that has still not landed by then is reported missing, not
+   chased forever. `1` means it could not run at all (no manifest, or no
+   `results/linked-orders.json`) — stop and report, this is not a timing
+   issue and a second attempt will not fix it.
+
+   Log the retry via `add_deviation(d, "retry_needed", ...)`. If an order
+   still shows zero messages after the second attempt, log that
+   separately via `add_deviation(d, "api_error", ...)` — the order still
+   links and the run still carries on, exactly the class of degraded-but-
+   continuing outcome that category already covers.
+
+`mark(d, "lane", "comms_capture", "end")` once step 3 above lets you move
+on, whichever way it resolved.
+
+**This does push Beat 1 later than before.** It now posts only after this
+wait, not immediately once orders exist. Say so plainly in auto mode's
+opening line alongside the existing unattended-run flag — an operator
+watching the run page will see a longer gap before the first report than
+earlier runs had.
+
 ## Phase 3 — The one CDC call
 
-Exactly one CDC interaction per run, after Phase 2 — with a `cdc_live_`
-token, linking existing orders is only possible on the creation call.
-Invoke the pl-tools:demo-request skill's "Orchestrated runs
-(demo-environment)" contract against the run dir: it builds the payload
-from the manifest + `results/linked-orders.json` and submits once — bracket
-the invocation with `mark(d, "lane", "cdc", "start")` and `"end"`. Do not
-retry a 500 (the request already exists — the results file records it), but
-do log it via `add_deviation(d, "api_error", ...)`.
+Exactly one CDC interaction per run, after Phase 2.5 — with a `cdc_live_`
+token, linking existing orders (and any `messages` now sitting on them from
+Phase 2.5) is only possible on the creation call. Invoke the
+pl-tools:demo-request skill's "Orchestrated runs (demo-environment)"
+contract against the run dir: it builds the payload from the manifest +
+`results/linked-orders.json` and submits once — bracket the invocation
+with `mark(d, "lane", "cdc", "start")` and `"end"`. Do not retry a 500 (the
+request already exists — the results file records it), but do log it via
+`add_deviation(d, "api_error", ...)`.
 
 ## Phase 4 — Report
 
@@ -1167,14 +1255,16 @@ else first.
 | seed agent | Shopify orders only | report, offer inline re-run from the same manifest |
 | template publish | Phase 2 (all orders) | the three-way publish-gate offer |
 | one order (any engine) | nothing else | mark partial in its order.json; report the exact step |
+| message capture (Phase 2.5) | nothing — orders still link without it | retry once after a further wait, then proceed regardless; report any order still empty |
 | CDC call | nothing | report; 500 = request exists, retry manually in-app |
 
 On any failure above: record it via `run_state.py` — no render step follows,
 the page picks it up on its own. Also log it via
 `add_deviation()` — `lane_fallback_inline` for the scrape/seed rows,
-`api_error` for template publish, one order, or the CDC call — even though
-none of these stop the run; that is precisely what this log exists to catch
-(*Deviation logging*, above).
+`retry_needed` for a message-capture retry, `api_error` for template
+publish, one order, the CDC call, or an order still empty after a
+message-capture retry — even though none of these stop the run; that is
+precisely what this log exists to catch (*Deviation logging*, above).
 
 Fallback rule (Approach B): any agent lane can be re-run inline in the main
 session from the same manifest — the brief and the contract are identical.
