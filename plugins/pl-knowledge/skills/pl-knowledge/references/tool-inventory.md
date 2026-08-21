@@ -54,10 +54,12 @@ Account and deal research therefore works through these routes — the separate 
 
 ## Dead routes — do not attempt
 
-Direct `onyx.parcellab.com/api` calls with an `onyx_pat_...` PAT, and the `onyx:onyx-ask` /
-`onyx:onyx-search` plugin skills. The host sits behind an Envoy `jwt_authn` filter fronted by
-Keycloak, so any `Authorization: Bearer` value is validated as an OIDC JWT and the PAT never
-reaches Onyx.
+Direct `onyx.parcellab.com/api` calls with an `onyx_pat_...` PAT, the `onyx:onyx-ask` /
+`onyx:onyx-search` plugin commands, and the `onyx` plugin's bundled MCP tools `onyx_search`,
+`onyx_ask`, and `onyx_fetch_document` — these still appear in the tool list of anyone with the
+`onyx` plugin installed (it stays registered) and look perfectly usable, but every call 401s. The
+host sits behind an Envoy `jwt_authn` filter fronted by Keycloak, so any `Authorization: Bearer`
+value is validated as an OIDC JWT and the PAT never reaches Onyx.
 
 **A bogus bearer returns the identical 401 as a valid PAT** —
 `Jwt is not in the form of Header.Payload.Signature with two dots and 3 sections`.

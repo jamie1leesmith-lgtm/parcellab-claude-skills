@@ -67,9 +67,23 @@ def check_skill_frontmatter(path):
         errors.append(f"{rel} frontmatter is not terminated")
         return
     block = text[4:end]
-    for key in ("name:", "description:"):
-        if key not in block:
-            errors.append(f"{rel} frontmatter missing {key}")
+    name_value = None
+    for line in block.splitlines():
+        if line.startswith("name:"):
+            name_value = line[len("name:"):].strip().strip("'\"")
+            break
+    if name_value is None:
+        errors.append(f"{rel} frontmatter missing name:")
+    else:
+        dir_name = path.parent.name
+        if name_value != dir_name:
+            errors.append(
+                f"{rel} frontmatter name: '{name_value}' does not match "
+                f"directory name '{dir_name}' — this silently removes the "
+                "skill from the plugin's inventory"
+            )
+    if "description:" not in block:
+        errors.append(f"{rel} frontmatter missing description:")
 
 
 def main():

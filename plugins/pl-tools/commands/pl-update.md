@@ -8,11 +8,13 @@ report plainly — including when nothing changed.
 ## 1. Record what I have now
 
 Run `claude plugin list` and note the current version of `pl-tools@parcellab-skills`
-and, if it is installed, `onyx@parcellab-skills`. Keep these to compare against
-afterwards.
+and, if installed, `pl-knowledge@parcellab-skills` and `onyx@parcellab-skills`. Keep
+these to compare against afterwards.
 
-Note: `pl-tools` has no pinned version string — its version is the git commit SHA
-of the marketplace repo, so expect a SHA rather than something like `2.0.1`.
+Note: `pl-tools` and `pl-knowledge` have no pinned version string — their version is
+the git commit SHA of the marketplace repo, so expect a SHA rather than something like
+`2.0.1`. `onyx` does pin a version (it's deprecated, but still gets updates to that
+deprecation notice) — expect a number there instead.
 
 ## 2. Refresh the marketplace catalogue
 
@@ -26,19 +28,35 @@ usual causes are no network, or my GitHub access to the private repo having laps
 
 `claude plugin update pl-tools@parcellab-skills`
 
-## 4. Update onyx, only if it is installed
+## 4. Update pl-knowledge — offer to install it if it's missing
+
+If step 1 showed `pl-knowledge@parcellab-skills`, run:
+
+`claude plugin update pl-knowledge@parcellab-skills`
+
+If it is **not** installed, offer to install it: `pl-knowledge` is the current route
+for parcelLab knowledge and account research (it replaces the deprecated `onyx`
+plugin), so this is worth surfacing even though nothing forces it. Ask before
+installing — don't do it silently. If I say yes:
+
+`claude plugin install pl-knowledge@parcellab-skills`
+
+## 5. Update onyx, only if it is installed
 
 If step 1 showed `onyx@parcellab-skills`, run:
 
 `claude plugin update onyx@parcellab-skills`
 
-If it is not installed, skip this and do not offer to install it — not everyone
-wants Onyx.
+If it is not installed, skip this and do not offer to install it — `onyx` is
+deprecated and no longer works; there's nothing to gain from installing it. If it
+**is** installed and I ask why it doesn't return results, explain that its direct
+Onyx API route is permanently blocked and point me at `pl-knowledge` instead — never
+say the token expired.
 
 Do **not** touch `parcellab-product-api@parcellab`. That is the org's plugin from
 `parcelLab/parcellab-cli`, not ours, and it updates on its own schedule.
 
-## 5. Tell me what actually happened
+## 6. Tell me what actually happened
 
 One line, because "update" reads as success even when nothing moved:
 
@@ -50,7 +68,7 @@ One line, because "update" reads as success even when nothing moved:
 Don't print version numbers or SHAs. They mean nothing to most of the team and
 make a working update look like a problem.
 
-## 5a. Show me what changed, as a table
+## 6a. Show me what changed, as a table
 
 **This is expected, not optional.** Report only **skills that are new or that now
 behave differently**. Everything else is noise.
@@ -100,13 +118,13 @@ plumbing (`.gitignore`, CI, bytecode), and anything under `docs/`, `README.md` o
 plan or spec file. A design document changing is not a change to somebody's tooling.
 
 **If no skill changed** — only internals or docs moved — say exactly that in one
-line: *"Nothing changed about the skills themselves this time."* Then follow step 6,
+line: *"Nothing changed about the skills themselves this time."* Then follow step 7,
 because the plugin version still moved.
 
 If the diff is empty or unreadable, say so plainly. Don't invent a summary, and
 don't describe changes you haven't read.
 
-## 6. Restart, only if a version actually moved
+## 7. Restart, only if a version actually moved
 
 **If anything updated at all** — even when no skill changed — tell me to **fully quit
 Claude Code (⌘Q, not just closing the window) and reopen it.** Skills are loaded when
@@ -118,7 +136,7 @@ update said. This is the step people skip.
 Those are different cases: "no skill changed but the version moved" still needs a
 restart. Don't collapse the two.
 
-## 7. If a skill has gone missing after updating
+## 8. If a skill has gone missing after updating
 
 If I say a skill has vanished, check `claude plugin details pl-tools@parcellab-skills`
 and compare its skill list against `plugins/pl-tools/skills/` in the marketplace

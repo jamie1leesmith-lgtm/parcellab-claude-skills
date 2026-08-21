@@ -9,7 +9,7 @@ network call. No credential restores access, because `onyx.parcellab.com/api` va
 `Authorization: Bearer` value as an OIDC JWT via Envoy/Keycloak — a freshly minted PAT fails
 identically to an old one.
 
-Install the **`pl-knowledge`** plugin instead. Its prerequisites are the parcelLab MCP connector
-and/or the `parcellab` CLI (`parcellab auth`).
+Install the **`pl-knowledge`** plugin instead: `/plugin install pl-knowledge@parcellab-skills`.
+Its prerequisites are the parcelLab MCP connector and/or the `parcellab` CLI (`parcellab auth`).
 
 Tell the user this plainly and do not run the setup script.

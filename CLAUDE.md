@@ -1,8 +1,10 @@
 # parcellab-claude-skills
 
 A private Claude Code plugin marketplace distributing internal parcelLab tooling to
-Jamie's team. Two plugins: **`pl-tools`** (seven skills + `/pl-setup` + `/pl-update`)
-and **`onyx`** (Onyx knowledge bridge, own MCP server).
+Jamie's team. Three plugins: **`pl-tools`** (seven skills + `/pl-setup` + `/pl-update`),
+**`pl-knowledge`** (parcelLab knowledge and account research, via the parcelLab MCP
+connector or the `parcellab` CLI), and **`onyx`** (the older knowledge bridge, own MCP
+server — now **deprecated**, kept installed but non-functional; see below).
 
 Full detail is in [README.md](README.md). This file carries the rules whose failure
 modes are **silent** — where getting it wrong produces no error, just something
@@ -15,8 +17,13 @@ copy an existing skill and edit it — that's how conventions drift. For anythin
 beyond a trivial fix, plan it first with `superpowers:brainstorming`, then
 `superpowers:writing-plans`.
 
-New parcelLab skills go in `plugins/pl-tools/skills/<name>/`. No new plugin, no new
-marketplace entry.
+**Default:** new parcelLab skills go in `plugins/pl-tools/skills/<name>/`. No new plugin,
+no new marketplace entry.
+
+A new plugin is warranted only when the skill is a genuinely distinct capability with its
+own prerequisites that don't apply to the rest of `pl-tools` — as with `pl-knowledge`,
+which needs the parcelLab MCP connector and/or the `parcellab` CLI as an either/or
+dependency that nothing else in `pl-tools` shares. Default to `pl-tools` if unsure.
 
 ### Silent failure modes
 
@@ -89,6 +96,10 @@ write. There are 13 demo accounts side by side under *Demo SolCon*.
 
 - **Tests are stdlib `unittest`.** `pytest` is not installed; never `pip install`.
   Run: `cd plugins/pl-tools/scripts && python3 -m unittest discover -s tests -v`.
+- **Run `python3 scripts/validate_plugins.py` before pushing.** It checks manifest shape
+  (required plugins listed, no stray `version` field on `pl-knowledge`) and skill
+  frontmatter — including the `name:`/directory-name match above. Prints `PLUGINS OK` or
+  a `PLUGINS INVALID: <reason>` line per problem.
 - The CLI binary is **`parcellab`**; `parcellab-cli` is the repo it ships from.
   `parcellab --version` **does not exist** — use `command -v parcellab`.
 - **GitHub: personal account only** (`jamie1leesmith-lgtm`). Never push to the

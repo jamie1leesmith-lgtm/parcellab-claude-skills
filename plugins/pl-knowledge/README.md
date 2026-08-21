@@ -7,7 +7,7 @@ Research parcelLab knowledge and customer accounts through Onyx, without the dea
 `onyx.parcellab.com/api` now sits behind an Envoy `jwt_authn` filter fronted by Keycloak. Any
 `Authorization: Bearer` value is validated as an OIDC JWT, so `onyx_pat_...` personal access tokens
 never reach Onyx — which killed the `onyx` plugin's bundled MCP server and its `onyx-ask` /
-`onyx-search` skills for everyone.
+`onyx-search` commands for everyone.
 
 Two routes still reach Onyx from inside the network, and this plugin uses whichever you have.
 
@@ -21,6 +21,9 @@ At least one of:
   on Claude's default PATH.
 
 Both is best: retrieval is fast, synthesis survives questions that time out over MCP.
+**CLI-only is not just "less preferred" — it makes ordinary lookups materially slower**, since
+there is no unscoped raw-retrieval CLI command: an everyday question that would be a ~2-8s MCP
+call instead falls back to the ~40s CLI synthesis route.
 
 ## What you get
 
