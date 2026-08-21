@@ -1,6 +1,6 @@
 {
   "name": "parcellab-skills",
-  "description": "Internal Claude Code tooling for the parcelLab team: order and journey simulation, branded email layouts, demo requests, bug investigation, and Onyx knowledge search.",
+  "description": "Internal Claude Code tooling for the parcelLab team: order and journey simulation, branded email layouts, demo requests, bug investigation, and parcelLab knowledge and account research.",
   "owner": {
     "name": "Jamie Lee-Smith",
     "email": "jamie.lee-smith@parcellab.com"
@@ -15,6 +15,11 @@
       "name": "pl-tools",
       "source": "./plugins/pl-tools",
       "description": "parcelLab internal tooling: create orders, simulate post-purchase journeys, build branded email layouts, raise demo requests, investigate bugs, and seed a prospect's products into a Shopify dev store. Six skills plus /pl-setup, which configures your account and credentials in one pass."
+    },
+    {
+      "name": "pl-knowledge",
+      "source": "./plugins/pl-knowledge",
+      "description": "Research parcelLab knowledge and customer accounts through Onyx. Fast one-call lookups by default; synthesis, positioning and call-prep briefs on request. Works via the parcelLab MCP connector or the parcellab CLI."
     }
   ],
   "renames": {
